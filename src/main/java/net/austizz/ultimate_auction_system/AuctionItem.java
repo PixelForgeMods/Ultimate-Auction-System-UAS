@@ -163,11 +163,40 @@ public class AuctionItem {
     }
 
     public void setState(AuctionState state) {
+        transitionTo(state, "direct state update");
+    }
+
+    public synchronized boolean transitionTo(AuctionState state, String reason) {
         AuctionState nextState = state == null ? AuctionState.ACTIVE : state;
-        if (this.state != nextState) {
-            this.state = nextState;
-            markChanged();
+        if (this.state == nextState) {
+            return true;
         }
+        if (!this.state.canTransitionTo(nextState)) {
+            if (Config.auditStateTransitions) {
+                UltimateAuctionSystem.LOGGER.warn(
+                        "[UAS] Rejected auction {} state transition {} -> {}: {}",
+                        auctionId,
+                        this.state,
+                        nextState,
+                        reason == null ? "no reason supplied" : reason
+                );
+            }
+            return false;
+        }
+
+        AuctionState previousState = this.state;
+        this.state = nextState;
+        if (Config.auditStateTransitions) {
+            UltimateAuctionSystem.LOGGER.info(
+                    "[UAS] Auction {} state transition {} -> {}: {}",
+                    auctionId,
+                    previousState,
+                    nextState,
+                    reason == null ? "no reason supplied" : reason
+            );
+        }
+        markChanged();
+        return true;
     }
 
     public void setStartingBidPrice(BigDecimal startingBidPrice) {
@@ -196,7 +225,7 @@ public class AuctionItem {
             return recordRejectedBid(bidderId, bidderAccountId, bid, AuctionBidResult.REJECTED_AUCTION_NOT_ACTIVE, "Auction is not active.");
         }
         if (LocalDateTime.now().isAfter(dateOfEnd)) {
-            state = AuctionState.ENDED;
+            transitionTo(AuctionState.ENDED, "bid rejected after auction end time");
             return recordRejectedBid(bidderId, bidderAccountId, bid, AuctionBidResult.REJECTED_AUCTION_ENDED, "Auction already ended.");
         }
         if (bid.compareTo(highestBid.get()) <= 0) {
@@ -207,7 +236,7 @@ public class AuctionItem {
         highestBidderId.set(bidderId);
         bids.put(bidderId, bid);
         if (buyoutPrice != null && bid.compareTo(buyoutPrice) >= 0) {
-            state = AuctionState.ENDED;
+            transitionTo(AuctionState.ENDED, "buyout price met by accepted bid");
         }
 
         AuctionBidRecord record = AuctionBidRecord.accepted(auctionId, bidderId, bidderAccountId, bid);

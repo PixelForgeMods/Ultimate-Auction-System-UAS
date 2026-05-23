@@ -19,6 +19,7 @@ public class Config {
     public static final boolean DEFAULT_REQUIRE_UBS_FOR_LISTING = true;
     public static final boolean DEFAULT_AUTO_SETTLE_EXPIRED_AUCTIONS = true;
     public static final boolean DEFAULT_AUDIT_REJECTED_BIDS = true;
+    public static final boolean DEFAULT_AUDIT_STATE_TRANSITIONS = true;
     public static final int DEFAULT_ADMIN_STATUS_PERMISSION_LEVEL = 2;
 
     public static final String ADMIN_RELOAD_FLOW = "Use the standard NeoForge config reload flow after editing UAS common config. "
@@ -104,6 +105,13 @@ public class Config {
             )
             .define("audit.rejectedBids", DEFAULT_AUDIT_REJECTED_BIDS);
 
+    private static final ModConfigSpec.BooleanValue AUDIT_STATE_TRANSITIONS = BUILDER
+            .comment(
+                    "When true, auction state transitions and rejected transitions are logged for admin audits.",
+                    "State values are always persisted with each auction record."
+            )
+            .define("audit.stateTransitions", DEFAULT_AUDIT_STATE_TRANSITIONS);
+
     private static final ModConfigSpec.IntValue ADMIN_STATUS_PERMISSION_LEVEL = BUILDER
             .comment(
                     "Minecraft permission level required to run /uas status.",
@@ -123,6 +131,7 @@ public class Config {
     public static boolean requireUbsForListing;
     public static boolean autoSettleExpiredAuctions;
     public static boolean auditRejectedBids;
+    public static boolean auditStateTransitions;
     public static int adminStatusPermissionLevel;
     public static boolean lastConfigLoadHealthy = true;
     public static String lastConfigLoadMessage = "Config has not loaded yet.";
@@ -142,6 +151,7 @@ public class Config {
         requireUbsForListing = readBoolean("settlement.requireUbsForListing", REQUIRE_UBS_FOR_LISTING, DEFAULT_REQUIRE_UBS_FOR_LISTING);
         autoSettleExpiredAuctions = readBoolean("settlement.autoSettleExpiredAuctions", AUTO_SETTLE_EXPIRED_AUCTIONS, DEFAULT_AUTO_SETTLE_EXPIRED_AUCTIONS);
         auditRejectedBids = readBoolean("audit.rejectedBids", AUDIT_REJECTED_BIDS, DEFAULT_AUDIT_REJECTED_BIDS);
+        auditStateTransitions = readBoolean("audit.stateTransitions", AUDIT_STATE_TRANSITIONS, DEFAULT_AUDIT_STATE_TRANSITIONS);
         adminStatusPermissionLevel = readInt("admin.statusPermissionLevel", ADMIN_STATUS_PERMISSION_LEVEL, DEFAULT_ADMIN_STATUS_PERMISSION_LEVEL, 0, MAX_PERMISSION_LEVEL);
 
         if (lastConfigLoadHealthy) {

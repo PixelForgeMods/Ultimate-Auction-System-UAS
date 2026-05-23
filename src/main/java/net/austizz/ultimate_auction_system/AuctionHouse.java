@@ -193,7 +193,7 @@ public class AuctionHouse {
     private void refreshExpiredStates() {
         for (AuctionItem item : AuctionItems.values()) {
             if (item != null && item.getState() == AuctionState.ACTIVE && item.isExpired()) {
-                item.setState(AuctionState.ENDED);
+                item.transitionTo(AuctionState.ENDED, "auction expired during storage save");
             }
         }
     }
@@ -203,24 +203,31 @@ public class AuctionHouse {
         if (item == null || !item.isExpired()) {
             return;
         }
+        if (item.getState() == AuctionState.ACTIVE) {
+            item.transitionTo(AuctionState.ENDED, "auction expired before settlement");
+        }
+        if (item.getState() != AuctionState.ENDED && item.getState() != AuctionState.FAILED_SETTLEMENT) {
+            UltimateAuctionSystem.LOGGER.warn("Auction {} is in state {}; settlement skipped.", id, item.getState());
+            return;
+        }
 
         UUID winningBidderId = item.getHighestBidderId();
         if (winningBidderId == null) {
             UltimateAuctionSystem.LOGGER.info("Auction {} expired without bids; no UBS payout was created.", id);
-            item.setState(AuctionState.ENDED);
+            item.transitionTo(AuctionState.ENDED, "auction ended without bids");
             return;
         }
 
         if (!bankingService.isAvailable()) {
             UltimateAuctionSystem.LOGGER.warn("UBS is not available; cannot settle auction {}.", id);
-            item.setState(AuctionState.FAILED_SETTLEMENT);
+            item.transitionTo(AuctionState.FAILED_SETTLEMENT, "UBS unavailable during settlement");
             return;
         }
 
         UUID sellerAccountId = item.getSellerAccountId();
         if (sellerAccountId == null) {
             UltimateAuctionSystem.LOGGER.warn("Auction {} has no stored seller account ID; cannot settle seller {}.", id, item.getPlayerId());
-            item.setState(AuctionState.FAILED_SETTLEMENT);
+            item.transitionTo(AuctionState.FAILED_SETTLEMENT, "missing seller account during settlement");
             return;
         }
 
@@ -228,7 +235,7 @@ public class AuctionHouse {
         UUID winningBidderAccountId = winningBidRecord.flatMap(AuctionBidRecord::getBidderAccountId).orElse(null);
         if (winningBidderAccountId == null) {
             UltimateAuctionSystem.LOGGER.warn("Auction {} has no auditable winning bid account; cannot settle.", id);
-            item.setState(AuctionState.FAILED_SETTLEMENT);
+            item.transitionTo(AuctionState.FAILED_SETTLEMENT, "missing winning bidder account during settlement");
             return;
         }
 
@@ -243,11 +250,11 @@ public class AuctionHouse {
 
         if (!result.success()) {
             UltimateAuctionSystem.LOGGER.warn("UBS auction settlement failed for {}: {}", id, result.reason());
-            item.setState(AuctionState.FAILED_SETTLEMENT);
+            item.transitionTo(AuctionState.FAILED_SETTLEMENT, "UBS transfer failed: " + result.reason());
             return;
         }
 
-        item.setState(AuctionState.CLAIMED);
+        item.transitionTo(AuctionState.CLAIMED, "settlement transfer completed");
         removeAuctionItem(item);
     }
 }

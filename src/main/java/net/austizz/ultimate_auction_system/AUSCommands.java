@@ -65,6 +65,9 @@ public class AUSCommands {
 
 // 2. Loop through and build high-utility, rich text rows
                             for (AuctionItem item : auctionHouse.getAuctionItems().values()) {
+                                if (item.getState() != AuctionState.ACTIVE) {
+                                    continue;
+                                }
                                 ItemStack itemStack = item.getItem();
                                 String displayName = itemStack.getHoverName().getString();
                                 int count = itemStack.getCount();
