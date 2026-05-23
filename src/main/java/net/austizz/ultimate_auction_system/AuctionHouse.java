@@ -5,6 +5,7 @@ import net.austizz.ultimate_auction_system.banking.UasBankingService;
 import net.austizz.ultimate_auction_system.banking.UbsBankingService;
 import net.minecraft.ChatFormatting;
 import net.minecraft.network.chat.Component;
+import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerPlayer;
 import net.neoforged.neoforge.server.ServerLifecycleHooks;
 
@@ -15,15 +16,32 @@ public class AuctionHouse {
 
     private final ConcurrentHashMap<UUID, AuctionItem> AuctionItems;
     private final UasBankingService bankingService;
+    private final AuctionSavedData savedData;
     private volatile AuctionStorageHealth storageHealth = AuctionStorageHealth.inMemoryOnly();
 
     public AuctionHouse() {
-        this(new UbsBankingService());
+        this(null, new UbsBankingService());
     }
 
     public AuctionHouse(UasBankingService bankingService) {
-        this.AuctionItems = new ConcurrentHashMap<>();
+        this(null, bankingService);
+    }
+
+    private AuctionHouse(AuctionSavedData savedData, UasBankingService bankingService) {
+        this.savedData = savedData;
+        this.AuctionItems = savedData == null ? new ConcurrentHashMap<>() : savedData.getAuctions();
         this.bankingService = bankingService;
+    }
+
+    public static AuctionHouse load(MinecraftServer server) {
+        AuctionSavedData data = AuctionSavedData.get(server);
+        AuctionHouse house = new AuctionHouse(data, new UbsBankingService());
+        String message = data.getSkippedRecords() == 0
+                ? "Persistent auction storage loaded with " + data.getAuctions().size() + " auction(s)."
+                : "Persistent auction storage loaded with " + data.getAuctions().size()
+                + " auction(s); skipped " + data.getSkippedRecords() + " invalid record(s).";
+        house.markStorageSaved(message);
+        return house;
     }
 
     public void addAuctionItem(AuctionItem item) {
@@ -38,6 +56,7 @@ public class AuctionHouse {
         }
 
         this.AuctionItems.put(item.getAuctionId(), item);
+        markChanged("Auction storage marked dirty after listing creation.");
         if (player != null) {
             Component message = Component.literal("")
                     .append(Component.literal("⚖ ").withStyle(ChatFormatting.GOLD))
@@ -53,6 +72,7 @@ public class AuctionHouse {
 
     public void removeAuctionItem(AuctionItem item) {
         this.AuctionItems.remove(item.getAuctionId());
+        markChanged("Auction storage marked dirty after listing removal.");
     }
 
     public AuctionItem getAuctionItem(UUID id) {
@@ -76,6 +96,13 @@ public class AuctionHouse {
 
     public void markStorageFailed(String message) {
         this.storageHealth = AuctionStorageHealth.failed(message);
+    }
+
+    private void markChanged(String message) {
+        if (savedData != null) {
+            savedData.markChanged();
+            markStorageSaved(message);
+        }
     }
 
     public void payoutAuctionItem(UUID id) {

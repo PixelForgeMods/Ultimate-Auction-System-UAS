@@ -23,7 +23,7 @@ import net.neoforged.fml.event.lifecycle.FMLClientSetupEvent;
 import net.neoforged.fml.event.lifecycle.FMLCommonSetupEvent;
 import net.neoforged.neoforge.common.NeoForge;
 import net.neoforged.neoforge.event.BuildCreativeModeTabContentsEvent;
-import net.neoforged.neoforge.event.server.ServerStartingEvent;
+import net.neoforged.neoforge.event.server.ServerStartedEvent;
 import net.neoforged.neoforge.registries.DeferredBlock;
 import net.neoforged.neoforge.registries.DeferredHolder;
 import net.neoforged.neoforge.registries.DeferredItem;
@@ -103,11 +103,18 @@ public class UltimateAuctionSystem {
 
     // You can use SubscribeEvent and let the Event Bus discover methods to call
     @SubscribeEvent
-    public void onServerStarting(ServerStartingEvent event) {
+    public void onServerStarted(ServerStartedEvent event) {
         // Do something when the server starts
         LOGGER.info("UltimateAuctionSystem Starting");
 
-        auctionHouse = new AuctionHouse();
+        try {
+            auctionHouse = AuctionHouse.load(event.getServer());
+            LOGGER.info("[UAS] {}", auctionHouse.getStorageHealth().message());
+        } catch (RuntimeException exception) {
+            LOGGER.error("[UAS] Failed to load persistent auction storage; using in-memory fallback.", exception);
+            auctionHouse = new AuctionHouse();
+            auctionHouse.markStorageFailed("Persistent auction storage failed to load: " + exception.getMessage());
+        }
     }
 
     // You can use EventBusSubscriber to automatically register all static methods in the class annotated with @SubscribeEvent

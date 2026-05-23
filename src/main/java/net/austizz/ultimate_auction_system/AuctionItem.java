@@ -1,8 +1,15 @@
 package net.austizz.ultimate_auction_system;
 
+import net.minecraft.core.HolderLookup;
+import net.minecraft.nbt.CompoundTag;
+import net.minecraft.nbt.ListTag;
+import net.minecraft.nbt.Tag;
 import net.minecraft.world.item.ItemStack;
+
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.time.format.DateTimeParseException;
+import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentSkipListMap;
 import java.util.concurrent.atomic.AtomicReference;
@@ -18,17 +25,34 @@ public class AuctionItem {
     private ConcurrentSkipListMap<UUID, BigDecimal> bids;
     private final AtomicReference<BigDecimal> highestBid = new AtomicReference<>(BigDecimal.ZERO);
     private final AtomicReference<UUID> highestBidderId = new AtomicReference<>();
+    private AuctionState state;
 
     public AuctionItem(ItemStack item, String description, LocalDateTime dateOfEnd, LocalDateTime dateOfStart, BigDecimal startingBidPrice, UUID playerId) {
+        this(UUID.randomUUID(), item, description, dateOfEnd, dateOfStart, startingBidPrice, playerId, AuctionState.ACTIVE, new ConcurrentSkipListMap<>(), startingBidPrice, null);
+    }
+
+    private AuctionItem(UUID auctionId,
+                        ItemStack item,
+                        String description,
+                        LocalDateTime dateOfEnd,
+                        LocalDateTime dateOfStart,
+                        BigDecimal startingBidPrice,
+                        UUID playerId,
+                        AuctionState state,
+                        ConcurrentSkipListMap<UUID, BigDecimal> bids,
+                        BigDecimal highestBid,
+                        UUID highestBidderId) {
         this.item = item.copy(); // CRITICAL: Always copy ItemStacks to prevent inventory reference bugs!
-        this.description = description;
+        this.description = description == null ? "" : description;
         this.dateOfEnd = dateOfEnd;
         this.dateOfStart = dateOfStart;
-        this.startingBidPrice = startingBidPrice;
-        this.bids = new ConcurrentSkipListMap<>();
-        this.auctionId = UUID.randomUUID();
+        this.startingBidPrice = startingBidPrice == null ? BigDecimal.ZERO : startingBidPrice;
+        this.bids = bids == null ? new ConcurrentSkipListMap<>() : bids;
+        this.auctionId = auctionId == null ? UUID.randomUUID() : auctionId;
         this.playerId = playerId;
-        this.highestBid.set(startingBidPrice);
+        this.state = state == null ? AuctionState.ACTIVE : state;
+        this.highestBid.set(highestBid == null ? this.startingBidPrice : highestBid);
+        this.highestBidderId.set(highestBidderId);
     }
 
     public UUID getAuctionId() { return auctionId; }
@@ -41,9 +65,11 @@ public class AuctionItem {
     public UUID getHighestBidderId() { return highestBidderId.get(); }
     public UUID getPlayerId() { return playerId; }
     public ConcurrentSkipListMap<UUID, BigDecimal> getBids() { return bids; }
+    public AuctionState getState() { return state; }
 
     public void setBids(ConcurrentSkipListMap<UUID, BigDecimal> bids) { this.bids = bids; }
     public void setDescription(String description) { this.description = description; }
+    public void setState(AuctionState state) { this.state = state == null ? AuctionState.ACTIVE : state; }
 
     public void setStartingBidPrice(BigDecimal startingBidPrice) {
         if (startingBidPrice.compareTo(BigDecimal.ZERO) > 0) {
@@ -80,5 +106,98 @@ public class AuctionItem {
      */
     public boolean isExpired() {
         return LocalDateTime.now().isAfter(this.dateOfEnd);
+    }
+
+    public CompoundTag save(HolderLookup.Provider registries) {
+        CompoundTag tag = new CompoundTag();
+        tag.putUUID("auctionId", this.auctionId);
+        tag.putUUID("playerId", this.playerId);
+        tag.putString("description", this.description == null ? "" : this.description);
+        tag.putString("dateOfEnd", this.dateOfEnd.toString());
+        tag.putString("dateOfStart", this.dateOfStart.toString());
+        tag.putString("startingBidPrice", this.startingBidPrice.toPlainString());
+        tag.putString("highestBid", this.highestBid.get().toPlainString());
+        tag.putString("state", this.state.name());
+        if (this.highestBidderId.get() != null) {
+            tag.putUUID("highestBidderId", this.highestBidderId.get());
+        }
+        tag.put("item", saveItemStack(this.item, registries));
+
+        ListTag bidList = new ListTag();
+        for (var entry : this.bids.entrySet()) {
+            CompoundTag bidTag = new CompoundTag();
+            bidTag.putUUID("bidderId", entry.getKey());
+            bidTag.putString("amount", entry.getValue().toPlainString());
+            bidList.add(bidTag);
+        }
+        tag.put("bids", bidList);
+        return tag;
+    }
+
+    public static Optional<AuctionItem> load(CompoundTag tag, HolderLookup.Provider registries) {
+        if (tag == null
+                || !tag.contains("auctionId")
+                || !tag.contains("playerId")
+                || !tag.contains("item", Tag.TAG_COMPOUND)) {
+            return Optional.empty();
+        }
+
+        ItemStack item = ItemStack.parseOptional(registries, tag.getCompound("item"));
+        if (item.isEmpty()) {
+            return Optional.empty();
+        }
+
+        try {
+            UUID auctionId = tag.getUUID("auctionId");
+            UUID playerId = tag.getUUID("playerId");
+            LocalDateTime dateOfEnd = LocalDateTime.parse(tag.getString("dateOfEnd"));
+            LocalDateTime dateOfStart = LocalDateTime.parse(tag.getString("dateOfStart"));
+            BigDecimal startingBidPrice = new BigDecimal(tag.getString("startingBidPrice"));
+            BigDecimal highestBid = tag.contains("highestBid")
+                    ? new BigDecimal(tag.getString("highestBid"))
+                    : startingBidPrice;
+            UUID highestBidderId = tag.contains("highestBidderId") ? tag.getUUID("highestBidderId") : null;
+            ConcurrentSkipListMap<UUID, BigDecimal> bids = loadBids(tag);
+
+            return Optional.of(new AuctionItem(
+                    auctionId,
+                    item,
+                    tag.getString("description"),
+                    dateOfEnd,
+                    dateOfStart,
+                    startingBidPrice,
+                    playerId,
+                    AuctionState.fromSerializedName(tag.getString("state")),
+                    bids,
+                    highestBid,
+                    highestBidderId
+            ));
+        } catch (DateTimeParseException | IllegalArgumentException exception) {
+            UltimateAuctionSystem.LOGGER.warn("[UAS] Invalid auction record: {}", exception.getMessage());
+            return Optional.empty();
+        }
+    }
+
+    private static ConcurrentSkipListMap<UUID, BigDecimal> loadBids(CompoundTag tag) {
+        ConcurrentSkipListMap<UUID, BigDecimal> loaded = new ConcurrentSkipListMap<>();
+        ListTag bidList = tag.getList("bids", Tag.TAG_COMPOUND);
+        for (Tag rawBid : bidList) {
+            if (!(rawBid instanceof CompoundTag bidTag) || !bidTag.contains("bidderId")) {
+                continue;
+            }
+            try {
+                loaded.put(bidTag.getUUID("bidderId"), new BigDecimal(bidTag.getString("amount")));
+            } catch (IllegalArgumentException ignored) {
+            }
+        }
+        return loaded;
+    }
+
+    private static CompoundTag saveItemStack(ItemStack stack, HolderLookup.Provider registries) {
+        CompoundTag tag = new CompoundTag();
+        if (stack != null && !stack.isEmpty()) {
+            stack.save(registries, tag);
+        }
+        return tag;
     }
 }
