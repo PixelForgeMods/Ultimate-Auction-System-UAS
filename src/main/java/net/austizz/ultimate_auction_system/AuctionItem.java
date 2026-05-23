@@ -9,6 +9,7 @@ import net.minecraft.world.item.ItemStack;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeParseException;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentSkipListMap;
@@ -26,6 +27,8 @@ public class AuctionItem {
     private final AtomicReference<BigDecimal> highestBid = new AtomicReference<>(BigDecimal.ZERO);
     private final AtomicReference<UUID> highestBidderId = new AtomicReference<>();
     private AuctionState state;
+    private transient Runnable changeListener = () -> {
+    };
 
     public AuctionItem(ItemStack item, String description, LocalDateTime dateOfEnd, LocalDateTime dateOfStart, BigDecimal startingBidPrice, UUID playerId) {
         this(UUID.randomUUID(), item, description, dateOfEnd, dateOfStart, startingBidPrice, playerId, AuctionState.ACTIVE, new ConcurrentSkipListMap<>(), startingBidPrice, null);
@@ -64,16 +67,32 @@ public class AuctionItem {
     public BigDecimal getHighestBid() { return highestBid.get(); }
     public UUID getHighestBidderId() { return highestBidderId.get(); }
     public UUID getPlayerId() { return playerId; }
-    public ConcurrentSkipListMap<UUID, BigDecimal> getBids() { return bids; }
+    public ConcurrentSkipListMap<UUID, BigDecimal> getBids() { return new ConcurrentSkipListMap<>(bids); }
     public AuctionState getState() { return state; }
 
-    public void setBids(ConcurrentSkipListMap<UUID, BigDecimal> bids) { this.bids = bids; }
-    public void setDescription(String description) { this.description = description; }
-    public void setState(AuctionState state) { this.state = state == null ? AuctionState.ACTIVE : state; }
+    public synchronized void setBids(ConcurrentSkipListMap<UUID, BigDecimal> bids) {
+        this.bids = bids == null ? new ConcurrentSkipListMap<>() : new ConcurrentSkipListMap<>(bids);
+        repairLoadedBidState();
+        markChanged();
+    }
+
+    public void setDescription(String description) {
+        this.description = description == null ? "" : description;
+        markChanged();
+    }
+
+    public void setState(AuctionState state) {
+        AuctionState nextState = state == null ? AuctionState.ACTIVE : state;
+        if (this.state != nextState) {
+            this.state = nextState;
+            markChanged();
+        }
+    }
 
     public void setStartingBidPrice(BigDecimal startingBidPrice) {
-        if (startingBidPrice.compareTo(BigDecimal.ZERO) > 0) {
+        if (startingBidPrice != null && startingBidPrice.compareTo(BigDecimal.ZERO) > 0) {
             this.startingBidPrice = startingBidPrice;
+            markChanged();
         }
     }
 
@@ -82,6 +101,11 @@ public class AuctionItem {
      * @return true if the bid was successful, false if it was rejected.
      */
     public synchronized boolean addBid(UUID uuid, BigDecimal bid) {
+        if (uuid == null || bid == null) {
+            UltimateAuctionSystem.LOGGER.error("Bid rejected: Missing bidder or amount.");
+            return false;
+        }
+
         // 1. Validate if the auction period has already expired
         if (LocalDateTime.now().isAfter(dateOfEnd)) {
             UltimateAuctionSystem.LOGGER.error("Bid rejected: Auction already ended!");
@@ -93,6 +117,7 @@ public class AuctionItem {
             highestBid.set(bid);
             highestBidderId.set(uuid);
             this.bids.put(uuid, bid);
+            markChanged();
             UltimateAuctionSystem.LOGGER.info("New highest bid accepted for auction " + auctionId);
             return true;
         } else {
@@ -106,6 +131,87 @@ public class AuctionItem {
      */
     public boolean isExpired() {
         return LocalDateTime.now().isAfter(this.dateOfEnd);
+    }
+
+    void setChangeListener(Runnable changeListener) {
+        this.changeListener = changeListener == null ? () -> {
+        } : changeListener;
+    }
+
+    boolean repairLoadedBidState() {
+        BigDecimal safeStartingBid = startingBidPrice == null ? BigDecimal.ZERO : startingBidPrice;
+        boolean repaired = false;
+
+        if (highestBid.get() == null || highestBid.get().compareTo(safeStartingBid) < 0) {
+            highestBid.set(safeStartingBid);
+            repaired = true;
+        }
+
+        if (bids == null || bids.isEmpty()) {
+            if (bids == null) {
+                bids = new ConcurrentSkipListMap<>();
+                repaired = true;
+            }
+            if (highestBidderId.get() != null) {
+                highestBidderId.set(null);
+                repaired = true;
+            }
+            if (highestBid.get().compareTo(safeStartingBid) != 0) {
+                highestBid.set(safeStartingBid);
+                repaired = true;
+            }
+            return repaired;
+        }
+
+        Map.Entry<UUID, BigDecimal> bestBid = null;
+        for (Map.Entry<UUID, BigDecimal> entry : bids.entrySet()) {
+            if (entry.getKey() == null || entry.getValue() == null) {
+                repaired = true;
+                continue;
+            }
+            if (bestBid == null || entry.getValue().compareTo(bestBid.getValue()) > 0) {
+                bestBid = entry;
+            }
+        }
+
+        if (bestBid == null) {
+            bids.clear();
+            highestBid.set(safeStartingBid);
+            highestBidderId.set(null);
+            return true;
+        }
+
+        BigDecimal expectedHighest = bestBid.getValue().max(safeStartingBid);
+        UUID expectedBidder = bestBid.getKey();
+        UUID currentHighestBidder = highestBidderId.get();
+        BigDecimal bidderRecordedAmount = currentHighestBidder == null ? null : bids.get(currentHighestBidder);
+        if (currentHighestBidder == null
+                || bidderRecordedAmount == null
+                || bidderRecordedAmount.compareTo(highestBid.get()) != 0
+                || highestBid.get().compareTo(expectedHighest) != 0) {
+            highestBid.set(expectedHighest);
+            highestBidderId.set(expectedBidder);
+            repaired = true;
+        }
+
+        return repaired;
+    }
+
+    boolean isPersistable() {
+        return auctionId != null
+                && playerId != null
+                && item != null
+                && !item.isEmpty()
+                && dateOfStart != null
+                && dateOfEnd != null
+                && startingBidPrice != null
+                && startingBidPrice.compareTo(BigDecimal.ZERO) >= 0
+                && highestBid.get() != null
+                && state != null;
+    }
+
+    private void markChanged() {
+        changeListener.run();
     }
 
     public CompoundTag save(HolderLookup.Provider registries) {

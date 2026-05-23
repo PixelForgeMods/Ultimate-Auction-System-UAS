@@ -24,6 +24,7 @@ import net.neoforged.fml.event.lifecycle.FMLCommonSetupEvent;
 import net.neoforged.neoforge.common.NeoForge;
 import net.neoforged.neoforge.event.BuildCreativeModeTabContentsEvent;
 import net.neoforged.neoforge.event.server.ServerStartedEvent;
+import net.neoforged.neoforge.event.server.ServerStoppingEvent;
 import net.neoforged.neoforge.registries.DeferredBlock;
 import net.neoforged.neoforge.registries.DeferredHolder;
 import net.neoforged.neoforge.registries.DeferredItem;
@@ -114,6 +115,15 @@ public class UltimateAuctionSystem {
             LOGGER.error("[UAS] Failed to load persistent auction storage; using in-memory fallback.", exception);
             auctionHouse = new AuctionHouse();
             auctionHouse.markStorageFailed("Persistent auction storage failed to load: " + exception.getMessage());
+        }
+    }
+
+    @SubscribeEvent
+    public void onServerStopping(ServerStoppingEvent event) {
+        AuctionHouse house = auctionHouse;
+        if (house != null) {
+            house.saveNow(event.getServer(), "Server stopping; auction storage flushed.");
+            LOGGER.info("[UAS] {}", house.getStorageHealth().message());
         }
     }
 

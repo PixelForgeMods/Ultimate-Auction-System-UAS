@@ -9,6 +9,7 @@ import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerPlayer;
 import net.neoforged.neoforge.server.ServerLifecycleHooks;
 
+import java.math.BigDecimal;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -31,15 +32,17 @@ public class AuctionHouse {
         this.savedData = savedData;
         this.AuctionItems = savedData == null ? new ConcurrentHashMap<>() : savedData.getAuctions();
         this.bankingService = bankingService;
+        this.AuctionItems.values().forEach(this::attachMutationTracking);
     }
 
     public static AuctionHouse load(MinecraftServer server) {
         AuctionSavedData data = AuctionSavedData.get(server);
         AuctionHouse house = new AuctionHouse(data, new UbsBankingService());
-        String message = data.getSkippedRecords() == 0
+        String message = data.getSkippedRecords() == 0 && data.getRepairedRecords() == 0
                 ? "Persistent auction storage loaded with " + data.getAuctions().size() + " auction(s)."
                 : "Persistent auction storage loaded with " + data.getAuctions().size()
-                + " auction(s); skipped " + data.getSkippedRecords() + " invalid record(s).";
+                + " auction(s); skipped " + data.getSkippedRecords()
+                + " invalid record(s), repaired " + data.getRepairedRecords() + " record(s).";
         house.markStorageSaved(message);
         return house;
     }
@@ -55,6 +58,7 @@ public class AuctionHouse {
             return;
         }
 
+        attachMutationTracking(item);
         this.AuctionItems.put(item.getAuctionId(), item);
         markChanged("Auction storage marked dirty after listing creation.");
         if (player != null) {
@@ -83,7 +87,7 @@ public class AuctionHouse {
     }
 
     public ConcurrentHashMap<UUID, AuctionItem> getAuctionItems() {
-        return this.AuctionItems;
+        return new ConcurrentHashMap<>(this.AuctionItems);
     }
 
     public AuctionStorageHealth getStorageHealth() {
@@ -98,10 +102,57 @@ public class AuctionHouse {
         this.storageHealth = AuctionStorageHealth.failed(message);
     }
 
+    public boolean placeBid(UUID auctionId, UUID bidderId, BigDecimal amount) {
+        AuctionItem item = getAuctionItem(auctionId);
+        if (item == null) {
+            return false;
+        }
+        return item.addBid(bidderId, amount);
+    }
+
+    public boolean saveNow(MinecraftServer server, String reason) {
+        if (savedData == null) {
+            markStorageFailed("Auction storage save skipped because persistent SavedData is unavailable.");
+            return false;
+        }
+        if (server == null) {
+            markStorageFailed("Auction storage save failed because Minecraft server is unavailable.");
+            return false;
+        }
+
+        refreshExpiredStates();
+        savedData.markChanged();
+
+        try {
+            boolean saved = server.saveEverything(false, true, true);
+            markStorageSaved(reason + " Saved " + AuctionItems.size() + " auction(s).");
+            return saved;
+        } catch (RuntimeException exception) {
+            String message = "Auction storage save failed: " + exception.getMessage();
+            markStorageFailed(message);
+            UltimateAuctionSystem.LOGGER.error("[UAS] {}", message, exception);
+            return false;
+        }
+    }
+
     private void markChanged(String message) {
         if (savedData != null) {
             savedData.markChanged();
             markStorageSaved(message);
+        }
+    }
+
+    private void attachMutationTracking(AuctionItem item) {
+        if (item != null) {
+            item.setChangeListener(() -> markChanged("Auction storage marked dirty after auction record mutation."));
+        }
+    }
+
+    private void refreshExpiredStates() {
+        for (AuctionItem item : AuctionItems.values()) {
+            if (item != null && item.getState() == AuctionState.ACTIVE && item.isExpired()) {
+                item.setState(AuctionState.ENDED);
+            }
         }
     }
 
@@ -114,17 +165,20 @@ public class AuctionHouse {
         UUID winningBidderId = item.getHighestBidderId();
         if (winningBidderId == null) {
             UltimateAuctionSystem.LOGGER.info("Auction {} expired without bids; no UBS payout was created.", id);
+            item.setState(AuctionState.ENDED);
             return;
         }
 
         if (!bankingService.isAvailable()) {
             UltimateAuctionSystem.LOGGER.warn("UBS is not available; cannot settle auction {}.", id);
+            item.setState(AuctionState.FAILED_SETTLEMENT);
             return;
         }
 
         UUID sellerAccountId = bankingService.getPrimaryAccountId(item.getPlayerId()).orElse(null);
         if (sellerAccountId == null) {
             UltimateAuctionSystem.LOGGER.warn("Seller {} has no primary UBS account; cannot settle auction {}.", item.getPlayerId(), id);
+            item.setState(AuctionState.FAILED_SETTLEMENT);
             return;
         }
 
@@ -137,9 +191,11 @@ public class AuctionHouse {
 
         if (!result.success()) {
             UltimateAuctionSystem.LOGGER.warn("UBS auction settlement failed for {}: {}", id, result.reason());
+            item.setState(AuctionState.FAILED_SETTLEMENT);
             return;
         }
 
+        item.setState(AuctionState.CLAIMED);
         removeAuctionItem(item);
     }
 }
