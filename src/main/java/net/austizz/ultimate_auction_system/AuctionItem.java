@@ -10,6 +10,7 @@ import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeParseException;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentSkipListMap;
@@ -18,11 +19,15 @@ import java.util.concurrent.atomic.AtomicReference;
 public class AuctionItem {
     private final UUID auctionId;
     private final UUID playerId;
+    private UUID sellerAccountId;
     private final ItemStack item;
     private String description;
     private final LocalDateTime dateOfEnd;
     private final LocalDateTime dateOfStart;
+    private final LocalDateTime createdAt;
+    private LocalDateTime updatedAt;
     private BigDecimal startingBidPrice;
+    private BigDecimal buyoutPrice;
     private ConcurrentSkipListMap<UUID, BigDecimal> bids;
     private final AtomicReference<BigDecimal> highestBid = new AtomicReference<>(BigDecimal.ZERO);
     private final AtomicReference<UUID> highestBidderId = new AtomicReference<>();
@@ -31,7 +36,34 @@ public class AuctionItem {
     };
 
     public AuctionItem(ItemStack item, String description, LocalDateTime dateOfEnd, LocalDateTime dateOfStart, BigDecimal startingBidPrice, UUID playerId) {
-        this(UUID.randomUUID(), item, description, dateOfEnd, dateOfStart, startingBidPrice, playerId, AuctionState.ACTIVE, new ConcurrentSkipListMap<>(), startingBidPrice, null);
+        this(item, description, dateOfEnd, dateOfStart, startingBidPrice, playerId, null, null);
+    }
+
+    public AuctionItem(ItemStack item,
+                       String description,
+                       LocalDateTime dateOfEnd,
+                       LocalDateTime dateOfStart,
+                       BigDecimal startingBidPrice,
+                       UUID playerId,
+                       UUID sellerAccountId,
+                       BigDecimal buyoutPrice) {
+        this(
+                UUID.randomUUID(),
+                item,
+                description,
+                dateOfEnd,
+                dateOfStart,
+                LocalDateTime.now(),
+                LocalDateTime.now(),
+                startingBidPrice,
+                buyoutPrice,
+                playerId,
+                sellerAccountId,
+                AuctionState.ACTIVE,
+                new ConcurrentSkipListMap<>(),
+                startingBidPrice,
+                null
+        );
     }
 
     private AuctionItem(UUID auctionId,
@@ -39,8 +71,12 @@ public class AuctionItem {
                         String description,
                         LocalDateTime dateOfEnd,
                         LocalDateTime dateOfStart,
+                        LocalDateTime createdAt,
+                        LocalDateTime updatedAt,
                         BigDecimal startingBidPrice,
+                        BigDecimal buyoutPrice,
                         UUID playerId,
+                        UUID sellerAccountId,
                         AuctionState state,
                         ConcurrentSkipListMap<UUID, BigDecimal> bids,
                         BigDecimal highestBid,
@@ -49,10 +85,14 @@ public class AuctionItem {
         this.description = description == null ? "" : description;
         this.dateOfEnd = dateOfEnd;
         this.dateOfStart = dateOfStart;
+        this.createdAt = createdAt == null ? LocalDateTime.now() : createdAt;
+        this.updatedAt = updatedAt == null ? this.createdAt : updatedAt;
         this.startingBidPrice = startingBidPrice == null ? BigDecimal.ZERO : startingBidPrice;
+        this.buyoutPrice = normalizeOptionalPrice(buyoutPrice);
         this.bids = bids == null ? new ConcurrentSkipListMap<>() : bids;
         this.auctionId = auctionId == null ? UUID.randomUUID() : auctionId;
         this.playerId = playerId;
+        this.sellerAccountId = sellerAccountId;
         this.state = state == null ? AuctionState.ACTIVE : state;
         this.highestBid.set(highestBid == null ? this.startingBidPrice : highestBid);
         this.highestBidderId.set(highestBidderId);
@@ -65,8 +105,14 @@ public class AuctionItem {
     public LocalDateTime getDateOfStart() { return dateOfStart; }
     public BigDecimal getStartingBidPrice() { return startingBidPrice; }
     public BigDecimal getHighestBid() { return highestBid.get(); }
+    public BigDecimal getCurrentPrice() { return highestBid.get(); }
     public UUID getHighestBidderId() { return highestBidderId.get(); }
     public UUID getPlayerId() { return playerId; }
+    public UUID getSellerAccountId() { return sellerAccountId; }
+    public int getItemQuantity() { return item == null ? 0 : item.getCount(); }
+    public Optional<BigDecimal> getBuyoutPrice() { return Optional.ofNullable(buyoutPrice); }
+    public LocalDateTime getCreatedAt() { return createdAt; }
+    public LocalDateTime getUpdatedAt() { return updatedAt; }
     public ConcurrentSkipListMap<UUID, BigDecimal> getBids() { return new ConcurrentSkipListMap<>(bids); }
     public AuctionState getState() { return state; }
 
@@ -79,6 +125,21 @@ public class AuctionItem {
     public void setDescription(String description) {
         this.description = description == null ? "" : description;
         markChanged();
+    }
+
+    public void setSellerAccountId(UUID sellerAccountId) {
+        if (!Objects.equals(this.sellerAccountId, sellerAccountId)) {
+            this.sellerAccountId = sellerAccountId;
+            markChanged();
+        }
+    }
+
+    public void setBuyoutPrice(BigDecimal buyoutPrice) {
+        BigDecimal normalized = normalizeOptionalPrice(buyoutPrice);
+        if (!Objects.equals(this.buyoutPrice, normalized)) {
+            this.buyoutPrice = normalized;
+            markChanged();
+        }
     }
 
     public void setState(AuctionState state) {
@@ -117,6 +178,9 @@ public class AuctionItem {
             highestBid.set(bid);
             highestBidderId.set(uuid);
             this.bids.put(uuid, bid);
+            if (buyoutPrice != null && bid.compareTo(buyoutPrice) >= 0) {
+                state = AuctionState.ENDED;
+            }
             markChanged();
             UltimateAuctionSystem.LOGGER.info("New highest bid accepted for auction " + auctionId);
             return true;
@@ -160,6 +224,9 @@ public class AuctionItem {
                 highestBid.set(safeStartingBid);
                 repaired = true;
             }
+            if (repaired) {
+                updatedAt = LocalDateTime.now();
+            }
             return repaired;
         }
 
@@ -178,6 +245,7 @@ public class AuctionItem {
             bids.clear();
             highestBid.set(safeStartingBid);
             highestBidderId.set(null);
+            updatedAt = LocalDateTime.now();
             return true;
         }
 
@@ -194,23 +262,63 @@ public class AuctionItem {
             repaired = true;
         }
 
+        if (repaired) {
+            updatedAt = LocalDateTime.now();
+        }
         return repaired;
     }
 
     boolean isPersistable() {
-        return auctionId != null
-                && playerId != null
-                && item != null
-                && !item.isEmpty()
-                && dateOfStart != null
-                && dateOfEnd != null
-                && startingBidPrice != null
-                && startingBidPrice.compareTo(BigDecimal.ZERO) >= 0
-                && highestBid.get() != null
-                && state != null;
+        return validateForPersistence().isEmpty();
+    }
+
+    Optional<String> validateForActivation() {
+        Optional<String> validationError = validateForPersistence();
+        if (validationError.isPresent()) {
+            return validationError;
+        }
+        if (state != AuctionState.ACTIVE) {
+            return Optional.of("auction must be ACTIVE before listing");
+        }
+        return Optional.empty();
+    }
+
+    Optional<String> validateForPersistence() {
+        if (auctionId == null) {
+            return Optional.of("missing auction ID");
+        }
+        if (playerId == null) {
+            return Optional.of("missing seller player ID");
+        }
+        if (sellerAccountId == null) {
+            return Optional.of("missing seller account ID");
+        }
+        if (item == null || item.isEmpty() || item.getCount() <= 0) {
+            return Optional.of("missing item stack or quantity");
+        }
+        if (dateOfStart == null || dateOfEnd == null || !dateOfEnd.isAfter(dateOfStart)) {
+            return Optional.of("invalid auction start/end time");
+        }
+        if (createdAt == null || updatedAt == null || updatedAt.isBefore(createdAt)) {
+            return Optional.of("invalid audit timestamps");
+        }
+        if (startingBidPrice == null || startingBidPrice.compareTo(BigDecimal.ZERO) < 0) {
+            return Optional.of("invalid starting price");
+        }
+        if (highestBid.get() == null || highestBid.get().compareTo(startingBidPrice) < 0) {
+            return Optional.of("invalid current price");
+        }
+        if (buyoutPrice != null && buyoutPrice.compareTo(startingBidPrice) < 0) {
+            return Optional.of("buyout price is below starting price");
+        }
+        if (state == null) {
+            return Optional.of("missing auction state");
+        }
+        return Optional.empty();
     }
 
     private void markChanged() {
+        updatedAt = LocalDateTime.now();
         changeListener.run();
     }
 
@@ -218,11 +326,19 @@ public class AuctionItem {
         CompoundTag tag = new CompoundTag();
         tag.putUUID("auctionId", this.auctionId);
         tag.putUUID("playerId", this.playerId);
+        tag.putUUID("sellerAccountId", this.sellerAccountId);
         tag.putString("description", this.description == null ? "" : this.description);
+        tag.putInt("itemQuantity", getItemQuantity());
         tag.putString("dateOfEnd", this.dateOfEnd.toString());
         tag.putString("dateOfStart", this.dateOfStart.toString());
+        tag.putString("createdAt", this.createdAt.toString());
+        tag.putString("updatedAt", this.updatedAt.toString());
         tag.putString("startingBidPrice", this.startingBidPrice.toPlainString());
+        tag.putString("currentPrice", this.highestBid.get().toPlainString());
         tag.putString("highestBid", this.highestBid.get().toPlainString());
+        if (this.buyoutPrice != null) {
+            tag.putString("buyoutPrice", this.buyoutPrice.toPlainString());
+        }
         tag.putString("state", this.state.name());
         if (this.highestBidderId.get() != null) {
             tag.putUUID("highestBidderId", this.highestBidderId.get());
@@ -244,6 +360,11 @@ public class AuctionItem {
         if (tag == null
                 || !tag.contains("auctionId")
                 || !tag.contains("playerId")
+                || !tag.contains("sellerAccountId")
+                || !tag.contains("itemQuantity", Tag.TAG_INT)
+                || !tag.contains("currentPrice")
+                || !tag.contains("createdAt")
+                || !tag.contains("updatedAt")
                 || !tag.contains("item", Tag.TAG_COMPOUND)) {
             return Optional.empty();
         }
@@ -256,28 +377,42 @@ public class AuctionItem {
         try {
             UUID auctionId = tag.getUUID("auctionId");
             UUID playerId = tag.getUUID("playerId");
+            UUID sellerAccountId = tag.getUUID("sellerAccountId");
+            int itemQuantity = tag.getInt("itemQuantity");
+            if (itemQuantity <= 0 || item.getCount() != itemQuantity) {
+                return Optional.empty();
+            }
             LocalDateTime dateOfEnd = LocalDateTime.parse(tag.getString("dateOfEnd"));
             LocalDateTime dateOfStart = LocalDateTime.parse(tag.getString("dateOfStart"));
+            LocalDateTime createdAt = LocalDateTime.parse(tag.getString("createdAt"));
+            LocalDateTime updatedAt = LocalDateTime.parse(tag.getString("updatedAt"));
             BigDecimal startingBidPrice = new BigDecimal(tag.getString("startingBidPrice"));
-            BigDecimal highestBid = tag.contains("highestBid")
-                    ? new BigDecimal(tag.getString("highestBid"))
-                    : startingBidPrice;
+            BigDecimal currentPrice = new BigDecimal(tag.getString("currentPrice"));
+            BigDecimal buyoutPrice = tag.contains("buyoutPrice") ? new BigDecimal(tag.getString("buyoutPrice")) : null;
             UUID highestBidderId = tag.contains("highestBidderId") ? tag.getUUID("highestBidderId") : null;
             ConcurrentSkipListMap<UUID, BigDecimal> bids = loadBids(tag);
 
-            return Optional.of(new AuctionItem(
+            AuctionItem auction = new AuctionItem(
                     auctionId,
                     item,
                     tag.getString("description"),
                     dateOfEnd,
                     dateOfStart,
+                    createdAt,
+                    updatedAt,
                     startingBidPrice,
+                    buyoutPrice,
                     playerId,
+                    sellerAccountId,
                     AuctionState.fromSerializedName(tag.getString("state")),
                     bids,
-                    highestBid,
+                    currentPrice,
                     highestBidderId
-            ));
+            );
+            if (auction.validateForPersistence().isPresent()) {
+                return Optional.empty();
+            }
+            return Optional.of(auction);
         } catch (DateTimeParseException | IllegalArgumentException exception) {
             UltimateAuctionSystem.LOGGER.warn("[UAS] Invalid auction record: {}", exception.getMessage());
             return Optional.empty();
@@ -305,5 +440,9 @@ public class AuctionItem {
             stack.save(registries, tag);
         }
         return tag;
+    }
+
+    private static BigDecimal normalizeOptionalPrice(BigDecimal price) {
+        return price == null || price.compareTo(BigDecimal.ZERO) <= 0 ? null : price;
     }
 }

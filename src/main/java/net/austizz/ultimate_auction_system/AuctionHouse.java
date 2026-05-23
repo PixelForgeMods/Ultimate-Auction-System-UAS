@@ -10,6 +10,7 @@ import net.minecraft.server.level.ServerPlayer;
 import net.neoforged.neoforge.server.ServerLifecycleHooks;
 
 import java.math.BigDecimal;
+import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -48,13 +49,26 @@ public class AuctionHouse {
     }
 
     public void addAuctionItem(AuctionItem item) {
+        if (item == null) {
+            return;
+        }
+
         ServerPlayer player = ServerLifecycleHooks.getCurrentServer().getPlayerList().getPlayer(item.getPlayerId());
-        if (Config.requireUbsForListing && !bankingService.playerHasAvailablePrimaryAccount(item.getPlayerId())) {
-            if (player != null) {
-                String errorMessage = String.format("Error: Player %s does not have an available primary banking account. Please set up a UBS primary account or contact the server administrator for assistance.", player.getName().getString());
-                player.sendSystemMessage(Component.literal(errorMessage).withStyle(ChatFormatting.RED));
-                return;
-            }
+        Optional<UUID> sellerAccountId = bankingService.getPrimaryAccountId(item.getPlayerId());
+        if (sellerAccountId.isEmpty()) {
+            sendListingError(player, "Error: UAS could not resolve your UBS primary account ID, so the auction record cannot be audited safely.");
+            return;
+        }
+        UasBankingResult canReceive = bankingService.validateCanReceive(sellerAccountId.get());
+        if (!canReceive.success()) {
+            sendListingError(player, "Error: Your UBS primary account cannot receive auction payouts right now: " + canReceive.reason());
+            return;
+        }
+
+        item.setSellerAccountId(sellerAccountId.get());
+        Optional<String> validationError = item.validateForActivation();
+        if (validationError.isPresent()) {
+            sendListingError(player, "Error: Auction listing is incomplete: " + validationError.get() + ".");
             return;
         }
 
@@ -148,6 +162,12 @@ public class AuctionHouse {
         }
     }
 
+    private void sendListingError(ServerPlayer player, String message) {
+        if (player != null) {
+            player.sendSystemMessage(Component.literal(message).withStyle(ChatFormatting.RED));
+        }
+    }
+
     private void refreshExpiredStates() {
         for (AuctionItem item : AuctionItems.values()) {
             if (item != null && item.getState() == AuctionState.ACTIVE && item.isExpired()) {
@@ -175,9 +195,9 @@ public class AuctionHouse {
             return;
         }
 
-        UUID sellerAccountId = bankingService.getPrimaryAccountId(item.getPlayerId()).orElse(null);
+        UUID sellerAccountId = item.getSellerAccountId();
         if (sellerAccountId == null) {
-            UltimateAuctionSystem.LOGGER.warn("Seller {} has no primary UBS account; cannot settle auction {}.", item.getPlayerId(), id);
+            UltimateAuctionSystem.LOGGER.warn("Auction {} has no stored seller account ID; cannot settle seller {}.", id, item.getPlayerId());
             item.setState(AuctionState.FAILED_SETTLEMENT);
             return;
         }
