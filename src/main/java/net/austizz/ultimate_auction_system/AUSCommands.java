@@ -3,8 +3,12 @@ package net.austizz.ultimate_auction_system;
 import com.mojang.brigadier.Command;
 
 import com.mojang.brigadier.arguments.StringArgumentType;
+import com.mojang.brigadier.context.CommandContext;
 import com.mojang.brigadier.exceptions.SimpleCommandExceptionType;
+import net.austizz.ultimate_auction_system.banking.UasBankingService;
+import net.austizz.ultimate_auction_system.banking.UbsBankingService;
 import net.minecraft.ChatFormatting;
+import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.commands.Commands;
 import net.minecraft.network.chat.ClickEvent;
 import net.minecraft.network.chat.Component;
@@ -12,11 +16,14 @@ import net.minecraft.network.chat.HoverEvent;
 import net.minecraft.network.chat.MutableComponent;
 import net.minecraft.world.item.ItemStack;
 import net.neoforged.bus.api.SubscribeEvent;
+import net.neoforged.fml.ModList;
 import net.neoforged.fml.common.EventBusSubscriber;
 import net.neoforged.neoforge.event.RegisterCommandsEvent;
 
 import java.math.BigDecimal;
+import java.time.Instant;
 import java.time.LocalDateTime;
+import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeFormatterBuilder;
 import java.time.format.DateTimeParseException;
@@ -163,5 +170,59 @@ public class AUSCommands {
                                 )
                         )
         );
+
+        event.getDispatcher().register(
+                Commands.literal("uas")
+                        .then(Commands.literal("status")
+                                .requires(source -> source.hasPermission(Config.adminStatusPermissionLevel))
+                                .executes(AUSCommands::sendStatus)
+                        )
+        );
+    }
+
+    private static int sendStatus(CommandContext<CommandSourceStack> context) {
+        CommandSourceStack source = context.getSource();
+        UasBankingService bankingService = new UbsBankingService();
+        boolean ubsLoaded = ModList.get().isLoaded("ultimatebankingsystem");
+        boolean ubsServerAvailable = bankingService.isAvailable();
+        AuctionHouse house = auctionHouse;
+        int auctionCount = house == null ? 0 : house.getAuctionItems().size();
+        AuctionStorageHealth storageHealth = house == null
+                ? new AuctionStorageHealth(UasHealthLevel.ERROR, "Auction house is not initialized.", -1L)
+                : house.getStorageHealth();
+
+        source.sendSystemMessage(Component.literal("=== UAS Status ===").withStyle(ChatFormatting.GOLD));
+        sendStatusLine(source, "UBS loaded", ubsLoaded ? "yes" : "no", ubsLoaded ? ChatFormatting.GREEN : ChatFormatting.RED);
+        sendStatusLine(source, "UBS API version", bankingService.getApiVersion(), ubsLoaded ? ChatFormatting.GREEN : ChatFormatting.YELLOW);
+        sendStatusLine(source, "UBS server available", ubsServerAvailable ? "yes" : "no", ubsServerAvailable ? ChatFormatting.GREEN : ChatFormatting.RED);
+        sendStatusLine(source, "Active auctions", String.valueOf(auctionCount), ChatFormatting.AQUA);
+        sendStatusLine(source, "Storage", storageHealth.message(), colorFor(storageHealth.level()));
+        sendStatusLine(source, "Last save", formatLastSave(storageHealth.lastSaveEpochMillis()), colorFor(storageHealth.level()));
+        sendStatusLine(source, "Config", Config.lastConfigLoadMessage, Config.lastConfigLoadHealthy ? ChatFormatting.GREEN : ChatFormatting.YELLOW);
+
+        return Command.SINGLE_SUCCESS;
+    }
+
+    private static void sendStatusLine(CommandSourceStack source, String label, String value, ChatFormatting valueColor) {
+        source.sendSystemMessage(Component.literal(label + ": ")
+                .withStyle(ChatFormatting.GRAY)
+                .append(Component.literal(value).withStyle(valueColor)));
+    }
+
+    private static ChatFormatting colorFor(UasHealthLevel level) {
+        return switch (level) {
+            case HEALTHY -> ChatFormatting.GREEN;
+            case WARNING -> ChatFormatting.YELLOW;
+            case ERROR -> ChatFormatting.RED;
+        };
+    }
+
+    private static String formatLastSave(long lastSaveEpochMillis) {
+        if (lastSaveEpochMillis < 0) {
+            return "never";
+        }
+        return DateTimeFormatter.ISO_LOCAL_DATE_TIME
+                .withZone(ZoneId.systemDefault())
+                .format(Instant.ofEpochMilli(lastSaveEpochMillis));
     }
 }

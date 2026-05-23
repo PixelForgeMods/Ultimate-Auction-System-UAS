@@ -18,6 +18,7 @@ public class Config {
     public static final int DEFAULT_SETTLEMENT_RETRY_DELAY_SECONDS = 60;
     public static final boolean DEFAULT_REQUIRE_UBS_FOR_LISTING = true;
     public static final boolean DEFAULT_AUTO_SETTLE_EXPIRED_AUCTIONS = true;
+    public static final int DEFAULT_ADMIN_STATUS_PERMISSION_LEVEL = 2;
 
     public static final String ADMIN_RELOAD_FLOW = "Use the standard NeoForge config reload flow after editing UAS common config. "
             + "Economy fees, tax, bid increments, listing limits, and settlement retry settings are re-read on reload. "
@@ -28,6 +29,7 @@ public class Config {
     private static final int MAX_DURATION_HOURS = 24 * 365;
     private static final int MAX_SETTLEMENT_RETRY_ATTEMPTS = 20;
     private static final int MAX_SETTLEMENT_RETRY_DELAY_SECONDS = 86_400;
+    private static final int MAX_PERMISSION_LEVEL = 4;
 
     private static final ModConfigSpec.Builder BUILDER = new ModConfigSpec.Builder();
 
@@ -94,6 +96,13 @@ public class Config {
             )
             .define("settlement.autoSettleExpiredAuctions", DEFAULT_AUTO_SETTLE_EXPIRED_AUCTIONS);
 
+    private static final ModConfigSpec.IntValue ADMIN_STATUS_PERMISSION_LEVEL = BUILDER
+            .comment(
+                    "Minecraft permission level required to run /uas status.",
+                    "0 allows everyone; 2 matches normal operator command access; 4 restricts to server owner level."
+            )
+            .defineInRange("admin.statusPermissionLevel", DEFAULT_ADMIN_STATUS_PERMISSION_LEVEL, 0, MAX_PERMISSION_LEVEL);
+
     static final ModConfigSpec SPEC = BUILDER.build();
 
     public static long listingFeeDollars;
@@ -105,6 +114,7 @@ public class Config {
     public static int settlementRetryDelaySeconds;
     public static boolean requireUbsForListing;
     public static boolean autoSettleExpiredAuctions;
+    public static int adminStatusPermissionLevel;
     public static boolean lastConfigLoadHealthy = true;
     public static String lastConfigLoadMessage = "Config has not loaded yet.";
 
@@ -122,6 +132,7 @@ public class Config {
         settlementRetryDelaySeconds = readInt("settlement.retryDelaySeconds", SETTLEMENT_RETRY_DELAY_SECONDS, DEFAULT_SETTLEMENT_RETRY_DELAY_SECONDS, 1, MAX_SETTLEMENT_RETRY_DELAY_SECONDS);
         requireUbsForListing = readBoolean("settlement.requireUbsForListing", REQUIRE_UBS_FOR_LISTING, DEFAULT_REQUIRE_UBS_FOR_LISTING);
         autoSettleExpiredAuctions = readBoolean("settlement.autoSettleExpiredAuctions", AUTO_SETTLE_EXPIRED_AUCTIONS, DEFAULT_AUTO_SETTLE_EXPIRED_AUCTIONS);
+        adminStatusPermissionLevel = readInt("admin.statusPermissionLevel", ADMIN_STATUS_PERMISSION_LEVEL, DEFAULT_ADMIN_STATUS_PERMISSION_LEVEL, 0, MAX_PERMISSION_LEVEL);
 
         if (lastConfigLoadHealthy) {
             lastConfigLoadMessage = event instanceof ModConfigEvent.Reloading

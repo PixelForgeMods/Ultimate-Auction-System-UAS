@@ -11,6 +11,7 @@ public class AuctionHouse {
 
     private final ConcurrentHashMap<UUID, AuctionItem> AuctionItems;
     private final UasBankingService bankingService;
+    private volatile AuctionStorageHealth storageHealth = AuctionStorageHealth.inMemoryOnly();
 
     public AuctionHouse() {
         this(new UbsBankingService());
@@ -38,6 +39,18 @@ public class AuctionHouse {
 
     public ConcurrentHashMap<UUID, AuctionItem> getAuctionItems() {
         return this.AuctionItems;
+    }
+
+    public AuctionStorageHealth getStorageHealth() {
+        return storageHealth;
+    }
+
+    public void markStorageSaved(String message) {
+        this.storageHealth = AuctionStorageHealth.saved(message);
+    }
+
+    public void markStorageFailed(String message) {
+        this.storageHealth = AuctionStorageHealth.failed(message);
     }
 
     public void payoutAuctionItem(UUID id) {
