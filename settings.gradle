@@ -9,3 +9,14 @@ pluginManagement {
 plugins {
     id 'org.gradle.toolchains.foojay-resolver-convention' version '0.8.0'
 }
+
+rootProject.name = 'ultimate_auction_system'
+
+def ubsProjectDir = file('../Ultimate-Banking-System-UBS-main')
+if (ubsProjectDir.exists()) {
+    includeBuild(ubsProjectDir) {
+        dependencySubstitution {
+            substitute(module('net.austizz.ultimatebankingsystem:ultimatebankingsystem')).using(project(':'))
+        }
+    }
+}

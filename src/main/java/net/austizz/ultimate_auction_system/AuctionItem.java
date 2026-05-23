@@ -17,6 +17,7 @@ public class AuctionItem {
     private BigDecimal startingBidPrice;
     private ConcurrentSkipListMap<UUID, BigDecimal> bids;
     private final AtomicReference<BigDecimal> highestBid = new AtomicReference<>(BigDecimal.ZERO);
+    private final AtomicReference<UUID> highestBidderId = new AtomicReference<>();
 
     public AuctionItem(ItemStack item, String description, LocalDateTime dateOfEnd, LocalDateTime dateOfStart, BigDecimal startingBidPrice, UUID playerId) {
         this.item = item.copy(); // CRITICAL: Always copy ItemStacks to prevent inventory reference bugs!
@@ -37,6 +38,7 @@ public class AuctionItem {
     public LocalDateTime getDateOfStart() { return dateOfStart; }
     public BigDecimal getStartingBidPrice() { return startingBidPrice; }
     public BigDecimal getHighestBid() { return highestBid.get(); }
+    public UUID getHighestBidderId() { return highestBidderId.get(); }
     public UUID getPlayerId() { return playerId; }
     public ConcurrentSkipListMap<UUID, BigDecimal> getBids() { return bids; }
 
@@ -63,6 +65,7 @@ public class AuctionItem {
         // 2. Validate that the new bid is explicitly higher than the current highest bid
         if (bid.compareTo(highestBid.get()) > 0) {
             highestBid.set(bid);
+            highestBidderId.set(uuid);
             this.bids.put(uuid, bid);
             UltimateAuctionSystem.LOGGER.info("New highest bid accepted for auction " + auctionId);
             return true;

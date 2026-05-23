@@ -9,8 +9,15 @@ version = mod_version
 group = mod_group_id
 
 repositories {
+    // Local UBS development fallback. The composite build in settings.gradle is preferred when the sibling repo exists.
+    flatDir {
+        dirs "../Ultimate-Banking-System-UBS-main/build/libs"
+        dirs "libs"
+    }
+
     mavenLocal()
 }
+
 
 base {
     archivesName = mod_id
@@ -101,7 +108,8 @@ dependencies {
     // compileOnly "mezz.jei:jei-${mc_version}-common-api:${jei_version}"
     // compileOnly "mezz.jei:jei-${mc_version}-forge-api:${jei_version}"
     // runtimeOnly "mezz.jei:jei-${mc_version}-forge:${jei_version}"
-
+    // UBS is a required runtime mod and a development compile dependency.
+    implementation 'net.austizz.ultimatebankingsystem:ultimatebankingsystem:1.2.0'
     // Example mod dependency using a mod jar from ./libs with a flat dir repository
     // This maps to ./libs/coolmod-${mc_version}-${coolmod_version}.jar
     // The group id is ignored when searching -- in this case, it is "blank"
