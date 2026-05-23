@@ -2,7 +2,6 @@ package net.austizz.ultimate_auction_system;
 
 import com.mojang.logging.LogUtils;
 import net.minecraft.client.Minecraft;
-import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.network.chat.Component;
 import net.minecraft.world.food.FoodProperties;
@@ -11,7 +10,6 @@ import net.minecraft.world.item.CreativeModeTab;
 import net.minecraft.world.item.CreativeModeTabs;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.level.block.Block;
-import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.state.BlockBehaviour;
 import net.minecraft.world.level.material.MapColor;
 import net.neoforged.api.distmarker.Dist;
@@ -88,14 +86,14 @@ public class UltimateAuctionSystem {
     }
 
     private void commonSetup(final FMLCommonSetupEvent event) {
-        // Some common setup code
-        LOGGER.info("HELLO FROM COMMON SETUP");
-
-        if (Config.logDirtBlock) LOGGER.info("DIRT BLOCK >> {}", BuiltInRegistries.BLOCK.getKey(Blocks.DIRT));
-
-        LOGGER.info(Config.magicNumberIntroduction + Config.magicNumber);
-
-        Config.items.forEach((item) -> LOGGER.info("ITEM >> {}", item.toString()));
+        LOGGER.info(
+                "UAS config loaded: listingFee=${}, salesTaxRate={}, minimumBidIncrement=${}, maxListings={}, maxDurationHours={}",
+                Config.listingFeeDollars,
+                Config.salesTaxRate,
+                Config.minimumBidIncrementDollars,
+                Config.maxActiveListingsPerPlayer,
+                Config.maxAuctionDurationHours
+        );
     }
 
     // Add the example block item to the building blocks tab
