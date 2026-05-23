@@ -9,6 +9,7 @@ import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.level.Level;
+import net.minecraft.world.item.ItemStack;
 import net.neoforged.neoforge.server.ServerLifecycleHooks;
 
 import java.math.BigDecimal;
@@ -80,16 +81,34 @@ public class AuctionHouse {
         }
 
         item.setSellerAccountId(sellerAccountId.get());
-        Optional<String> validationError = item.validateForActivation();
+        Optional<String> validationError = item.validateForListingRequest();
         if (validationError.isPresent()) {
             sendListingError(player, "Error: Auction listing is incomplete: " + validationError.get() + ".");
             return;
         }
+        if (player == null) {
+            UltimateAuctionSystem.LOGGER.warn("[UAS] Listing {} rejected because seller {} is not online for escrow transfer.", item.getAuctionId(), item.getPlayerId());
+            return;
+        }
 
-        attachMutationTracking(item);
-        this.AuctionItems.put(item.getAuctionId(), item);
-        markChanged("Auction storage marked dirty after listing creation.");
-        if (player != null) {
+        ItemStack escrowStack = item.getItem();
+        if (!takeEscrowFromSeller(player, escrowStack)) {
+            sendListingError(player, "Error: The item in your main hand no longer matches the auction listing.");
+            return;
+        }
+
+        try {
+            item.markEscrowed("SELLER_MAIN_HAND");
+            Optional<String> escrowValidationError = item.validateForActivation();
+            if (escrowValidationError.isPresent()) {
+                restoreEscrowToSeller(player, escrowStack);
+                sendListingError(player, "Error: Auction escrow failed validation: " + escrowValidationError.get() + ".");
+                return;
+            }
+
+            attachMutationTracking(item);
+            this.AuctionItems.put(item.getAuctionId(), item);
+            markChanged("Auction storage marked dirty after listing creation.");
             Component message = Component.literal("")
                     .append(Component.literal("⚖ ").withStyle(ChatFormatting.GOLD))
                     .append(Component.literal("Auction: ").withStyle(ChatFormatting.YELLOW, ChatFormatting.BOLD))
@@ -99,6 +118,11 @@ public class AuctionHouse {
                     .append(Component.literal("$" + item.getStartingBidPrice()).withStyle(ChatFormatting.GREEN))
                     .append(Component.literal(". -> Type /ah to view your listing!").withStyle(ChatFormatting.DARK_GRAY));
             player.sendSystemMessage(message, false);
+        } catch (RuntimeException exception) {
+            this.AuctionItems.remove(item.getAuctionId());
+            restoreEscrowToSeller(player, escrowStack);
+            markStorageFailed("Auction listing failed after escrow transfer: " + exception.getMessage());
+            UltimateAuctionSystem.LOGGER.error("[UAS] Auction listing failed after escrow transfer; escrow was returned.", exception);
         }
     }
 
@@ -254,6 +278,27 @@ public class AuctionHouse {
         }
     }
 
+    private boolean takeEscrowFromSeller(ServerPlayer player, ItemStack escrowStack) {
+        ItemStack mainHand = player.getMainHandItem();
+        if (escrowStack.isEmpty()
+                || mainHand.isEmpty()
+                || mainHand.getCount() < escrowStack.getCount()
+                || !ItemStack.isSameItemSameComponents(mainHand, escrowStack)) {
+            return false;
+        }
+
+        mainHand.shrink(escrowStack.getCount());
+        player.getInventory().setChanged();
+        return true;
+    }
+
+    private void restoreEscrowToSeller(ServerPlayer player, ItemStack escrowStack) {
+        if (player != null && escrowStack != null && !escrowStack.isEmpty()) {
+            player.getInventory().add(escrowStack.copy());
+            player.getInventory().setChanged();
+        }
+    }
+
     private void refreshExpiredStates() {
         for (AuctionItem item : AuctionItems.values()) {
             if (item != null && item.getState() == AuctionState.ACTIVE && item.isExpired()) {
@@ -323,6 +368,5 @@ public class AuctionHouse {
         }
 
         item.transitionTo(AuctionState.CLAIMED, "settlement transfer completed");
-        removeAuctionItem(item);
     }
 }

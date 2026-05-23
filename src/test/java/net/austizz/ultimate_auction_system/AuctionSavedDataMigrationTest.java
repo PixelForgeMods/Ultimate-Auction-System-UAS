@@ -34,4 +34,24 @@ class AuctionSavedDataMigrationTest {
         assertTrue(result.failed());
         assertFalse(result.migrated());
     }
+
+    @Test
+    void migratesSchemaThreeAuctionEscrowMetadata() {
+        CompoundTag schemaThreeRoot = new CompoundTag();
+        schemaThreeRoot.putInt("schemaVersion", 3);
+        CompoundTag auction = new CompoundTag();
+        auction.putString("updatedAt", "2026-05-23T12:00");
+        ListTag auctions = new ListTag();
+        auctions.add(auction);
+        schemaThreeRoot.put("auctions", auctions);
+
+        AuctionSavedDataMigration.MigrationResult result = AuctionSavedDataMigration.migrateRoot(schemaThreeRoot);
+        CompoundTag migratedAuction = result.tag().getList("auctions", 10).getCompound(0);
+
+        assertFalse(result.failed());
+        assertTrue(result.migrated());
+        assertTrue(migratedAuction.getBoolean("escrowed"));
+        assertEquals("MIGRATED_SCHEMA_3", migratedAuction.getString("escrowSource"));
+        assertEquals("2026-05-23T12:00", migratedAuction.getString("escrowedAt"));
+    }
 }

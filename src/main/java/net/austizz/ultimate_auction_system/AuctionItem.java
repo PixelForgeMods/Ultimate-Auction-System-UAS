@@ -28,6 +28,9 @@ public class AuctionItem {
     private final LocalDateTime dateOfStart;
     private final LocalDateTime createdAt;
     private LocalDateTime updatedAt;
+    private boolean escrowed;
+    private LocalDateTime escrowedAt;
+    private String escrowSource;
     private BigDecimal startingBidPrice;
     private BigDecimal buyoutPrice;
     private ConcurrentSkipListMap<UUID, BigDecimal> bids;
@@ -58,6 +61,9 @@ public class AuctionItem {
                 dateOfStart,
                 LocalDateTime.now(),
                 LocalDateTime.now(),
+                false,
+                null,
+                "",
                 startingBidPrice,
                 buyoutPrice,
                 playerId,
@@ -77,6 +83,9 @@ public class AuctionItem {
                         LocalDateTime dateOfStart,
                         LocalDateTime createdAt,
                         LocalDateTime updatedAt,
+                        boolean escrowed,
+                        LocalDateTime escrowedAt,
+                        String escrowSource,
                         BigDecimal startingBidPrice,
                         BigDecimal buyoutPrice,
                         UUID playerId,
@@ -92,6 +101,9 @@ public class AuctionItem {
         this.dateOfStart = dateOfStart;
         this.createdAt = createdAt == null ? LocalDateTime.now() : createdAt;
         this.updatedAt = updatedAt == null ? this.createdAt : updatedAt;
+        this.escrowed = escrowed;
+        this.escrowedAt = escrowedAt;
+        this.escrowSource = escrowSource == null ? "" : escrowSource;
         this.startingBidPrice = startingBidPrice == null ? BigDecimal.ZERO : startingBidPrice;
         this.buyoutPrice = normalizeOptionalPrice(buyoutPrice);
         this.bids = bids == null ? new ConcurrentSkipListMap<>() : bids;
@@ -106,7 +118,7 @@ public class AuctionItem {
     }
 
     public UUID getAuctionId() { return auctionId; }
-    public ItemStack getItem() { return item; }
+    public ItemStack getItem() { return item.copy(); }
     public String getDescription() { return description; }
     public LocalDateTime getDateOfEnd() { return dateOfEnd; }
     public LocalDateTime getDateOfStart() { return dateOfStart; }
@@ -120,6 +132,9 @@ public class AuctionItem {
     public Optional<BigDecimal> getBuyoutPrice() { return Optional.ofNullable(buyoutPrice); }
     public LocalDateTime getCreatedAt() { return createdAt; }
     public LocalDateTime getUpdatedAt() { return updatedAt; }
+    public boolean isEscrowed() { return escrowed; }
+    public Optional<LocalDateTime> getEscrowedAt() { return Optional.ofNullable(escrowedAt); }
+    public String getEscrowSource() { return escrowSource; }
     public ConcurrentSkipListMap<UUID, BigDecimal> getBids() { return new ConcurrentSkipListMap<>(bids); }
     public synchronized List<AuctionBidRecord> getBidRecords() { return List.copyOf(bidRecords); }
     public AuctionState getState() { return state; }
@@ -158,6 +173,15 @@ public class AuctionItem {
         BigDecimal normalized = normalizeOptionalPrice(buyoutPrice);
         if (!Objects.equals(this.buyoutPrice, normalized)) {
             this.buyoutPrice = normalized;
+            markChanged();
+        }
+    }
+
+    public void markEscrowed(String source) {
+        if (!escrowed) {
+            escrowed = true;
+            escrowedAt = LocalDateTime.now();
+            escrowSource = source == null || source.isBlank() ? "UNKNOWN" : source;
             markChanged();
         }
     }
@@ -360,7 +384,7 @@ public class AuctionItem {
     }
 
     Optional<String> validateForActivation() {
-        Optional<String> validationError = validateForPersistence();
+        Optional<String> validationError = validateRecord(true);
         if (validationError.isPresent()) {
             return validationError;
         }
@@ -371,6 +395,21 @@ public class AuctionItem {
     }
 
     Optional<String> validateForPersistence() {
+        return validateRecord(true);
+    }
+
+    Optional<String> validateForListingRequest() {
+        Optional<String> validationError = validateRecord(false);
+        if (validationError.isPresent()) {
+            return validationError;
+        }
+        if (state != AuctionState.ACTIVE) {
+            return Optional.of("auction must be ACTIVE before listing");
+        }
+        return Optional.empty();
+    }
+
+    private Optional<String> validateRecord(boolean requireEscrow) {
         if (auctionId == null) {
             return Optional.of("missing auction ID");
         }
@@ -382,6 +421,12 @@ public class AuctionItem {
         }
         if (item == null || item.isEmpty() || item.getCount() <= 0) {
             return Optional.of("missing item stack or quantity");
+        }
+        if (requireEscrow && state != AuctionState.DRAFT && !escrowed) {
+            return Optional.of("auction item is not held in server escrow");
+        }
+        if (escrowed && (escrowedAt == null || escrowSource == null || escrowSource.isBlank())) {
+            return Optional.of("missing escrow metadata");
         }
         if (dateOfStart == null || dateOfEnd == null || !dateOfEnd.isAfter(dateOfStart)) {
             return Optional.of("invalid auction start/end time");
@@ -425,6 +470,11 @@ public class AuctionItem {
         tag.putString("dateOfStart", this.dateOfStart.toString());
         tag.putString("createdAt", this.createdAt.toString());
         tag.putString("updatedAt", this.updatedAt.toString());
+        tag.putBoolean("escrowed", this.escrowed);
+        if (this.escrowedAt != null) {
+            tag.putString("escrowedAt", this.escrowedAt.toString());
+        }
+        tag.putString("escrowSource", this.escrowSource == null ? "" : this.escrowSource);
         tag.putString("startingBidPrice", this.startingBidPrice.toPlainString());
         tag.putString("currentPrice", this.highestBid.get().toPlainString());
         tag.putString("highestBid", this.highestBid.get().toPlainString());
@@ -465,6 +515,8 @@ public class AuctionItem {
                 || !tag.contains("currentPrice")
                 || !tag.contains("createdAt")
                 || !tag.contains("updatedAt")
+                || !tag.contains("escrowed")
+                || !tag.contains("escrowSource")
                 || !tag.contains("item", Tag.TAG_COMPOUND)) {
             return Optional.empty();
         }
@@ -486,6 +538,8 @@ public class AuctionItem {
             LocalDateTime dateOfStart = LocalDateTime.parse(tag.getString("dateOfStart"));
             LocalDateTime createdAt = LocalDateTime.parse(tag.getString("createdAt"));
             LocalDateTime updatedAt = LocalDateTime.parse(tag.getString("updatedAt"));
+            boolean escrowed = tag.getBoolean("escrowed");
+            LocalDateTime escrowedAt = tag.contains("escrowedAt") ? LocalDateTime.parse(tag.getString("escrowedAt")) : null;
             BigDecimal startingBidPrice = new BigDecimal(tag.getString("startingBidPrice"));
             BigDecimal currentPrice = new BigDecimal(tag.getString("currentPrice"));
             BigDecimal buyoutPrice = tag.contains("buyoutPrice") ? new BigDecimal(tag.getString("buyoutPrice")) : null;
@@ -501,6 +555,9 @@ public class AuctionItem {
                     dateOfStart,
                     createdAt,
                     updatedAt,
+                    escrowed,
+                    escrowedAt,
+                    tag.getString("escrowSource"),
                     startingBidPrice,
                     buyoutPrice,
                     playerId,
