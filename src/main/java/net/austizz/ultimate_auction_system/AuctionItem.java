@@ -9,6 +9,8 @@ import net.minecraft.world.item.ItemStack;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeParseException;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
@@ -29,6 +31,7 @@ public class AuctionItem {
     private BigDecimal startingBidPrice;
     private BigDecimal buyoutPrice;
     private ConcurrentSkipListMap<UUID, BigDecimal> bids;
+    private final ArrayList<AuctionBidRecord> bidRecords;
     private final AtomicReference<BigDecimal> highestBid = new AtomicReference<>(BigDecimal.ZERO);
     private final AtomicReference<UUID> highestBidderId = new AtomicReference<>();
     private AuctionState state;
@@ -61,6 +64,7 @@ public class AuctionItem {
                 sellerAccountId,
                 AuctionState.ACTIVE,
                 new ConcurrentSkipListMap<>(),
+                new ArrayList<>(),
                 startingBidPrice,
                 null
         );
@@ -79,6 +83,7 @@ public class AuctionItem {
                         UUID sellerAccountId,
                         AuctionState state,
                         ConcurrentSkipListMap<UUID, BigDecimal> bids,
+                        List<AuctionBidRecord> bidRecords,
                         BigDecimal highestBid,
                         UUID highestBidderId) {
         this.item = item.copy(); // CRITICAL: Always copy ItemStacks to prevent inventory reference bugs!
@@ -90,10 +95,12 @@ public class AuctionItem {
         this.startingBidPrice = startingBidPrice == null ? BigDecimal.ZERO : startingBidPrice;
         this.buyoutPrice = normalizeOptionalPrice(buyoutPrice);
         this.bids = bids == null ? new ConcurrentSkipListMap<>() : bids;
+        this.bidRecords = bidRecords == null ? new ArrayList<>() : new ArrayList<>(bidRecords);
         this.auctionId = auctionId == null ? UUID.randomUUID() : auctionId;
         this.playerId = playerId;
         this.sellerAccountId = sellerAccountId;
         this.state = state == null ? AuctionState.ACTIVE : state;
+        addAcceptedBidRecordsToBidMap();
         this.highestBid.set(highestBid == null ? this.startingBidPrice : highestBid);
         this.highestBidderId.set(highestBidderId);
     }
@@ -114,7 +121,20 @@ public class AuctionItem {
     public LocalDateTime getCreatedAt() { return createdAt; }
     public LocalDateTime getUpdatedAt() { return updatedAt; }
     public ConcurrentSkipListMap<UUID, BigDecimal> getBids() { return new ConcurrentSkipListMap<>(bids); }
+    public synchronized List<AuctionBidRecord> getBidRecords() { return List.copyOf(bidRecords); }
     public AuctionState getState() { return state; }
+
+    public synchronized Optional<AuctionBidRecord> getWinningBidRecord() {
+        for (int index = bidRecords.size() - 1; index >= 0; index--) {
+            AuctionBidRecord record = bidRecords.get(index);
+            if (record.isAccepted()
+                    && Objects.equals(record.getBidderId(), highestBidderId.get())
+                    && record.getAmount().compareTo(highestBid.get()) == 0) {
+                return Optional.of(record);
+            }
+        }
+        return Optional.empty();
+    }
 
     public synchronized void setBids(ConcurrentSkipListMap<UUID, BigDecimal> bids) {
         this.bids = bids == null ? new ConcurrentSkipListMap<>() : new ConcurrentSkipListMap<>(bids);
@@ -162,32 +182,53 @@ public class AuctionItem {
      * @return true if the bid was successful, false if it was rejected.
      */
     public synchronized boolean addBid(UUID uuid, BigDecimal bid) {
-        if (uuid == null || bid == null) {
-            UltimateAuctionSystem.LOGGER.error("Bid rejected: Missing bidder or amount.");
-            return false;
-        }
+        return recordBid(uuid, null, bid).isAccepted();
+    }
 
-        // 1. Validate if the auction period has already expired
+    public synchronized AuctionBidRecord recordBid(UUID bidderId, UUID bidderAccountId, BigDecimal bid) {
+        if (bidderId == null || bid == null || bid.compareTo(BigDecimal.ZERO) <= 0) {
+            return recordRejectedBid(bidderId, bidderAccountId, bid, AuctionBidResult.REJECTED_INVALID, "Missing bidder or positive bid amount.");
+        }
+        if (bidderAccountId == null) {
+            return recordRejectedBid(bidderId, null, bid, AuctionBidResult.REJECTED_NO_ACCOUNT, "Missing UBS bidder account ID.");
+        }
+        if (state != AuctionState.ACTIVE) {
+            return recordRejectedBid(bidderId, bidderAccountId, bid, AuctionBidResult.REJECTED_AUCTION_NOT_ACTIVE, "Auction is not active.");
+        }
         if (LocalDateTime.now().isAfter(dateOfEnd)) {
-            UltimateAuctionSystem.LOGGER.error("Bid rejected: Auction already ended!");
-            return false;
+            state = AuctionState.ENDED;
+            return recordRejectedBid(bidderId, bidderAccountId, bid, AuctionBidResult.REJECTED_AUCTION_ENDED, "Auction already ended.");
+        }
+        if (bid.compareTo(highestBid.get()) <= 0) {
+            return recordRejectedBid(bidderId, bidderAccountId, bid, AuctionBidResult.REJECTED_TOO_LOW, "Bid must be higher than the current price.");
         }
 
-        // 2. Validate that the new bid is explicitly higher than the current highest bid
-        if (bid.compareTo(highestBid.get()) > 0) {
-            highestBid.set(bid);
-            highestBidderId.set(uuid);
-            this.bids.put(uuid, bid);
-            if (buyoutPrice != null && bid.compareTo(buyoutPrice) >= 0) {
-                state = AuctionState.ENDED;
-            }
-            markChanged();
-            UltimateAuctionSystem.LOGGER.info("New highest bid accepted for auction " + auctionId);
-            return true;
-        } else {
-            UltimateAuctionSystem.LOGGER.error("New highest bid rejected: Too low!");
-            return false;
+        highestBid.set(bid);
+        highestBidderId.set(bidderId);
+        bids.put(bidderId, bid);
+        if (buyoutPrice != null && bid.compareTo(buyoutPrice) >= 0) {
+            state = AuctionState.ENDED;
         }
+
+        AuctionBidRecord record = AuctionBidRecord.accepted(auctionId, bidderId, bidderAccountId, bid);
+        bidRecords.add(record);
+        markChanged();
+        UltimateAuctionSystem.LOGGER.info("New highest bid accepted for auction {}", auctionId);
+        return record;
+    }
+
+    public synchronized AuctionBidRecord recordRejectedBid(UUID bidderId,
+                                                           UUID bidderAccountId,
+                                                           BigDecimal bid,
+                                                           AuctionBidResult result,
+                                                           String reason) {
+        AuctionBidRecord record = AuctionBidRecord.rejected(auctionId, bidderId, bidderAccountId, bid, result, reason);
+        if (Config.auditRejectedBids && record.isValidForAuction(auctionId)) {
+            bidRecords.add(record);
+            markChanged();
+        }
+        UltimateAuctionSystem.LOGGER.debug("Bid rejected for auction {}: {}", auctionId, reason);
+        return record;
     }
 
     /**
@@ -200,6 +241,14 @@ public class AuctionItem {
     void setChangeListener(Runnable changeListener) {
         this.changeListener = changeListener == null ? () -> {
         } : changeListener;
+    }
+
+    public synchronized void linkWinningBidToSettlement(String reference, net.austizz.ultimate_auction_system.banking.UasBankingResult result) {
+        Optional<AuctionBidRecord> winningBidRecord = getWinningBidRecord();
+        if (winningBidRecord.isPresent()) {
+            winningBidRecord.get().linkSettlement(reference, result);
+            markChanged();
+        }
     }
 
     boolean repairLoadedBidState() {
@@ -268,6 +317,15 @@ public class AuctionItem {
         return repaired;
     }
 
+    private void addAcceptedBidRecordsToBidMap() {
+        for (AuctionBidRecord record : bidRecords) {
+            if (!record.isAccepted() || !record.isValidForAuction(auctionId)) {
+                continue;
+            }
+            bids.merge(record.getBidderId(), record.getAmount(), BigDecimal::max);
+        }
+    }
+
     boolean isPersistable() {
         return validateForPersistence().isEmpty();
     }
@@ -314,6 +372,11 @@ public class AuctionItem {
         if (state == null) {
             return Optional.of("missing auction state");
         }
+        for (AuctionBidRecord bidRecord : bidRecords) {
+            if (!bidRecord.isValidForAuction(auctionId)) {
+                return Optional.of("invalid bid record");
+            }
+        }
         return Optional.empty();
     }
 
@@ -353,6 +416,14 @@ public class AuctionItem {
             bidList.add(bidTag);
         }
         tag.put("bids", bidList);
+
+        ListTag bidRecordList = new ListTag();
+        for (AuctionBidRecord bidRecord : bidRecords) {
+            if (bidRecord != null && bidRecord.isValidForAuction(auctionId)) {
+                bidRecordList.add(bidRecord.save());
+            }
+        }
+        tag.put("bidRecords", bidRecordList);
         return tag;
     }
 
@@ -391,6 +462,7 @@ public class AuctionItem {
             BigDecimal buyoutPrice = tag.contains("buyoutPrice") ? new BigDecimal(tag.getString("buyoutPrice")) : null;
             UUID highestBidderId = tag.contains("highestBidderId") ? tag.getUUID("highestBidderId") : null;
             ConcurrentSkipListMap<UUID, BigDecimal> bids = loadBids(tag);
+            List<AuctionBidRecord> bidRecords = loadBidRecords(tag, auctionId);
 
             AuctionItem auction = new AuctionItem(
                     auctionId,
@@ -406,6 +478,7 @@ public class AuctionItem {
                     sellerAccountId,
                     AuctionState.fromSerializedName(tag.getString("state")),
                     bids,
+                    bidRecords,
                     currentPrice,
                     highestBidderId
             );
@@ -430,6 +503,20 @@ public class AuctionItem {
                 loaded.put(bidTag.getUUID("bidderId"), new BigDecimal(bidTag.getString("amount")));
             } catch (IllegalArgumentException ignored) {
             }
+        }
+        return loaded;
+    }
+
+    private static List<AuctionBidRecord> loadBidRecords(CompoundTag tag, UUID auctionId) {
+        ArrayList<AuctionBidRecord> loaded = new ArrayList<>();
+        ListTag recordList = tag.getList("bidRecords", Tag.TAG_COMPOUND);
+        for (Tag rawRecord : recordList) {
+            if (!(rawRecord instanceof CompoundTag recordTag)) {
+                continue;
+            }
+            AuctionBidRecord.load(recordTag)
+                    .filter(record -> record.isValidForAuction(auctionId))
+                    .ifPresent(loaded::add);
         }
         return loaded;
     }

@@ -18,6 +18,7 @@ public class Config {
     public static final int DEFAULT_SETTLEMENT_RETRY_DELAY_SECONDS = 60;
     public static final boolean DEFAULT_REQUIRE_UBS_FOR_LISTING = true;
     public static final boolean DEFAULT_AUTO_SETTLE_EXPIRED_AUCTIONS = true;
+    public static final boolean DEFAULT_AUDIT_REJECTED_BIDS = true;
     public static final int DEFAULT_ADMIN_STATUS_PERMISSION_LEVEL = 2;
 
     public static final String ADMIN_RELOAD_FLOW = "Use the standard NeoForge config reload flow after editing UAS common config. "
@@ -96,6 +97,13 @@ public class Config {
             )
             .define("settlement.autoSettleExpiredAuctions", DEFAULT_AUTO_SETTLE_EXPIRED_AUCTIONS);
 
+    private static final ModConfigSpec.BooleanValue AUDIT_REJECTED_BIDS = BUILDER
+            .comment(
+                    "When true, rejected bid attempts are persisted with reason codes for admin audit flows.",
+                    "Accepted bids are always persisted."
+            )
+            .define("audit.rejectedBids", DEFAULT_AUDIT_REJECTED_BIDS);
+
     private static final ModConfigSpec.IntValue ADMIN_STATUS_PERMISSION_LEVEL = BUILDER
             .comment(
                     "Minecraft permission level required to run /uas status.",
@@ -114,6 +122,7 @@ public class Config {
     public static int settlementRetryDelaySeconds;
     public static boolean requireUbsForListing;
     public static boolean autoSettleExpiredAuctions;
+    public static boolean auditRejectedBids;
     public static int adminStatusPermissionLevel;
     public static boolean lastConfigLoadHealthy = true;
     public static String lastConfigLoadMessage = "Config has not loaded yet.";
@@ -132,6 +141,7 @@ public class Config {
         settlementRetryDelaySeconds = readInt("settlement.retryDelaySeconds", SETTLEMENT_RETRY_DELAY_SECONDS, DEFAULT_SETTLEMENT_RETRY_DELAY_SECONDS, 1, MAX_SETTLEMENT_RETRY_DELAY_SECONDS);
         requireUbsForListing = readBoolean("settlement.requireUbsForListing", REQUIRE_UBS_FOR_LISTING, DEFAULT_REQUIRE_UBS_FOR_LISTING);
         autoSettleExpiredAuctions = readBoolean("settlement.autoSettleExpiredAuctions", AUTO_SETTLE_EXPIRED_AUCTIONS, DEFAULT_AUTO_SETTLE_EXPIRED_AUCTIONS);
+        auditRejectedBids = readBoolean("audit.rejectedBids", AUDIT_REJECTED_BIDS, DEFAULT_AUDIT_REJECTED_BIDS);
         adminStatusPermissionLevel = readInt("admin.statusPermissionLevel", ADMIN_STATUS_PERMISSION_LEVEL, DEFAULT_ADMIN_STATUS_PERMISSION_LEVEL, 0, MAX_PERMISSION_LEVEL);
 
         if (lastConfigLoadHealthy) {

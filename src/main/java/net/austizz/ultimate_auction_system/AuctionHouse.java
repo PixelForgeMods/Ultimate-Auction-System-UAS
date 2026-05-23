@@ -121,7 +121,29 @@ public class AuctionHouse {
         if (item == null) {
             return false;
         }
-        return item.addBid(bidderId, amount);
+        Optional<UUID> bidderAccountId = bankingService.getPrimaryAccountId(bidderId);
+        if (bidderAccountId.isEmpty()) {
+            return item.recordRejectedBid(
+                    bidderId,
+                    null,
+                    amount,
+                    AuctionBidResult.REJECTED_NO_ACCOUNT,
+                    "Bidder has no UBS primary account."
+            ).isAccepted();
+        }
+
+        UasBankingResult canSend = bankingService.validateCanSend(bidderAccountId.get(), amount);
+        if (!canSend.success()) {
+            return item.recordRejectedBid(
+                    bidderId,
+                    bidderAccountId.get(),
+                    amount,
+                    AuctionBidResult.REJECTED_ACCOUNT_UNAVAILABLE,
+                    canSend.reason()
+            ).isAccepted();
+        }
+
+        return item.recordBid(bidderId, bidderAccountId.get(), amount).isAccepted();
     }
 
     public boolean saveNow(MinecraftServer server, String reason) {
@@ -202,12 +224,22 @@ public class AuctionHouse {
             return;
         }
 
-        UasBankingResult result = bankingService.transferFromPrimary(
-                winningBidderId,
+        Optional<AuctionBidRecord> winningBidRecord = item.getWinningBidRecord();
+        UUID winningBidderAccountId = winningBidRecord.flatMap(AuctionBidRecord::getBidderAccountId).orElse(null);
+        if (winningBidderAccountId == null) {
+            UltimateAuctionSystem.LOGGER.warn("Auction {} has no auditable winning bid account; cannot settle.", id);
+            item.setState(AuctionState.FAILED_SETTLEMENT);
+            return;
+        }
+
+        String settlementReference = "UAS_AUCTION_PAYOUT:" + id;
+        UasBankingResult result = bankingService.transfer(
+                winningBidderAccountId,
                 sellerAccountId,
                 item.getHighestBid(),
-                "UAS_AUCTION_PAYOUT:" + id
+                settlementReference
         );
+        item.linkWinningBidToSettlement(settlementReference, result);
 
         if (!result.success()) {
             UltimateAuctionSystem.LOGGER.warn("UBS auction settlement failed for {}: {}", id, result.reason());
