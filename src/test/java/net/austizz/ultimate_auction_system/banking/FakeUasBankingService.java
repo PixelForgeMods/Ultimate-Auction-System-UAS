@@ -103,6 +103,55 @@ public final class FakeUasBankingService implements UasBankingService {
     }
 
     @Override
+    public boolean playerHasAnyAccount(UUID playerId) {
+        return primaryAccounts.containsKey(playerId);
+    }
+
+    @Override
+    public boolean playerHasPrimaryAccount(UUID playerId) {
+        return primaryAccounts.containsKey(playerId);
+    }
+
+    @Override
+    public boolean playerHasAvailableAccount(UUID playerId) {
+        return getPrimaryAccountId(playerId).isPresent();
+    }
+
+    @Override
+    public boolean playerHasAvailablePrimaryAccount(UUID playerId) {
+        return getPrimaryAccountId(playerId).isPresent();
+    }
+
+    @Override
+    public boolean playerHasFrozenAccount(UUID playerId) {
+        return false;
+    }
+
+    @Override
+    public boolean accountCanSend(UUID accountId, BigDecimal amount) {
+        return validateCanSend(accountId, amount).success();
+    }
+
+    @Override
+    public boolean accountCanReceive(UUID accountId) {
+        return validateCanReceive(accountId).success();
+    }
+
+    @Override
+    public boolean primaryAccountCanSend(UUID playerId, BigDecimal amount) {
+        return getPrimaryAccountId(playerId)
+                .map(accountId -> accountCanSend(accountId, amount))
+                .orElse(false);
+    }
+
+    @Override
+    public boolean primaryAccountCanReceive(UUID playerId) {
+        return getPrimaryAccountId(playerId)
+                .map(this::accountCanReceive)
+                .orElse(false);
+    }
+
+    @Override
     public Optional<UUID> getPrimaryAccountId(UUID playerId) {
         return Optional.ofNullable(primaryAccounts.get(playerId));
     }

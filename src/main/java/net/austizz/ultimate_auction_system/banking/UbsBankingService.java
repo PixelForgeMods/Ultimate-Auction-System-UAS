@@ -96,6 +96,51 @@ public final class UbsBankingService implements UasBankingService {
     }
 
     @Override
+    public boolean playerHasAnyAccount(UUID playerId) {
+        return api != null && api.playerHasAnyAccount(playerId);
+    }
+
+    @Override
+    public boolean playerHasPrimaryAccount(UUID playerId) {
+        return api != null && api.playerHasPrimaryAccount(playerId);
+    }
+
+    @Override
+    public boolean playerHasAvailableAccount(UUID playerId) {
+        return api != null && api.playerHasAvailableAccount(playerId);
+    }
+
+    @Override
+    public boolean playerHasAvailablePrimaryAccount(UUID playerId) {
+        return api != null && api.playerHasAvailablePrimaryAccount(playerId);
+    }
+
+    @Override
+    public boolean playerHasFrozenAccount(UUID playerId) {
+        return api != null && api.playerHasFrozenAccount(playerId);
+    }
+
+    @Override
+    public boolean accountCanSend(UUID accountId, BigDecimal amount) {
+        return api != null && api.accountCanSend(accountId, safeAmount(amount));
+    }
+
+    @Override
+    public boolean accountCanReceive(UUID accountId) {
+        return api != null && api.accountCanReceive(accountId);
+    }
+
+    @Override
+    public boolean primaryAccountCanSend(UUID playerId, BigDecimal amount) {
+        return api != null && api.primaryAccountCanSend(playerId, safeAmount(amount));
+    }
+
+    @Override
+    public boolean primaryAccountCanReceive(UUID playerId) {
+        return api != null && api.primaryAccountCanReceive(playerId);
+    }
+
+    @Override
     public Optional<UUID> getPrimaryAccountId(UUID playerId) {
         return api == null ? Optional.empty() : api.getPrimaryAccountId(playerId);
     }

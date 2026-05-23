@@ -3,6 +3,10 @@ package net.austizz.ultimate_auction_system;
 import net.austizz.ultimate_auction_system.banking.UasBankingResult;
 import net.austizz.ultimate_auction_system.banking.UasBankingService;
 import net.austizz.ultimate_auction_system.banking.UbsBankingService;
+import net.minecraft.ChatFormatting;
+import net.minecraft.network.chat.Component;
+import net.minecraft.server.level.ServerPlayer;
+import net.neoforged.neoforge.server.ServerLifecycleHooks;
 
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
@@ -23,7 +27,28 @@ public class AuctionHouse {
     }
 
     public void addAuctionItem(AuctionItem item) {
+        ServerPlayer player = ServerLifecycleHooks.getCurrentServer().getPlayerList().getPlayer(item.getPlayerId());
+        if (Config.requireUbsForListing && !bankingService.playerHasAvailablePrimaryAccount(item.getPlayerId())) {
+            if (player != null) {
+                String errorMessage = String.format("Error: Player %s does not have an available primary banking account. Please set up a UBS primary account or contact the server administrator for assistance.", player.getName().getString());
+                player.sendSystemMessage(Component.literal(errorMessage).withStyle(ChatFormatting.RED));
+                return;
+            }
+            return;
+        }
+
         this.AuctionItems.put(item.getAuctionId(), item);
+        if (player != null) {
+            Component message = Component.literal("")
+                    .append(Component.literal("⚖ ").withStyle(ChatFormatting.GOLD))
+                    .append(Component.literal("Auction: ").withStyle(ChatFormatting.YELLOW, ChatFormatting.BOLD))
+                    .append(Component.literal("Successfully listed ").withStyle(ChatFormatting.GRAY))
+                    .append(Component.literal(item.getItem().getCount() + "x " + item.getItem().getHoverName().getString()).withStyle(ChatFormatting.AQUA))
+                    .append(Component.literal(" for ").withStyle(ChatFormatting.GRAY))
+                    .append(Component.literal("$" + item.getStartingBidPrice()).withStyle(ChatFormatting.GREEN))
+                    .append(Component.literal(". -> Type /ah to view your listing!").withStyle(ChatFormatting.DARK_GRAY));
+            player.sendSystemMessage(message, false);
+        }
     }
 
     public void removeAuctionItem(AuctionItem item) {

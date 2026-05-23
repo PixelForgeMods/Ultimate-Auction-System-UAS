@@ -145,15 +145,6 @@ public class AUSCommands {
                                                                             }
 
                                                                             UltimateAuctionSystem.auctionHouse.addAuctionItem(new AuctionItem(itemInHand, description, endingDate, LocalDateTime.now(), startingBidPrice, context.getSource().getPlayer().getUUID()));
-                                                                            context.getSource().sendSuccess(() -> Component.literal("")
-                                                                                            .append(Component.literal("⚖ ").withStyle(net.minecraft.ChatFormatting.GOLD))
-                                                                                            .append(Component.literal("Auction: ").withStyle(net.minecraft.ChatFormatting.YELLOW, net.minecraft.ChatFormatting.BOLD))
-                                                                                            .append(Component.literal("Successfully listed ").withStyle(net.minecraft.ChatFormatting.GRAY))
-                                                                                            .append(Component.literal(itemInHand.getCount() + "x " + itemInHand.getHoverName().getString()).withStyle(net.minecraft.ChatFormatting.AQUA))
-                                                                                            .append(Component.literal(" for ").withStyle(net.minecraft.ChatFormatting.GRAY))
-                                                                                            .append(Component.literal("$" + startingBidPrice).withStyle(net.minecraft.ChatFormatting.GREEN))
-                                                                                            .append(Component.literal(". -> Type /ah to view your listing!").withStyle(net.minecraft.ChatFormatting.DARK_GRAY))
-                                                                                    , false);
                                                                             return Command.SINGLE_SUCCESS;
                                                                         } catch(DateTimeParseException e){
                                                                            throw INVALID_DATE.create();

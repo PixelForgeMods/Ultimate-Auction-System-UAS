@@ -25,6 +25,24 @@ public interface UasBankingService {
 
     UasBankingResult validateCanReceive(UUID accountId);
 
+    boolean playerHasAnyAccount(UUID playerId);
+
+    boolean playerHasPrimaryAccount(UUID playerId);
+
+    boolean playerHasAvailableAccount(UUID playerId);
+
+    boolean playerHasAvailablePrimaryAccount(UUID playerId);
+
+    boolean playerHasFrozenAccount(UUID playerId);
+
+    boolean accountCanSend(UUID accountId, BigDecimal amount);
+
+    boolean accountCanReceive(UUID accountId);
+
+    boolean primaryAccountCanSend(UUID playerId, BigDecimal amount);
+
+    boolean primaryAccountCanReceive(UUID playerId);
+
     Optional<UUID> getPrimaryAccountId(UUID playerId);
 
     Optional<UasAccountSnapshot> getAccountSnapshot(UUID accountId);
