@@ -1,0 +1,68 @@
+package net.austizz.ultimate_auction_system;
+
+import net.minecraft.nbt.CompoundTag;
+import net.minecraft.nbt.Tag;
+
+final class AuctionSavedDataMigration {
+    static final int CURRENT_SCHEMA_VERSION = 3;
+    static final int MIN_SUPPORTED_SCHEMA_VERSION = 1;
+    private static final String SCHEMA_VERSION_TAG = "schemaVersion";
+    private static final String MIGRATED_FROM_TAG = "migratedFromSchemaVersion";
+
+    private AuctionSavedDataMigration() {
+    }
+
+    static MigrationResult migrateRoot(CompoundTag original) {
+        CompoundTag migrated = original == null ? new CompoundTag() : original.copy();
+        int originalVersion = migrated.contains(SCHEMA_VERSION_TAG, Tag.TAG_INT)
+                ? migrated.getInt(SCHEMA_VERSION_TAG)
+                : MIN_SUPPORTED_SCHEMA_VERSION;
+
+        if (originalVersion < MIN_SUPPORTED_SCHEMA_VERSION) {
+            return MigrationResult.failed(
+                    migrated,
+                    originalVersion,
+                    "Unsupported auction data schema " + originalVersion
+                            + "; minimum supported schema is " + MIN_SUPPORTED_SCHEMA_VERSION + "."
+            );
+        }
+        if (originalVersion > CURRENT_SCHEMA_VERSION) {
+            return MigrationResult.failed(
+                    migrated,
+                    originalVersion,
+                    "Auction data schema " + originalVersion
+                            + " is newer than this UAS build supports (" + CURRENT_SCHEMA_VERSION + ")."
+            );
+        }
+
+        boolean migratedVersion = originalVersion < CURRENT_SCHEMA_VERSION;
+        if (migratedVersion) {
+            migrated.putInt(MIGRATED_FROM_TAG, originalVersion);
+            migrated.putInt(SCHEMA_VERSION_TAG, CURRENT_SCHEMA_VERSION);
+        } else if (!migrated.contains(SCHEMA_VERSION_TAG, Tag.TAG_INT)) {
+            migrated.putInt(SCHEMA_VERSION_TAG, CURRENT_SCHEMA_VERSION);
+        }
+
+        return MigrationResult.ok(migrated, originalVersion, CURRENT_SCHEMA_VERSION, migratedVersion);
+    }
+
+    record MigrationResult(
+            CompoundTag tag,
+            int fromVersion,
+            int toVersion,
+            boolean migrated,
+            boolean failed,
+            String message
+    ) {
+        static MigrationResult ok(CompoundTag tag, int fromVersion, int toVersion, boolean migrated) {
+            String message = migrated
+                    ? "Migrated auction data schema from " + fromVersion + " to " + toVersion + "."
+                    : "Auction data schema " + toVersion + " is current.";
+            return new MigrationResult(tag, fromVersion, toVersion, migrated, false, message);
+        }
+
+        static MigrationResult failed(CompoundTag tag, int fromVersion, String message) {
+            return new MigrationResult(tag, fromVersion, CURRENT_SCHEMA_VERSION, false, true, message);
+        }
+    }
+}

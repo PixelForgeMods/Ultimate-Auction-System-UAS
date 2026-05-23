@@ -21,6 +21,7 @@ public class AuctionHouse {
     private final ConcurrentHashMap<UUID, AuctionItem> AuctionItems;
     private final UasBankingService bankingService;
     private final AuctionSavedData savedData;
+    private final boolean mutationsBlocked;
     private volatile AuctionStorageHealth storageHealth = AuctionStorageHealth.inMemoryOnly();
 
     public AuctionHouse() {
@@ -35,14 +36,20 @@ public class AuctionHouse {
         this.savedData = savedData;
         this.AuctionItems = savedData == null ? new ConcurrentHashMap<>() : savedData.getAuctions();
         this.bankingService = bankingService;
+        this.mutationsBlocked = savedData != null && savedData.isMigrationFailed();
         this.AuctionItems.values().forEach(this::attachMutationTracking);
     }
 
     public static AuctionHouse load(MinecraftServer server) {
         AuctionSavedData data = AuctionSavedData.get(server);
         AuctionHouse house = new AuctionHouse(data, new UbsBankingService());
+        if (data.isMigrationFailed()) {
+            house.markStorageFailed("Auction storage migration failed: " + data.getMigrationMessage());
+            return house;
+        }
         String message = data.getSkippedRecords() == 0 && data.getRepairedRecords() == 0
-                ? "Persistent auction storage loaded with " + data.getAuctions().size() + " auction(s)."
+                ? "Persistent auction storage schema " + data.getSchemaVersion()
+                + " loaded with " + data.getAuctions().size() + " auction(s)."
                 : "Persistent auction storage loaded with " + data.getAuctions().size()
                 + " auction(s); skipped " + data.getSkippedRecords()
                 + " invalid record(s), repaired " + data.getRepairedRecords() + " record(s).";
@@ -52,6 +59,11 @@ public class AuctionHouse {
 
     public void addAuctionItem(AuctionItem item) {
         if (item == null) {
+            return;
+        }
+        if (mutationsBlocked) {
+            ServerPlayer player = ServerLifecycleHooks.getCurrentServer().getPlayerList().getPlayer(item.getPlayerId());
+            sendListingError(player, "Error: Auction storage migration failed; new listings are blocked until an admin repairs the saved data.");
             return;
         }
 
@@ -91,6 +103,10 @@ public class AuctionHouse {
     }
 
     public void removeAuctionItem(AuctionItem item) {
+        if (mutationsBlocked) {
+            UltimateAuctionSystem.LOGGER.warn("[UAS] Auction removal blocked because storage migration failed.");
+            return;
+        }
         this.AuctionItems.remove(item.getAuctionId());
         markChanged("Auction storage marked dirty after listing removal.");
     }
@@ -123,6 +139,10 @@ public class AuctionHouse {
     }
 
     public boolean placeBid(UUID auctionId, UUID bidderId, BigDecimal amount) {
+        if (mutationsBlocked) {
+            UltimateAuctionSystem.LOGGER.warn("[UAS] Bid blocked because auction storage migration failed.");
+            return false;
+        }
         AuctionItem item = getAuctionItem(auctionId);
         if (item == null) {
             return false;
@@ -153,6 +173,10 @@ public class AuctionHouse {
     }
 
     public boolean saveNow(MinecraftServer server, String reason) {
+        if (mutationsBlocked) {
+            markStorageFailed("Auction storage save blocked because migration failed: " + savedData.getMigrationMessage());
+            return false;
+        }
         if (savedData == null) {
             markStorageFailed("Auction storage save skipped because persistent SavedData is unavailable.");
             return false;
@@ -178,6 +202,10 @@ public class AuctionHouse {
     }
 
     public boolean autosave(MinecraftServer server) {
+        if (mutationsBlocked) {
+            markStorageFailed("Auction autosave blocked because migration failed: " + savedData.getMigrationMessage());
+            return false;
+        }
         if (savedData == null) {
             markStorageFailed("Auction autosave skipped because persistent SavedData is unavailable.");
             return false;
@@ -235,6 +263,10 @@ public class AuctionHouse {
     }
 
     public void payoutAuctionItem(UUID id) {
+        if (mutationsBlocked) {
+            UltimateAuctionSystem.LOGGER.warn("[UAS] Settlement blocked because auction storage migration failed.");
+            return;
+        }
         AuctionItem item = getAuctionItem(id);
         if (item == null || !item.isExpired()) {
             return;
