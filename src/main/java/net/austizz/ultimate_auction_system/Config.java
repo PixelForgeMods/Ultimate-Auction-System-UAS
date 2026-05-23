@@ -21,6 +21,7 @@ public class Config {
     public static final boolean DEFAULT_AUDIT_REJECTED_BIDS = true;
     public static final boolean DEFAULT_AUDIT_STATE_TRANSITIONS = true;
     public static final int DEFAULT_ADMIN_STATUS_PERMISSION_LEVEL = 2;
+    public static final int DEFAULT_AUTOSAVE_INTERVAL_TICKS = 6000;
 
     public static final String ADMIN_RELOAD_FLOW = "Use the standard NeoForge config reload flow after editing UAS common config. "
             + "Economy fees, tax, bid increments, listing limits, and settlement retry settings are re-read on reload. "
@@ -32,6 +33,8 @@ public class Config {
     private static final int MAX_SETTLEMENT_RETRY_ATTEMPTS = 20;
     private static final int MAX_SETTLEMENT_RETRY_DELAY_SECONDS = 86_400;
     private static final int MAX_PERMISSION_LEVEL = 4;
+    private static final int MIN_AUTOSAVE_INTERVAL_TICKS = 20;
+    private static final int MAX_AUTOSAVE_INTERVAL_TICKS = 72_000;
 
     private static final ModConfigSpec.Builder BUILDER = new ModConfigSpec.Builder();
 
@@ -119,6 +122,13 @@ public class Config {
             )
             .defineInRange("admin.statusPermissionLevel", DEFAULT_ADMIN_STATUS_PERMISSION_LEVEL, 0, MAX_PERMISSION_LEVEL);
 
+    private static final ModConfigSpec.IntValue AUTOSAVE_INTERVAL_TICKS = BUILDER
+            .comment(
+                    "Tick interval for UAS auction SavedData autosaves.",
+                    "20 ticks is roughly one second. Default 6000 is roughly five minutes."
+            )
+            .defineInRange("storage.autosaveIntervalTicks", DEFAULT_AUTOSAVE_INTERVAL_TICKS, MIN_AUTOSAVE_INTERVAL_TICKS, MAX_AUTOSAVE_INTERVAL_TICKS);
+
     static final ModConfigSpec SPEC = BUILDER.build();
 
     public static long listingFeeDollars;
@@ -133,6 +143,7 @@ public class Config {
     public static boolean auditRejectedBids;
     public static boolean auditStateTransitions;
     public static int adminStatusPermissionLevel;
+    public static int autosaveIntervalTicks;
     public static boolean lastConfigLoadHealthy = true;
     public static String lastConfigLoadMessage = "Config has not loaded yet.";
 
@@ -153,6 +164,7 @@ public class Config {
         auditRejectedBids = readBoolean("audit.rejectedBids", AUDIT_REJECTED_BIDS, DEFAULT_AUDIT_REJECTED_BIDS);
         auditStateTransitions = readBoolean("audit.stateTransitions", AUDIT_STATE_TRANSITIONS, DEFAULT_AUDIT_STATE_TRANSITIONS);
         adminStatusPermissionLevel = readInt("admin.statusPermissionLevel", ADMIN_STATUS_PERMISSION_LEVEL, DEFAULT_ADMIN_STATUS_PERMISSION_LEVEL, 0, MAX_PERMISSION_LEVEL);
+        autosaveIntervalTicks = readInt("storage.autosaveIntervalTicks", AUTOSAVE_INTERVAL_TICKS, DEFAULT_AUTOSAVE_INTERVAL_TICKS, MIN_AUTOSAVE_INTERVAL_TICKS, MAX_AUTOSAVE_INTERVAL_TICKS);
 
         if (lastConfigLoadHealthy) {
             lastConfigLoadMessage = event instanceof ModConfigEvent.Reloading

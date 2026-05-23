@@ -191,7 +191,10 @@ public class AUSCommands {
         sendStatusLine(source, "UBS server available", ubsServerAvailable ? "yes" : "no", ubsServerAvailable ? ChatFormatting.GREEN : ChatFormatting.RED);
         sendStatusLine(source, "Active auctions", String.valueOf(auctionCount), ChatFormatting.AQUA);
         sendStatusLine(source, "Storage", storageHealth.message(), colorFor(storageHealth.level()));
-        sendStatusLine(source, "Last save", formatLastSave(storageHealth.lastSaveEpochMillis()), colorFor(storageHealth.level()));
+        sendStatusLine(source, "Last autosave", formatLastSave(storageHealth.lastSaveEpochMillis()), colorFor(storageHealth.level()));
+        if (!storageHealth.lastFailureReason().isBlank()) {
+            sendStatusLine(source, "Storage failure", storageHealth.lastFailureReason(), ChatFormatting.RED);
+        }
         sendStatusLine(source, "Config", Config.lastConfigLoadMessage, Config.lastConfigLoadHealthy ? ChatFormatting.GREEN : ChatFormatting.YELLOW);
 
         return Command.SINGLE_SUCCESS;

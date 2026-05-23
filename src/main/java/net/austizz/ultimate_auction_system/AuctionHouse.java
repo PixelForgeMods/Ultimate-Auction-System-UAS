@@ -6,7 +6,9 @@ import net.austizz.ultimate_auction_system.banking.UbsBankingService;
 import net.minecraft.ChatFormatting;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.MinecraftServer;
+import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.world.level.Level;
 import net.neoforged.neoforge.server.ServerLifecycleHooks;
 
 import java.math.BigDecimal;
@@ -44,7 +46,7 @@ public class AuctionHouse {
                 : "Persistent auction storage loaded with " + data.getAuctions().size()
                 + " auction(s); skipped " + data.getSkippedRecords()
                 + " invalid record(s), repaired " + data.getRepairedRecords() + " record(s).";
-        house.markStorageSaved(message);
+        house.markStorageLoaded(message);
         return house;
     }
 
@@ -112,8 +114,12 @@ public class AuctionHouse {
         this.storageHealth = AuctionStorageHealth.saved(message);
     }
 
+    public void markStorageLoaded(String message) {
+        this.storageHealth = AuctionStorageHealth.loaded(message);
+    }
+
     public void markStorageFailed(String message) {
-        this.storageHealth = AuctionStorageHealth.failed(message);
+        this.storageHealth = AuctionStorageHealth.failed(this.storageHealth, message);
     }
 
     public boolean placeBid(UUID auctionId, UUID bidderId, BigDecimal amount) {
@@ -171,10 +177,40 @@ public class AuctionHouse {
         }
     }
 
+    public boolean autosave(MinecraftServer server) {
+        if (savedData == null) {
+            markStorageFailed("Auction autosave skipped because persistent SavedData is unavailable.");
+            return false;
+        }
+        if (server == null) {
+            markStorageFailed("Auction autosave failed because Minecraft server is unavailable.");
+            return false;
+        }
+
+        refreshExpiredStates();
+        savedData.markChanged();
+
+        try {
+            ServerLevel overworld = server.getLevel(Level.OVERWORLD);
+            if (overworld == null) {
+                markStorageFailed("Auction autosave failed because overworld data storage is unavailable.");
+                return false;
+            }
+            overworld.getDataStorage().save();
+            markStorageSaved("Autosave queued for " + AuctionItems.size() + " auction(s).");
+            return true;
+        } catch (RuntimeException exception) {
+            String message = "Auction autosave failed: " + exception.getMessage();
+            markStorageFailed(message);
+            UltimateAuctionSystem.LOGGER.error("[UAS] {}", message, exception);
+            return false;
+        }
+    }
+
     private void markChanged(String message) {
         if (savedData != null) {
             savedData.markChanged();
-            markStorageSaved(message);
+            this.storageHealth = AuctionStorageHealth.dirty(this.storageHealth, message);
         }
     }
 

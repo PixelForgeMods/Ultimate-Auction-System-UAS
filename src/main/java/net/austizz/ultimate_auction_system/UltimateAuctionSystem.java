@@ -25,6 +25,7 @@ import net.neoforged.neoforge.common.NeoForge;
 import net.neoforged.neoforge.event.BuildCreativeModeTabContentsEvent;
 import net.neoforged.neoforge.event.server.ServerStartedEvent;
 import net.neoforged.neoforge.event.server.ServerStoppingEvent;
+import net.neoforged.neoforge.event.tick.ServerTickEvent;
 import net.neoforged.neoforge.registries.DeferredBlock;
 import net.neoforged.neoforge.registries.DeferredHolder;
 import net.neoforged.neoforge.registries.DeferredItem;
@@ -59,6 +60,7 @@ public class UltimateAuctionSystem {
     }).build());
 
     public static AuctionHouse auctionHouse;
+    private long ticksSinceAuctionAutosave;
 
      // The constructor for the mod class is the first code that is run when your mod is loaded.
     // FML will recognize some parameter types like IEventBus or ModContainer and pass them in automatically.
@@ -124,6 +126,28 @@ public class UltimateAuctionSystem {
         if (house != null) {
             house.saveNow(event.getServer(), "Server stopping; auction storage flushed.");
             LOGGER.info("[UAS] {}", house.getStorageHealth().message());
+        }
+    }
+
+    @SubscribeEvent
+    public void onServerTick(ServerTickEvent.Post event) {
+        AuctionHouse house = auctionHouse;
+        if (house == null) {
+            return;
+        }
+
+        ticksSinceAuctionAutosave++;
+        int autosaveInterval = Math.max(Config.autosaveIntervalTicks, Config.DEFAULT_AUTOSAVE_INTERVAL_TICKS);
+        if (ticksSinceAuctionAutosave < autosaveInterval) {
+            return;
+        }
+        if (!event.hasTime()) {
+            return;
+        }
+
+        ticksSinceAuctionAutosave = 0L;
+        if (!house.autosave(event.getServer())) {
+            LOGGER.warn("[UAS] {}", house.getStorageHealth().message());
         }
     }
 
