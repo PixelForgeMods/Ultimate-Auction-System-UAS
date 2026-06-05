@@ -54,4 +54,15 @@ class AuctionSavedDataMigrationTest {
         assertEquals("MIGRATED_SCHEMA_3", migratedAuction.getString("escrowSource"));
         assertEquals("2026-05-23T12:00", migratedAuction.getString("escrowedAt"));
     }
+
+    @Test
+    void itemStackNbtHelperKeepsReturnedEncodedCompound() {
+        CompoundTag encoded = new CompoundTag();
+        encoded.putString("id", "minecraft:diamond_helmet");
+
+        CompoundTag result = UasItemStackNbt.asCompound(encoded);
+
+        assertEquals("minecraft:diamond_helmet", result.getString("id"));
+        assertTrue(UasItemStackNbt.asCompound(null).isEmpty());
+    }
 }

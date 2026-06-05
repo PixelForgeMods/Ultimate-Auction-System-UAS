@@ -1,14 +1,20 @@
 package net.austizz.ultimate_auction_system.banking;
 
 import java.math.BigDecimal;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 
 public final class FakeUasBankingService implements UasBankingService {
+    public record Alert(UUID playerId, String title, String message, String tone, int durationMs) {
+    }
+
     private final Map<UUID, UUID> primaryAccounts = new HashMap<>();
     private final Map<UUID, UasAccountSnapshot> accounts = new HashMap<>();
+    private final List<Alert> alerts = new ArrayList<>();
     private String nextFailureReason;
 
     public UUID createPrimaryAccount(UUID playerId, BigDecimal balance) {
@@ -30,6 +36,10 @@ public final class FakeUasBankingService implements UasBankingService {
 
     public void failNext(String reason) {
         this.nextFailureReason = reason == null || reason.isBlank() ? "Forced banking failure" : reason;
+    }
+
+    public List<Alert> alerts() {
+        return List.copyOf(alerts);
     }
 
     @Override
@@ -161,6 +171,26 @@ public final class FakeUasBankingService implements UasBankingService {
         return Optional.ofNullable(accounts.get(accountId));
     }
 
+    @Override
+    public UasAlertResult sendSuccessAlert(UUID playerId, String title, String message, int durationMs) {
+        return recordAlert(playerId, title, message, "SUCCESS", durationMs);
+    }
+
+    @Override
+    public UasAlertResult sendErrorAlert(UUID playerId, String title, String message, int durationMs) {
+        return recordAlert(playerId, title, message, "ERROR", durationMs);
+    }
+
+    @Override
+    public UasAlertResult sendInfoAlert(UUID playerId, String title, String message, int durationMs) {
+        return recordAlert(playerId, title, message, "INFO", durationMs);
+    }
+
+    @Override
+    public UasAlertResult sendWarningAlert(UUID playerId, String title, String message, int durationMs) {
+        return recordAlert(playerId, title, message, "WARNING", durationMs);
+    }
+
     private UasBankingResult adjustBalance(UUID accountId, BigDecimal amount, boolean deposit) {
         if (nextFailureReason != null) {
             String reason = nextFailureReason;
@@ -191,6 +221,14 @@ public final class FakeUasBankingService implements UasBankingService {
                 current.frozenReason()
         ));
         return UasBankingResult.ok(nextBalance);
+    }
+
+    private UasAlertResult recordAlert(UUID playerId, String title, String message, String tone, int durationMs) {
+        if (playerId == null) {
+            return UasAlertResult.fail("Player is required", null);
+        }
+        alerts.add(new Alert(playerId, title, message, tone, durationMs));
+        return UasAlertResult.ok(playerId);
     }
 
     private BigDecimal safeAmount(BigDecimal amount) {

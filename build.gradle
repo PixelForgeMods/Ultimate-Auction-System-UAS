@@ -27,6 +27,12 @@ base {
 
 java.toolchain.languageVersion = JavaLanguageVersion.of(21)
 
+def minecraftDevUsername = providers.gradleProperty('username')
+        .orElse(providers.gradleProperty('dev_username'))
+        .orElse(providers.environmentVariable('MINECRAFT_DEV_USERNAME'))
+        .orElse(providers.gradleProperty('minecraft_dev_username'))
+        .orElse('Dev')
+
 neoForge {
     // Specify the version of NeoForge to use.
     version = project.neo_version
@@ -44,6 +50,8 @@ neoForge {
     runs {
         client {
             client()
+
+            programArguments.addAll '--username', minecraftDevUsername.get()
 
             // Comma-separated list of namespaces to load gametests from. Empty = all namespaces.
             systemProperty 'neoforge.enabledGameTestNamespaces', project.mod_id
@@ -133,6 +141,10 @@ dependencies {
 
 tasks.withType(Test).configureEach {
     useJUnitPlatform()
+}
+
+tasks.named('prepareClientRun') {
+    outputs.upToDateWhen { false }
 }
 
 // This block of code expands all declared replace properties in the specified resource targets.

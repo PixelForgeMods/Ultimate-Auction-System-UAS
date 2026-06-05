@@ -89,9 +89,10 @@ public class UltimateAuctionSystem {
     }
 
     private void commonSetup(final FMLCommonSetupEvent event) {
+        UasDependencyDiagnostics.validateRequiredUbs(LOGGER);
         LOGGER.info(
-                "UAS config loaded: listingFee=${}, salesTaxRate={}, minimumBidIncrement=${}, maxListings={}, maxDurationHours={}",
-                Config.listingFeeDollars,
+                "UAS config loaded: listingFeeRate={}, salesTaxRate={}, minimumBidIncrement=${}, maxListings={}, maxDurationHours={}",
+                Config.listingFeeRate,
                 Config.salesTaxRate,
                 Config.minimumBidIncrementDollars,
                 Config.maxActiveListingsPerPlayer,
@@ -109,6 +110,7 @@ public class UltimateAuctionSystem {
     public void onServerStarted(ServerStartedEvent event) {
         // Do something when the server starts
         LOGGER.info("UltimateAuctionSystem Starting");
+        UasDependencyDiagnostics.logServerDiagnostics(LOGGER);
 
         try {
             auctionHouse = AuctionHouse.load(event.getServer());

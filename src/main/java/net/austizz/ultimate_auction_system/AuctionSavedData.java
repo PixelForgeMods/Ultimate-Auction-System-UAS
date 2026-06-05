@@ -133,7 +133,7 @@ public final class AuctionSavedData extends SavedData {
                 false,
                 migration.message()
         );
-        if (repaired > 0 || migration.migrated()) {
+        if (skipped > 0 || repaired > 0 || migration.migrated()) {
             savedData.markChanged();
         }
         return savedData;

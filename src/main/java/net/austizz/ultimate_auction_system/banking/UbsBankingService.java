@@ -1,6 +1,7 @@
 package net.austizz.ultimate_auction_system.banking;
 
 import net.austizz.ultimatebankingsystem.api.ApiAccountSnapshot;
+import net.austizz.ultimatebankingsystem.api.ApiAlertResult;
 import net.austizz.ultimatebankingsystem.api.ApiResult;
 import net.austizz.ultimatebankingsystem.api.ApiTransactionResult;
 import net.austizz.ultimatebankingsystem.api.UltimateBankingApi;
@@ -153,6 +154,26 @@ public final class UbsBankingService implements UasBankingService {
         return api.getAccountSnapshot(accountId).map(this::fromSnapshot);
     }
 
+    @Override
+    public UasAlertResult sendSuccessAlert(UUID playerId, String title, String message, int durationMs) {
+        return sendAlert(playerId, title, message, durationMs, "SUCCESS");
+    }
+
+    @Override
+    public UasAlertResult sendErrorAlert(UUID playerId, String title, String message, int durationMs) {
+        return sendAlert(playerId, title, message, durationMs, "ERROR");
+    }
+
+    @Override
+    public UasAlertResult sendInfoAlert(UUID playerId, String title, String message, int durationMs) {
+        return sendAlert(playerId, title, message, durationMs, "INFO");
+    }
+
+    @Override
+    public UasAlertResult sendWarningAlert(UUID playerId, String title, String message, int durationMs) {
+        return sendAlert(playerId, title, message, durationMs, "WARNING");
+    }
+
     private UasBankingResult fromApiResult(ApiResult result) {
         if (result == null) {
             return UasBankingResult.fail("UBS returned no result", BigDecimal.ZERO);
@@ -183,6 +204,26 @@ public final class UbsBankingService implements UasBankingService {
                 snapshot.frozen(),
                 snapshot.frozenReason()
         );
+    }
+
+    private UasAlertResult sendAlert(UUID playerId, String title, String message, int durationMs, String tone) {
+        if (api == null) {
+            return UasAlertResult.fail("UBS API is unavailable", playerId);
+        }
+        String safeTitle = title == null || title.isBlank() ? "Auction House" : title;
+        String safeMessage = message == null ? "" : message;
+        ApiAlertResult result = switch (tone) {
+            case "SUCCESS" -> api.sendSuccessUiAlert(playerId, safeTitle, safeMessage, durationMs);
+            case "ERROR" -> api.sendErrorUiAlert(playerId, safeTitle, safeMessage, durationMs);
+            case "WARNING" -> api.sendWarningUiAlert(playerId, safeTitle, safeMessage, durationMs);
+            default -> api.sendInfoUiAlert(playerId, safeTitle, safeMessage, durationMs);
+        };
+        if (result == null) {
+            return UasAlertResult.fail("UBS returned no alert result", playerId);
+        }
+        return result.success()
+                ? UasAlertResult.ok(playerId)
+                : UasAlertResult.fail(result.reason(), playerId);
     }
 
     private BigDecimal safeAmount(BigDecimal amount) {

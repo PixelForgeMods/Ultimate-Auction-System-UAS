@@ -15,6 +15,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentSkipListSet;
 import java.util.concurrent.ConcurrentSkipListMap;
 import java.util.concurrent.atomic.AtomicReference;
 
@@ -35,6 +36,7 @@ public class AuctionItem {
     private BigDecimal buyoutPrice;
     private ConcurrentSkipListMap<UUID, BigDecimal> bids;
     private final ArrayList<AuctionBidRecord> bidRecords;
+    private final ConcurrentSkipListSet<UUID> notificationSubscribers;
     private final AtomicReference<BigDecimal> highestBid = new AtomicReference<>(BigDecimal.ZERO);
     private final AtomicReference<UUID> highestBidderId = new AtomicReference<>();
     private AuctionState state;
@@ -72,7 +74,8 @@ public class AuctionItem {
                 new ConcurrentSkipListMap<>(),
                 new ArrayList<>(),
                 startingBidPrice,
-                null
+                null,
+                new ConcurrentSkipListSet<>()
         );
     }
 
@@ -94,7 +97,8 @@ public class AuctionItem {
                         ConcurrentSkipListMap<UUID, BigDecimal> bids,
                         List<AuctionBidRecord> bidRecords,
                         BigDecimal highestBid,
-                        UUID highestBidderId) {
+                        UUID highestBidderId,
+                        ConcurrentSkipListSet<UUID> notificationSubscribers) {
         this.item = item.copy(); // CRITICAL: Always copy ItemStacks to prevent inventory reference bugs!
         this.description = description == null ? "" : description;
         this.dateOfEnd = dateOfEnd;
@@ -108,6 +112,7 @@ public class AuctionItem {
         this.buyoutPrice = normalizeOptionalPrice(buyoutPrice);
         this.bids = bids == null ? new ConcurrentSkipListMap<>() : bids;
         this.bidRecords = bidRecords == null ? new ArrayList<>() : new ArrayList<>(bidRecords);
+        this.notificationSubscribers = notificationSubscribers == null ? new ConcurrentSkipListSet<>() : new ConcurrentSkipListSet<>(notificationSubscribers);
         this.auctionId = auctionId == null ? UUID.randomUUID() : auctionId;
         this.playerId = playerId;
         this.sellerAccountId = sellerAccountId;
@@ -137,7 +142,28 @@ public class AuctionItem {
     public String getEscrowSource() { return escrowSource; }
     public ConcurrentSkipListMap<UUID, BigDecimal> getBids() { return new ConcurrentSkipListMap<>(bids); }
     public synchronized List<AuctionBidRecord> getBidRecords() { return List.copyOf(bidRecords); }
+    public List<UUID> getNotificationSubscribers() { return List.copyOf(notificationSubscribers); }
     public AuctionState getState() { return state; }
+
+    public boolean isNotificationSubscriber(UUID playerId) {
+        return playerId != null && notificationSubscribers.contains(playerId);
+    }
+
+    public synchronized boolean toggleNotificationSubscriber(UUID playerId) {
+        if (playerId == null) {
+            return false;
+        }
+        boolean subscribed;
+        if (notificationSubscribers.contains(playerId)) {
+            notificationSubscribers.remove(playerId);
+            subscribed = false;
+        } else {
+            notificationSubscribers.add(playerId);
+            subscribed = true;
+        }
+        markChanged();
+        return subscribed;
+    }
 
     public synchronized Optional<AuctionBidRecord> getWinningBidRecord() {
         for (int index = bidRecords.size() - 1; index >= 0; index--) {
@@ -503,6 +529,17 @@ public class AuctionItem {
             }
         }
         tag.put("bidRecords", bidRecordList);
+
+        ListTag subscriberList = new ListTag();
+        for (UUID subscriberId : notificationSubscribers) {
+            if (subscriberId == null) {
+                continue;
+            }
+            CompoundTag subscriberTag = new CompoundTag();
+            subscriberTag.putUUID("playerId", subscriberId);
+            subscriberList.add(subscriberTag);
+        }
+        tag.put("notificationSubscribers", subscriberList);
         return tag;
     }
 
@@ -546,6 +583,7 @@ public class AuctionItem {
             UUID highestBidderId = tag.contains("highestBidderId") ? tag.getUUID("highestBidderId") : null;
             ConcurrentSkipListMap<UUID, BigDecimal> bids = loadBids(tag);
             List<AuctionBidRecord> bidRecords = loadBidRecords(tag, auctionId);
+            ConcurrentSkipListSet<UUID> notificationSubscribers = loadNotificationSubscribers(tag);
 
             AuctionItem auction = new AuctionItem(
                     auctionId,
@@ -566,7 +604,8 @@ public class AuctionItem {
                     bids,
                     bidRecords,
                     currentPrice,
-                    highestBidderId
+                    highestBidderId,
+                    notificationSubscribers
             );
             if (auction.validateForPersistence().isPresent()) {
                 return Optional.empty();
@@ -607,12 +646,23 @@ public class AuctionItem {
         return loaded;
     }
 
-    private static CompoundTag saveItemStack(ItemStack stack, HolderLookup.Provider registries) {
-        CompoundTag tag = new CompoundTag();
-        if (stack != null && !stack.isEmpty()) {
-            stack.save(registries, tag);
+    private static ConcurrentSkipListSet<UUID> loadNotificationSubscribers(CompoundTag tag) {
+        ConcurrentSkipListSet<UUID> loaded = new ConcurrentSkipListSet<>();
+        ListTag subscriberList = tag.getList("notificationSubscribers", Tag.TAG_COMPOUND);
+        for (Tag rawSubscriber : subscriberList) {
+            if (!(rawSubscriber instanceof CompoundTag subscriberTag) || !subscriberTag.contains("playerId")) {
+                continue;
+            }
+            try {
+                loaded.add(subscriberTag.getUUID("playerId"));
+            } catch (IllegalArgumentException ignored) {
+            }
         }
-        return tag;
+        return loaded;
+    }
+
+    private static CompoundTag saveItemStack(ItemStack stack, HolderLookup.Provider registries) {
+        return UasItemStackNbt.saveOptional(stack, registries);
     }
 
     private static BigDecimal normalizeOptionalPrice(BigDecimal price) {

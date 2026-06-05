@@ -6,10 +6,13 @@ import net.neoforged.fml.event.config.ModConfigEvent;
 import net.neoforged.neoforge.common.ModConfigSpec;
 
 import java.math.BigDecimal;
+import java.math.RoundingMode;
+import java.util.ArrayList;
+import java.util.List;
 
 @EventBusSubscriber(modid = UltimateAuctionSystem.MODID, bus = EventBusSubscriber.Bus.MOD)
 public class Config {
-    public static final long DEFAULT_LISTING_FEE_DOLLARS = 0L;
+    public static final double DEFAULT_LISTING_FEE_RATE = 0.05D;
     public static final double DEFAULT_SALES_TAX_RATE = 0.05D;
     public static final long DEFAULT_MINIMUM_BID_INCREMENT_DOLLARS = 1L;
     public static final int DEFAULT_MAX_ACTIVE_LISTINGS_PER_PLAYER = 25;
@@ -22,6 +25,7 @@ public class Config {
     public static final boolean DEFAULT_AUDIT_STATE_TRANSITIONS = true;
     public static final int DEFAULT_ADMIN_STATUS_PERMISSION_LEVEL = 2;
     public static final int DEFAULT_AUTOSAVE_INTERVAL_TICKS = 6000;
+    public static final List<String> DEFAULT_BANNED_AUCTION_ENTRIES = List.of();
 
     public static final String ADMIN_RELOAD_FLOW = "Use the standard NeoForge config reload flow after editing UAS common config. "
             + "Economy fees, tax, bid increments, listing limits, and settlement retry settings are re-read on reload. "
@@ -38,12 +42,12 @@ public class Config {
 
     private static final ModConfigSpec.Builder BUILDER = new ModConfigSpec.Builder();
 
-    private static final ModConfigSpec.LongValue LISTING_FEE_DOLLARS = BUILDER
+    private static final ModConfigSpec.DoubleValue LISTING_FEE_RATE = BUILDER
             .comment(
-                    "Whole UBS dollars charged when a player creates an auction listing.",
+                    "Fraction of the starting bid charged when a player creates an auction listing. Example: 0.05 means 5%.",
                     "0 disables listing fees. Runtime reload: applies to new listings only."
             )
-            .defineInRange("economy.listingFeeDollars", DEFAULT_LISTING_FEE_DOLLARS, 0L, MAX_MONEY_DOLLARS);
+            .defineInRange("economy.listingFeeRate", DEFAULT_LISTING_FEE_RATE, 0.0D, 1.0D);
 
     private static final ModConfigSpec.DoubleValue SALES_TAX_RATE = BUILDER
             .comment(
@@ -129,9 +133,17 @@ public class Config {
             )
             .defineInRange("storage.autosaveIntervalTicks", DEFAULT_AUTOSAVE_INTERVAL_TICKS, MIN_AUTOSAVE_INTERVAL_TICKS, MAX_AUTOSAVE_INTERVAL_TICKS);
 
+    private static final ModConfigSpec.ConfigValue<List<? extends String>> BANNED_AUCTION_ENTRIES = BUILDER
+            .comment(
+                    "Item ids or item tags that cannot be listed in auctions.",
+                    "Use minecraft:bedrock for a single item or #minecraft:shulker_boxes for a tag.",
+                    "Runtime reload: applies to newly-created listings."
+            )
+            .defineListAllowEmpty("limits.bannedAuctionEntries", DEFAULT_BANNED_AUCTION_ENTRIES, () -> "", Config::validateAuctionRestriction);
+
     static final ModConfigSpec SPEC = BUILDER.build();
 
-    public static long listingFeeDollars;
+    public static double listingFeeRate;
     public static double salesTaxRate;
     public static long minimumBidIncrementDollars;
     public static int maxActiveListingsPerPlayer;
@@ -144,6 +156,7 @@ public class Config {
     public static boolean auditStateTransitions;
     public static int adminStatusPermissionLevel;
     public static int autosaveIntervalTicks;
+    public static List<String> bannedAuctionEntries = new ArrayList<>();
     public static boolean lastConfigLoadHealthy = true;
     public static String lastConfigLoadMessage = "Config has not loaded yet.";
 
@@ -152,7 +165,7 @@ public class Config {
         lastConfigLoadHealthy = true;
         lastConfigLoadMessage = "";
 
-        listingFeeDollars = readLong("economy.listingFeeDollars", LISTING_FEE_DOLLARS, DEFAULT_LISTING_FEE_DOLLARS, 0L, MAX_MONEY_DOLLARS);
+        listingFeeRate = readDouble("economy.listingFeeRate", LISTING_FEE_RATE, DEFAULT_LISTING_FEE_RATE, 0.0D, 1.0D);
         salesTaxRate = readDouble("economy.salesTaxRate", SALES_TAX_RATE, DEFAULT_SALES_TAX_RATE, 0.0D, 1.0D);
         minimumBidIncrementDollars = readLong("economy.minimumBidIncrementDollars", MINIMUM_BID_INCREMENT_DOLLARS, DEFAULT_MINIMUM_BID_INCREMENT_DOLLARS, 1L, MAX_MONEY_DOLLARS);
         maxActiveListingsPerPlayer = readInt("limits.maxActiveListingsPerPlayer", MAX_ACTIVE_LISTINGS_PER_PLAYER, DEFAULT_MAX_ACTIVE_LISTINGS_PER_PLAYER, 1, MAX_LISTINGS_PER_PLAYER);
@@ -165,6 +178,7 @@ public class Config {
         auditStateTransitions = readBoolean("audit.stateTransitions", AUDIT_STATE_TRANSITIONS, DEFAULT_AUDIT_STATE_TRANSITIONS);
         adminStatusPermissionLevel = readInt("admin.statusPermissionLevel", ADMIN_STATUS_PERMISSION_LEVEL, DEFAULT_ADMIN_STATUS_PERMISSION_LEVEL, 0, MAX_PERMISSION_LEVEL);
         autosaveIntervalTicks = readInt("storage.autosaveIntervalTicks", AUTOSAVE_INTERVAL_TICKS, DEFAULT_AUTOSAVE_INTERVAL_TICKS, MIN_AUTOSAVE_INTERVAL_TICKS, MAX_AUTOSAVE_INTERVAL_TICKS);
+        bannedAuctionEntries = new ArrayList<>(BANNED_AUCTION_ENTRIES.get());
 
         if (lastConfigLoadHealthy) {
             lastConfigLoadMessage = event instanceof ModConfigEvent.Reloading
@@ -175,8 +189,16 @@ public class Config {
         }
     }
 
-    public static BigDecimal listingFeeAmount() {
-        return BigDecimal.valueOf(listingFeeDollars);
+    public static BigDecimal calculateListingFee(BigDecimal startingBid) {
+        BigDecimal amount = startingBid == null ? BigDecimal.ZERO : startingBid.max(BigDecimal.ZERO);
+        return amount.multiply(BigDecimal.valueOf(listingFeeRate)).setScale(2, RoundingMode.HALF_UP);
+    }
+
+    public static String listingFeePercentLabel() {
+        return BigDecimal.valueOf(listingFeeRate)
+                .multiply(BigDecimal.valueOf(100L))
+                .stripTrailingZeros()
+                .toPlainString();
     }
 
     public static BigDecimal minimumBidIncrementAmount() {
@@ -258,5 +280,18 @@ public class Config {
         lastConfigLoadMessage = "Invalid config value for " + path + "; using safe default.";
         value.set(fallback);
         return fallback;
+    }
+
+    private static boolean validateAuctionRestriction(Object value) {
+        if (!(value instanceof String raw)) {
+            return false;
+        }
+        String entry = raw.trim();
+        if (entry.isEmpty()) {
+            return false;
+        }
+        String location = entry.startsWith("#") ? entry.substring(1) : entry;
+        int separator = location.indexOf(':');
+        return separator > 0 && separator < location.length() - 1;
     }
 }

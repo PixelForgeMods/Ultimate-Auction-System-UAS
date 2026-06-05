@@ -46,4 +46,12 @@ public interface UasBankingService {
     Optional<UUID> getPrimaryAccountId(UUID playerId);
 
     Optional<UasAccountSnapshot> getAccountSnapshot(UUID accountId);
+
+    UasAlertResult sendSuccessAlert(UUID playerId, String title, String message, int durationMs);
+
+    UasAlertResult sendErrorAlert(UUID playerId, String title, String message, int durationMs);
+
+    UasAlertResult sendInfoAlert(UUID playerId, String title, String message, int durationMs);
+
+    UasAlertResult sendWarningAlert(UUID playerId, String title, String message, int durationMs);
 }
