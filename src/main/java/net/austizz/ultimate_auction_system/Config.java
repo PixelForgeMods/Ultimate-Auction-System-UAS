@@ -13,9 +13,11 @@ import java.util.List;
 @EventBusSubscriber(modid = UltimateAuctionSystem.MODID, bus = EventBusSubscriber.Bus.MOD)
 public class Config {
     public static final double DEFAULT_LISTING_FEE_RATE = 0.05D;
+    public static final double DEFAULT_CANCELLATION_FEE_RATE = 0.0D;
     public static final double DEFAULT_SALES_TAX_RATE = 0.05D;
     public static final long DEFAULT_MINIMUM_BID_INCREMENT_DOLLARS = 1L;
     public static final int DEFAULT_MAX_ACTIVE_LISTINGS_PER_PLAYER = 25;
+    public static final int DEFAULT_MIN_AUCTION_DURATION_HOURS = 1;
     public static final int DEFAULT_MAX_AUCTION_DURATION_HOURS = 168;
     public static final int DEFAULT_SETTLEMENT_RETRY_ATTEMPTS = 3;
     public static final int DEFAULT_SETTLEMENT_RETRY_DELAY_SECONDS = 60;
@@ -25,11 +27,12 @@ public class Config {
     public static final boolean DEFAULT_AUDIT_STATE_TRANSITIONS = true;
     public static final int DEFAULT_ADMIN_STATUS_PERMISSION_LEVEL = 2;
     public static final int DEFAULT_AUTOSAVE_INTERVAL_TICKS = 6000;
+    public static final int DEFAULT_PENDING_LISTING_CONFIRMATION_SECONDS = 60;
     public static final List<String> DEFAULT_BANNED_AUCTION_ENTRIES = List.of();
 
     public static final String ADMIN_RELOAD_FLOW = "Use the standard NeoForge config reload flow after editing UAS common config. "
-            + "Economy fees, tax, bid increments, listing limits, and settlement retry settings are re-read on reload. "
-            + "Existing auctions keep their original end time; max duration changes apply to newly-created listings.";
+            + "Economy fees, tax, bid increments, listing limits, duration bounds, banned item restrictions, and settlement retry settings are re-read on reload. "
+            + "Existing auctions keep their original end time and item; duration and restriction changes apply to newly-created listings.";
 
     private static final long MAX_MONEY_DOLLARS = 1_000_000_000L;
     private static final int MAX_LISTINGS_PER_PLAYER = 10_000;
@@ -39,6 +42,8 @@ public class Config {
     private static final int MAX_PERMISSION_LEVEL = 4;
     private static final int MIN_AUTOSAVE_INTERVAL_TICKS = 20;
     private static final int MAX_AUTOSAVE_INTERVAL_TICKS = 72_000;
+    private static final int MIN_PENDING_CONFIRMATION_SECONDS = 10;
+    private static final int MAX_PENDING_CONFIRMATION_SECONDS = 600;
 
     private static final ModConfigSpec.Builder BUILDER = new ModConfigSpec.Builder();
 
@@ -56,6 +61,13 @@ public class Config {
             )
             .defineInRange("economy.salesTaxRate", DEFAULT_SALES_TAX_RATE, 0.0D, 1.0D);
 
+    private static final ModConfigSpec.DoubleValue CANCELLATION_FEE_RATE = BUILDER
+            .comment(
+                    "Fraction of the starting bid charged when a seller cancels their own no-bid auction.",
+                    "0 disables seller cancellation fees. Admin force-cancel never charges this fee."
+            )
+            .defineInRange("economy.cancellationFeeRate", DEFAULT_CANCELLATION_FEE_RATE, 0.0D, 1.0D);
+
     private static final ModConfigSpec.LongValue MINIMUM_BID_INCREMENT_DOLLARS = BUILDER
             .comment(
                     "Minimum whole UBS dollars that a new bid must exceed the current highest bid by.",
@@ -69,6 +81,13 @@ public class Config {
                     "Runtime reload: applies when players create new listings."
             )
             .defineInRange("limits.maxActiveListingsPerPlayer", DEFAULT_MAX_ACTIVE_LISTINGS_PER_PLAYER, 1, MAX_LISTINGS_PER_PLAYER);
+
+    private static final ModConfigSpec.IntValue MIN_AUCTION_DURATION_HOURS = BUILDER
+            .comment(
+                    "Minimum auction duration, in real-world hours, allowed for new listings.",
+                    "Runtime reload: applies to newly-created listings."
+            )
+            .defineInRange("limits.minAuctionDurationHours", DEFAULT_MIN_AUCTION_DURATION_HOURS, 1, MAX_DURATION_HOURS);
 
     private static final ModConfigSpec.IntValue MAX_AUCTION_DURATION_HOURS = BUILDER
             .comment(
@@ -133,6 +152,13 @@ public class Config {
             )
             .defineInRange("storage.autosaveIntervalTicks", DEFAULT_AUTOSAVE_INTERVAL_TICKS, MIN_AUTOSAVE_INTERVAL_TICKS, MAX_AUTOSAVE_INTERVAL_TICKS);
 
+    private static final ModConfigSpec.IntValue PENDING_LISTING_CONFIRMATION_SECONDS = BUILDER
+            .comment(
+                    "Seconds before a pending auction listing confirmation expires.",
+                    "Pending confirmations are per-player and are not saved across restarts."
+            )
+            .defineInRange("limits.pendingListingConfirmationSeconds", DEFAULT_PENDING_LISTING_CONFIRMATION_SECONDS, MIN_PENDING_CONFIRMATION_SECONDS, MAX_PENDING_CONFIRMATION_SECONDS);
+
     private static final ModConfigSpec.ConfigValue<List<? extends String>> BANNED_AUCTION_ENTRIES = BUILDER
             .comment(
                     "Item ids or item tags that cannot be listed in auctions.",
@@ -144,9 +170,11 @@ public class Config {
     static final ModConfigSpec SPEC = BUILDER.build();
 
     public static double listingFeeRate;
+    public static double cancellationFeeRate = DEFAULT_CANCELLATION_FEE_RATE;
     public static double salesTaxRate;
     public static long minimumBidIncrementDollars;
     public static int maxActiveListingsPerPlayer;
+    public static int minAuctionDurationHours;
     public static int maxAuctionDurationHours;
     public static int settlementRetryAttempts;
     public static int settlementRetryDelaySeconds;
@@ -156,6 +184,7 @@ public class Config {
     public static boolean auditStateTransitions;
     public static int adminStatusPermissionLevel;
     public static int autosaveIntervalTicks;
+    public static int pendingListingConfirmationSeconds = DEFAULT_PENDING_LISTING_CONFIRMATION_SECONDS;
     public static List<String> bannedAuctionEntries = new ArrayList<>();
     public static boolean lastConfigLoadHealthy = true;
     public static String lastConfigLoadMessage = "Config has not loaded yet.";
@@ -166,10 +195,12 @@ public class Config {
         lastConfigLoadMessage = "";
 
         listingFeeRate = readDouble("economy.listingFeeRate", LISTING_FEE_RATE, DEFAULT_LISTING_FEE_RATE, 0.0D, 1.0D);
+        cancellationFeeRate = readDouble("economy.cancellationFeeRate", CANCELLATION_FEE_RATE, DEFAULT_CANCELLATION_FEE_RATE, 0.0D, 1.0D);
         salesTaxRate = readDouble("economy.salesTaxRate", SALES_TAX_RATE, DEFAULT_SALES_TAX_RATE, 0.0D, 1.0D);
         minimumBidIncrementDollars = readLong("economy.minimumBidIncrementDollars", MINIMUM_BID_INCREMENT_DOLLARS, DEFAULT_MINIMUM_BID_INCREMENT_DOLLARS, 1L, MAX_MONEY_DOLLARS);
         maxActiveListingsPerPlayer = readInt("limits.maxActiveListingsPerPlayer", MAX_ACTIVE_LISTINGS_PER_PLAYER, DEFAULT_MAX_ACTIVE_LISTINGS_PER_PLAYER, 1, MAX_LISTINGS_PER_PLAYER);
-        maxAuctionDurationHours = readInt("limits.maxAuctionDurationHours", MAX_AUCTION_DURATION_HOURS, DEFAULT_MAX_AUCTION_DURATION_HOURS, 1, MAX_DURATION_HOURS);
+        minAuctionDurationHours = readInt("limits.minAuctionDurationHours", MIN_AUCTION_DURATION_HOURS, DEFAULT_MIN_AUCTION_DURATION_HOURS, 1, MAX_DURATION_HOURS);
+        maxAuctionDurationHours = Math.max(minAuctionDurationHours, readInt("limits.maxAuctionDurationHours", MAX_AUCTION_DURATION_HOURS, DEFAULT_MAX_AUCTION_DURATION_HOURS, 1, MAX_DURATION_HOURS));
         settlementRetryAttempts = readInt("settlement.retryAttempts", SETTLEMENT_RETRY_ATTEMPTS, DEFAULT_SETTLEMENT_RETRY_ATTEMPTS, 0, MAX_SETTLEMENT_RETRY_ATTEMPTS);
         settlementRetryDelaySeconds = readInt("settlement.retryDelaySeconds", SETTLEMENT_RETRY_DELAY_SECONDS, DEFAULT_SETTLEMENT_RETRY_DELAY_SECONDS, 1, MAX_SETTLEMENT_RETRY_DELAY_SECONDS);
         requireUbsForListing = readBoolean("settlement.requireUbsForListing", REQUIRE_UBS_FOR_LISTING, DEFAULT_REQUIRE_UBS_FOR_LISTING);
@@ -178,6 +209,7 @@ public class Config {
         auditStateTransitions = readBoolean("audit.stateTransitions", AUDIT_STATE_TRANSITIONS, DEFAULT_AUDIT_STATE_TRANSITIONS);
         adminStatusPermissionLevel = readInt("admin.statusPermissionLevel", ADMIN_STATUS_PERMISSION_LEVEL, DEFAULT_ADMIN_STATUS_PERMISSION_LEVEL, 0, MAX_PERMISSION_LEVEL);
         autosaveIntervalTicks = readInt("storage.autosaveIntervalTicks", AUTOSAVE_INTERVAL_TICKS, DEFAULT_AUTOSAVE_INTERVAL_TICKS, MIN_AUTOSAVE_INTERVAL_TICKS, MAX_AUTOSAVE_INTERVAL_TICKS);
+        pendingListingConfirmationSeconds = readInt("limits.pendingListingConfirmationSeconds", PENDING_LISTING_CONFIRMATION_SECONDS, DEFAULT_PENDING_LISTING_CONFIRMATION_SECONDS, MIN_PENDING_CONFIRMATION_SECONDS, MAX_PENDING_CONFIRMATION_SECONDS);
         bannedAuctionEntries = new ArrayList<>(BANNED_AUCTION_ENTRIES.get());
 
         if (lastConfigLoadHealthy) {
@@ -192,6 +224,11 @@ public class Config {
     public static BigDecimal calculateListingFee(BigDecimal startingBid) {
         BigDecimal amount = startingBid == null ? BigDecimal.ZERO : startingBid.max(BigDecimal.ZERO);
         return amount.multiply(BigDecimal.valueOf(listingFeeRate)).setScale(2, RoundingMode.HALF_UP);
+    }
+
+    public static BigDecimal calculateCancellationFee(BigDecimal startingBid) {
+        BigDecimal amount = startingBid == null ? BigDecimal.ZERO : startingBid.max(BigDecimal.ZERO);
+        return amount.multiply(BigDecimal.valueOf(cancellationFeeRate)).setScale(2, RoundingMode.HALF_UP);
     }
 
     public static String listingFeePercentLabel() {

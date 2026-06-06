@@ -46,19 +46,21 @@ class AuctionUiModelTest {
     }
 
     @Test
-    void snapshotPayloadExposesListingFeeRateToClient() {
+    void snapshotCarriesListingFeeRateToClientModel() {
         AuctionHouseSnapshot snapshot = new AuctionHouseSnapshot(
                 List.of(),
                 List.of(),
                 List.of(),
                 List.of(),
                 null,
+                null,
                 0.05D,
                 "",
-                true
+                true,
+                false
         );
 
-        assertEquals(0.05D, net.austizz.ultimate_auction_system.network.AuctionSnapshotPayload.fromSnapshot(snapshot).listingFeeRate());
+        assertEquals(0.05D, snapshot.listingFeeRate());
     }
 
     @Test

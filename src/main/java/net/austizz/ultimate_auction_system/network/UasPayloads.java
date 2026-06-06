@@ -34,7 +34,11 @@ public final class UasPayloads {
     }
 
     public static void openAuctionHouse(ServerPlayer player) {
-        sendSnapshot(player, AuctionUiQuery.defaults(), "", true);
+        sendSnapshot(player, AuctionUiQuery.defaults(), "", true, false);
+    }
+
+    public static void openAdminAuctionHouse(ServerPlayer player) {
+        sendSnapshot(player, AuctionUiQuery.defaults(), "", true, true);
     }
 
     private static void handleAuctionSnapshot(AuctionSnapshotPayload payload, IPayloadContext context) {
@@ -49,12 +53,13 @@ public final class UasPayloads {
             AuctionUiQuery query = queryFrom(payload);
             AuctionHouse house = UltimateAuctionSystem.auctionHouse;
             if (house == null) {
-                sendSnapshot(player, query, "Auction house is not initialized.", false);
+                sendSnapshot(player, query, "Auction house is not initialized.", false, false);
                 return;
             }
             AuctionDeliverySavedData deliveryData = AuctionDeliverySavedData.get(player.getServer());
+            boolean adminMode = payload.adminMode() && player.hasPermissions(net.austizz.ultimate_auction_system.Config.adminStatusPermissionLevel);
             AuctionActionResult result = switch (safe(payload.action())) {
-                case "CREATE" -> house.createAuctionFromInventorySlot(
+                case "PREPARE_CREATE" -> house.prepareAuctionFromInventorySlot(
                         player,
                         payload.slot(),
                         money(payload.startingBid()),
@@ -62,26 +67,35 @@ public final class UasPayloads {
                         endDateTime(payload),
                         payload.description()
                 );
+                case "CONFIRM_CREATE" -> house.confirmPendingAuction(player);
+                case "DISCARD_CREATE" -> house.discardPendingAuction(player);
                 case "BID" -> house.placeBidWithEscrow(player, payload.auctionId(), money(payload.amount()));
                 case "BUYOUT" -> house.buyout(player, payload.auctionId());
                 case "CANCEL" -> house.cancelOwnAuction(player, payload.auctionId(), deliveryData);
+                case "ADMIN_FORCE_CANCEL" -> adminMode
+                        ? house.adminForceCancel(player, payload.auctionId(), deliveryData)
+                        : AuctionActionResult.fail("You do not have permission to force-cancel auctions.");
                 case "CLAIM" -> house.claimAuction(player, payload.auctionId(), deliveryData);
                 case "TOGGLE_NOTIFICATIONS" -> house.toggleNotifications(player, payload.auctionId());
                 case "WITHDRAW_DELIVERY" -> house.withdrawDelivery(player, payload.deliveryId(), deliveryData);
                 default -> AuctionActionResult.ok("");
             };
             house.sendActionAlert(player, result);
-            sendSnapshot(player, query, result.message(), result.success());
+            sendSnapshot(player, query, result.message(), result.success(), adminMode);
         });
     }
 
     private static void sendSnapshot(ServerPlayer player, AuctionUiQuery query, String message, boolean success) {
+        sendSnapshot(player, query, message, success, false);
+    }
+
+    private static void sendSnapshot(ServerPlayer player, AuctionUiQuery query, String message, boolean success, boolean adminMode) {
         AuctionHouse house = UltimateAuctionSystem.auctionHouse;
         if (player == null || house == null || player.getServer() == null) {
             return;
         }
         AuctionDeliverySavedData deliveryData = AuctionDeliverySavedData.get(player.getServer());
-        AuctionHouseSnapshot snapshot = house.buildSnapshot(player, deliveryData, query, message, success);
+        AuctionHouseSnapshot snapshot = house.buildSnapshot(player, deliveryData, query, message, success, adminMode);
         PacketDistributor.sendToPlayer(player, AuctionSnapshotPayload.fromSnapshot(snapshot));
     }
 

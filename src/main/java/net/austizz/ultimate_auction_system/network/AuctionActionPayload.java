@@ -25,7 +25,8 @@ public record AuctionActionPayload(
         String sort,
         String minimumPrice,
         String maximumPrice,
-        long maximumHoursLeft
+        long maximumHoursLeft,
+        boolean adminMode
 ) implements CustomPacketPayload {
     public static final Type<AuctionActionPayload> TYPE = new Type<>(
             ResourceLocation.fromNamespaceAndPath(UltimateAuctionSystem.MODID, "auction_action"));
@@ -48,6 +49,7 @@ public record AuctionActionPayload(
                 ByteBufCodecs.STRING_UTF8.encode(buf, payload.minimumPrice());
                 ByteBufCodecs.STRING_UTF8.encode(buf, payload.maximumPrice());
                 ByteBufCodecs.VAR_LONG.encode(buf, payload.maximumHoursLeft());
+                ByteBufCodecs.BOOL.encode(buf, payload.adminMode());
             },
             buf -> new AuctionActionPayload(
                     ByteBufCodecs.STRING_UTF8.decode(buf),
@@ -65,12 +67,17 @@ public record AuctionActionPayload(
                     ByteBufCodecs.STRING_UTF8.decode(buf),
                     ByteBufCodecs.STRING_UTF8.decode(buf),
                     ByteBufCodecs.STRING_UTF8.decode(buf),
-                    ByteBufCodecs.VAR_LONG.decode(buf)
+                    ByteBufCodecs.VAR_LONG.decode(buf),
+                    ByteBufCodecs.BOOL.decode(buf)
             )
     );
 
     public static AuctionActionPayload refresh(String search, String category, String sort, String min, String max, long hoursLeft) {
-        return new AuctionActionPayload("REFRESH", null, null, -1, "", "", "", 0, "", "", search, category, sort, min, max, hoursLeft);
+        return refresh(search, category, sort, min, max, hoursLeft, false);
+    }
+
+    public static AuctionActionPayload refresh(String search, String category, String sort, String min, String max, long hoursLeft, boolean adminMode) {
+        return new AuctionActionPayload("REFRESH", null, null, -1, "", "", "", 0, "", "", search, category, sort, min, max, hoursLeft, adminMode);
     }
 
     @Override

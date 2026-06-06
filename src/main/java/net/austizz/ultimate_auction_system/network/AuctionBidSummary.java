@@ -1,11 +1,11 @@
 package net.austizz.ultimate_auction_system.network;
 
 import net.austizz.ultimate_auction_system.AuctionBidRecord;
+import net.austizz.ultimate_auction_system.banking.UasMoneyFormatter;
 import net.minecraft.network.RegistryFriendlyByteBuf;
 import net.minecraft.network.codec.ByteBufCodecs;
 import net.minecraft.network.codec.StreamCodec;
 
-import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.UUID;
 
@@ -44,15 +44,11 @@ public record AuctionBidSummary(
         return new AuctionBidSummary(
                 record.getBidderId(),
                 nameOrFallback(bidderName, record.getBidderId()),
-                money(record.getAmount()),
+                UasMoneyFormatter.display(record.getAmount()),
                 time(record.getTimestamp()),
                 record.isAccepted(),
                 record.getReason()
         );
-    }
-
-    private static String money(BigDecimal amount) {
-        return amount == null ? "0" : amount.stripTrailingZeros().toPlainString();
     }
 
     private static String time(LocalDateTime time) {

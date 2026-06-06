@@ -1,12 +1,12 @@
 package net.austizz.ultimate_auction_system.network;
 
 import net.austizz.ultimate_auction_system.AuctionListingSummary;
+import net.austizz.ultimate_auction_system.banking.UasMoneyFormatter;
 import net.minecraft.network.RegistryFriendlyByteBuf;
 import net.minecraft.network.codec.ByteBufCodecs;
 import net.minecraft.network.codec.StreamCodec;
 import net.minecraft.world.item.ItemStack;
 
-import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.UUID;
@@ -103,9 +103,9 @@ public record AuctionEntrySummary(
                 summary.category().name(),
                 summary.rarity(),
                 summary.state().name(),
-                money(summary.startingBid()),
-                money(summary.currentBid()),
-                money(summary.buyoutPrice()),
+                UasMoneyFormatter.display(summary.startingBid()),
+                UasMoneyFormatter.display(summary.currentBid()),
+                UasMoneyFormatter.display(summary.buyoutPrice()),
                 summary.bidCount(),
                 time(summary.endsAt()),
                 summary.viewerIsSeller(),
@@ -121,10 +121,6 @@ public record AuctionEntrySummary(
                         .map(record -> AuctionBidSummary.fromRecord(record, summary.bidderNames().get(record.getBidderId())))
                         .toList()
         );
-    }
-
-    private static String money(BigDecimal amount) {
-        return amount == null ? "0" : amount.stripTrailingZeros().toPlainString();
     }
 
     private static String time(LocalDateTime time) {

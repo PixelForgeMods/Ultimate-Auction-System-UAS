@@ -16,9 +16,11 @@ public record AuctionSnapshotPayload(
         List<AuctionEntrySummary> myAuctions,
         List<AuctionDeliverySummary> deliveries,
         AuctionAccountSummary account,
+        AuctionPendingListingSummary pendingListing,
         double listingFeeRate,
         String message,
-        boolean success
+        boolean success,
+        boolean adminMode
 ) implements CustomPacketPayload {
     public static final Type<AuctionSnapshotPayload> TYPE = new Type<>(
             ResourceLocation.fromNamespaceAndPath(UltimateAuctionSystem.MODID, "auction_snapshot"));
@@ -30,9 +32,11 @@ public record AuctionSnapshotPayload(
                 AuctionEntrySummary.STREAM_CODEC.apply(ByteBufCodecs.list(256)).encode(buf, payload.myAuctions());
                 AuctionDeliverySummary.STREAM_CODEC.apply(ByteBufCodecs.list(128)).encode(buf, payload.deliveries());
                 AuctionAccountSummary.STREAM_CODEC.encode(buf, payload.account());
+                AuctionPendingListingSummary.STREAM_CODEC.encode(buf, payload.pendingListing());
                 ByteBufCodecs.DOUBLE.encode(buf, payload.listingFeeRate());
                 ByteBufCodecs.STRING_UTF8.encode(buf, payload.message());
                 ByteBufCodecs.BOOL.encode(buf, payload.success());
+                ByteBufCodecs.BOOL.encode(buf, payload.adminMode());
             },
             buf -> new AuctionSnapshotPayload(
                     AuctionEntrySummary.STREAM_CODEC.apply(ByteBufCodecs.list(256)).decode(buf),
@@ -40,8 +44,10 @@ public record AuctionSnapshotPayload(
                     AuctionEntrySummary.STREAM_CODEC.apply(ByteBufCodecs.list(256)).decode(buf),
                     AuctionDeliverySummary.STREAM_CODEC.apply(ByteBufCodecs.list(128)).decode(buf),
                     AuctionAccountSummary.STREAM_CODEC.decode(buf),
+                    AuctionPendingListingSummary.STREAM_CODEC.decode(buf),
                     ByteBufCodecs.DOUBLE.decode(buf),
                     ByteBufCodecs.STRING_UTF8.decode(buf),
+                    ByteBufCodecs.BOOL.decode(buf),
                     ByteBufCodecs.BOOL.decode(buf)
             )
     );
@@ -53,9 +59,11 @@ public record AuctionSnapshotPayload(
                 snapshot.myAuctions().stream().map(AuctionEntrySummary::fromListing).toList(),
                 snapshot.deliveries().stream().map(AuctionDeliverySummary::fromEntry).toList(),
                 AuctionAccountSummary.fromSnapshot(snapshot.primaryAccount()),
+                AuctionPendingListingSummary.fromPreview(snapshot.pendingListing()),
                 snapshot.listingFeeRate(),
                 snapshot.message(),
-                snapshot.success()
+                snapshot.success(),
+                snapshot.adminMode()
         );
     }
 

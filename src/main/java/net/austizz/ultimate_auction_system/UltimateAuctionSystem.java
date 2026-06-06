@@ -138,6 +138,7 @@ public class UltimateAuctionSystem {
             return;
         }
 
+        house.pruneExpiredPendingListings();
         ticksSinceAuctionAutosave++;
         int autosaveInterval = Math.max(Config.autosaveIntervalTicks, Config.DEFAULT_AUTOSAVE_INTERVAL_TICKS);
         if (ticksSinceAuctionAutosave < autosaveInterval) {

@@ -10,8 +10,10 @@ public record AuctionHouseSnapshot(
         List<AuctionListingSummary> myAuctions,
         List<AuctionDeliveryEntry> deliveries,
         UasAccountSnapshot primaryAccount,
+        AuctionListingPreview pendingListing,
         double listingFeeRate,
         String message,
-        boolean success
+        boolean success,
+        boolean adminMode
 ) {
 }

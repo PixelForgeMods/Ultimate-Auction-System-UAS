@@ -1,11 +1,11 @@
 package net.austizz.ultimate_auction_system.network;
 
 import net.austizz.ultimate_auction_system.banking.UasAccountSnapshot;
+import net.austizz.ultimate_auction_system.banking.UasMoneyFormatter;
 import net.minecraft.network.RegistryFriendlyByteBuf;
 import net.minecraft.network.codec.ByteBufCodecs;
 import net.minecraft.network.codec.StreamCodec;
 
-import java.math.BigDecimal;
 import java.util.UUID;
 
 public record AuctionAccountSummary(
@@ -41,7 +41,7 @@ public record AuctionAccountSummary(
         return new AuctionAccountSummary(
                 snapshot.accountId(),
                 snapshot.accountTypeLabel(),
-                money(snapshot.balance()),
+                UasMoneyFormatter.display(snapshot.balance()),
                 snapshot.primary(),
                 snapshot.frozen()
         );
@@ -51,7 +51,4 @@ public record AuctionAccountSummary(
         return accountId != null;
     }
 
-    private static String money(BigDecimal amount) {
-        return amount == null ? "0" : amount.stripTrailingZeros().toPlainString();
-    }
 }

@@ -2,10 +2,12 @@ package net.austizz.ultimate_auction_system;
 
 import com.mojang.brigadier.Command;
 
+import com.mojang.brigadier.arguments.IntegerArgumentType;
 import com.mojang.brigadier.arguments.StringArgumentType;
 import com.mojang.brigadier.context.CommandContext;
 import com.mojang.brigadier.exceptions.SimpleCommandExceptionType;
 import net.austizz.ultimate_auction_system.banking.UasBankingService;
+import net.austizz.ultimate_auction_system.banking.UasMoneyFormatter;
 import net.austizz.ultimate_auction_system.banking.UbsBankingService;
 import net.austizz.ultimate_auction_system.i18n.UasTranslations;
 import net.austizz.ultimate_auction_system.network.UasPayloads;
@@ -63,43 +65,34 @@ public class AUSCommands {
                         .then(Commands.literal("list")
                                 .executes(AUSCommands::sendAuctionList))
                         .then(Commands.literal("create")
-                                .then(
-                                        Commands.argument("Starting Price", StringArgumentType.string())
-                                                .then(Commands.argument('"' + "Description" + '"', StringArgumentType.string())
-                                                        .then(Commands.argument("Ending Date (dd-MM)", StringArgumentType.greedyString())
-                                                                .executes(context -> {
-                                                                        String rawStartingPrice = StringArgumentType.getString(context, "Starting Price");
-                                                                        String rawEndingDate = StringArgumentType.getString(context, "Ending Date (dd-MM)");
-                                                                        String description = StringArgumentType.getString(context, '"' + "Description" + '"');
-
-                                                                        try{
-                                                                            LocalDateTime endingDate = LocalDateTime.parse(rawEndingDate, FORMATTER);
-                                                                            BigDecimal startingBidPrice = new BigDecimal(rawStartingPrice);
-                                                                            ItemStack itemInHand = Objects.requireNonNull(context.getSource().getPlayer()).getMainHandItem();
-
-                                                                            if(itemInHand.isEmpty()){
-                                                                              throw INVALID_ITEMSTACK.create();
-                                                                            }
-
-                                                                            ServerPlayer player = context.getSource().getPlayer();
-                                                                            long durationHours = Math.max(1L, java.time.Duration.between(LocalDateTime.now(), endingDate).toHours());
-                                                                            AuctionActionResult result = UltimateAuctionSystem.auctionHouse.createAuctionFromMainHand(player, startingBidPrice, null, durationHours, description);
-                                                                            context.getSource().sendSystemMessage(UasTranslations.literal(result.message()).withStyle(result.success() ? ChatFormatting.GREEN : ChatFormatting.RED));
-                                                                            return Command.SINGLE_SUCCESS;
-                                                                        } catch(DateTimeParseException e){
-                                                                           throw INVALID_DATE.create();
-                                                                        } catch(NumberFormatException e){
-                                                                            throw INVALID_NUMBER.create();
-                                                                        }
-                                                                        catch (NullPointerException e){
-                                                                            throw INVALID_ITEMSTACK.create();
-                                                                        }
-                                                                    }
-                                                                )
-                                                        )
-                                                )
-                                )
+                                .then(Commands.argument("Starting Price", StringArgumentType.word())
+                                        .then(Commands.argument("Duration Hours", IntegerArgumentType.integer(1))
+                                                .then(Commands.literal("buyout")
+                                                        .then(Commands.argument("Buyout Price", StringArgumentType.word())
+                                                                .then(Commands.argument("Description", StringArgumentType.greedyString())
+                                                                        .executes(context -> prepareCreateFromCommand(context, true)))))
+                                                .then(Commands.argument("Description", StringArgumentType.greedyString())
+                                                        .executes(context -> prepareCreateFromCommand(context, false)))))
                         )
+                        .then(Commands.literal("confirm")
+                                .executes(AUSCommands::confirmPendingListing))
+                        .then(Commands.literal("discard")
+                                .executes(AUSCommands::discardPendingListing))
+                        .then(Commands.literal("cancel")
+                                .then(Commands.argument("auctionId", StringArgumentType.word())
+                                        .executes(AUSCommands::cancelOwnAuction)))
+                        .then(Commands.literal("claim")
+                                .then(Commands.argument("auctionId", StringArgumentType.word())
+                                        .executes(AUSCommands::claimAuction)))
+                        .then(Commands.literal("mine")
+                                .executes(context -> sendMine(context, AuctionSellerFilter.ALL, 1))
+                                .then(Commands.argument("status", StringArgumentType.word())
+                                        .executes(context -> sendMine(context, AuctionSellerFilter.fromToken(StringArgumentType.getString(context, "status")), 1))
+                                        .then(Commands.argument("page", IntegerArgumentType.integer(1))
+                                                .executes(context -> sendMine(
+                                                        context,
+                                                        AuctionSellerFilter.fromToken(StringArgumentType.getString(context, "status")),
+                                                        IntegerArgumentType.getInteger(context, "page"))))))
         );
 
         event.getDispatcher().register(
@@ -110,6 +103,12 @@ public class AUSCommands {
                         )
                         .then(Commands.literal("admin")
                                 .requires(source -> source.hasPermission(Config.adminStatusPermissionLevel))
+                                .executes(AUSCommands::openAdminAuctionGui)
+                                .then(Commands.literal("gui")
+                                        .executes(AUSCommands::openAdminAuctionGui))
+                                .then(Commands.literal("seller")
+                                        .then(Commands.argument("player", StringArgumentType.word())
+                                                .executes(AUSCommands::sendSellerStats)))
                                 .then(Commands.literal("inspect")
                                         .then(Commands.argument("auctionId", StringArgumentType.string())
                                                 .executes(AUSCommands::inspectAuction)
@@ -127,6 +126,100 @@ public class AUSCommands {
         }
         UasPayloads.openAuctionHouse(player);
         return Command.SINGLE_SUCCESS;
+    }
+
+    private static int openAdminAuctionGui(CommandContext<CommandSourceStack> context) {
+        ServerPlayer player = context.getSource().getPlayer();
+        if (player == null) {
+            context.getSource().sendFailure(Component.literal("Only players can open the UAS admin GUI."));
+            return 0;
+        }
+        UasPayloads.openAdminAuctionHouse(player);
+        return Command.SINGLE_SUCCESS;
+    }
+
+    private static int prepareCreateFromCommand(CommandContext<CommandSourceStack> context, boolean hasBuyout) {
+        ServerPlayer player = context.getSource().getPlayer();
+        if (player == null) {
+            context.getSource().sendFailure(UasTranslations.literal("Only players can create auctions."));
+            return 0;
+        }
+        AuctionHouse house = auctionHouse;
+        if (house == null) {
+            context.getSource().sendFailure(UasTranslations.literal("Auction house is not initialized."));
+            return 0;
+        }
+        BigDecimal startingBid = parseMoney(StringArgumentType.getString(context, "Starting Price"));
+        BigDecimal buyout = hasBuyout ? parseMoney(StringArgumentType.getString(context, "Buyout Price")) : BigDecimal.ZERO;
+        if (startingBid == null || buyout == null) {
+            context.getSource().sendFailure(Component.literal("Incorrect number format. Use whole dollars only, for example 50."));
+            return 0;
+        }
+        int durationHours = IntegerArgumentType.getInteger(context, "Duration Hours");
+        String description = StringArgumentType.getString(context, "Description");
+        AuctionActionResult result = house.prepareAuctionFromMainHand(player, startingBid, buyout, durationHours, description);
+        sendResult(context.getSource(), result);
+        if (result.success()) {
+            context.getSource().sendSystemMessage(Component.literal("[Confirm]")
+                    .withStyle(style -> style.withColor(ChatFormatting.GREEN).withClickEvent(new ClickEvent(ClickEvent.Action.RUN_COMMAND, "/ah confirm")))
+                    .append(Component.literal(" "))
+                    .append(Component.literal("[Discard]").withStyle(style -> style.withColor(ChatFormatting.RED).withClickEvent(new ClickEvent(ClickEvent.Action.RUN_COMMAND, "/ah discard")))));
+        }
+        return result.success() ? Command.SINGLE_SUCCESS : 0;
+    }
+
+    private static int confirmPendingListing(CommandContext<CommandSourceStack> context) {
+        ServerPlayer player = context.getSource().getPlayer();
+        if (player == null || auctionHouse == null) {
+            context.getSource().sendFailure(UasTranslations.literal("Only players can create auctions."));
+            return 0;
+        }
+        AuctionActionResult result = auctionHouse.confirmPendingAuction(player);
+        sendResult(context.getSource(), result);
+        return result.success() ? Command.SINGLE_SUCCESS : 0;
+    }
+
+    private static int discardPendingListing(CommandContext<CommandSourceStack> context) {
+        ServerPlayer player = context.getSource().getPlayer();
+        if (player == null || auctionHouse == null) {
+            context.getSource().sendFailure(UasTranslations.literal("Only players can create auctions."));
+            return 0;
+        }
+        AuctionActionResult result = auctionHouse.discardPendingAuction(player);
+        sendResult(context.getSource(), result);
+        return result.success() ? Command.SINGLE_SUCCESS : 0;
+    }
+
+    private static int cancelOwnAuction(CommandContext<CommandSourceStack> context) {
+        ServerPlayer player = context.getSource().getPlayer();
+        if (player == null || auctionHouse == null) {
+            context.getSource().sendFailure(UasTranslations.literal("Only players can cancel auctions."));
+            return 0;
+        }
+        UUID auctionId = parseAuctionId(context.getSource(), StringArgumentType.getString(context, "auctionId"));
+        if (auctionId == null) {
+            return 0;
+        }
+        AuctionActionResult result = auctionHouse.cancelOwnAuction(player, auctionId, AuctionDeliverySavedData.get(player.getServer()));
+        auctionHouse.sendActionAlert(player, result);
+        sendResult(context.getSource(), result);
+        return result.success() ? Command.SINGLE_SUCCESS : 0;
+    }
+
+    private static int claimAuction(CommandContext<CommandSourceStack> context) {
+        ServerPlayer player = context.getSource().getPlayer();
+        if (player == null || auctionHouse == null) {
+            context.getSource().sendFailure(UasTranslations.literal("Only players can claim auction items."));
+            return 0;
+        }
+        UUID auctionId = parseAuctionId(context.getSource(), StringArgumentType.getString(context, "auctionId"));
+        if (auctionId == null) {
+            return 0;
+        }
+        AuctionActionResult result = auctionHouse.claimAuction(player, auctionId, AuctionDeliverySavedData.get(player.getServer()));
+        auctionHouse.sendActionAlert(player, result);
+        sendResult(context.getSource(), result);
+        return result.success() ? Command.SINGLE_SUCCESS : 0;
     }
 
     private static int sendAuctionList(CommandContext<CommandSourceStack> context) {
@@ -180,7 +273,7 @@ public class AUSCommands {
                     .withStyle(ChatFormatting.GRAY)
                     .append(Component.literal(count + "x " + displayName).withStyle(ChatFormatting.AQUA))
                     .append(UasTranslations.literal(" | Bid: ").withStyle(ChatFormatting.GRAY))
-                    .append(Component.literal("$" + item.getHighestBid()).withStyle(ChatFormatting.GOLD))
+                    .append(Component.literal(UasMoneyFormatter.display(item.getHighestBid())).withStyle(ChatFormatting.GOLD))
                     .append(UasTranslations.literal(" | Time left: ").withStyle(ChatFormatting.GRAY))
                     .append(timeLeft);
 
@@ -198,6 +291,99 @@ public class AUSCommands {
         Component footer = Component.literal("=======================").withStyle(ChatFormatting.GOLD);
         context.getSource().sendSystemMessage(footer);
 
+        return Command.SINGLE_SUCCESS;
+    }
+
+    private static int sendMine(CommandContext<CommandSourceStack> context, AuctionSellerFilter filter, int page) {
+        ServerPlayer player = context.getSource().getPlayer();
+        if (player == null) {
+            context.getSource().sendFailure(Component.literal("Only players can view their auction listings."));
+            return 0;
+        }
+        AuctionHouse house = auctionHouse;
+        if (house == null) {
+            context.getSource().sendFailure(UasTranslations.literal("Auction house is not initialized."));
+            return 0;
+        }
+        AuctionSellerFilter safeFilter = filter == null ? AuctionSellerFilter.ALL : filter;
+        List<AuctionItem> listings = house.getSellerListings(player.getUUID(), safeFilter);
+        SellerAuctionStats stats = house.getSellerStats(player.getUUID());
+        int pageSize = 6;
+        int maxPage = Math.max(1, (int) Math.ceil(listings.size() / (double) pageSize));
+        int safePage = Math.max(1, Math.min(page, maxPage));
+        int start = (safePage - 1) * pageSize;
+        int end = Math.min(listings.size(), start + pageSize);
+
+        context.getSource().sendSystemMessage(Component.literal("=== My Auctions: " + safeFilter.name().toLowerCase() + " (" + safePage + "/" + maxPage + ") ===").withStyle(ChatFormatting.GOLD));
+        context.getSource().sendSystemMessage(Component.literal("Active " + stats.active() + "/" + stats.activeLimit()
+                + " | Sold " + stats.sold()
+                + " | Cancelled " + stats.cancelled()
+                + " | Expired " + stats.expired()).withStyle(ChatFormatting.GRAY));
+        if (listings.isEmpty()) {
+            context.getSource().sendSystemMessage(Component.literal("No matching auction listings.").withStyle(ChatFormatting.GRAY));
+            return Command.SINGLE_SUCCESS;
+        }
+        for (int index = start; index < end; index++) {
+            sendMineRow(context.getSource(), listings.get(index));
+        }
+        return Command.SINGLE_SUCCESS;
+    }
+
+    private static void sendMineRow(CommandSourceStack source, AuctionItem item) {
+        ItemStack stack = item.getItem();
+        String status = sellerStatusLabel(source, item);
+        MutableComponent row = Component.literal("- ")
+                .withStyle(ChatFormatting.GRAY)
+                .append(Component.literal(stack.getCount() + "x " + stack.getHoverName().getString()).withStyle(ChatFormatting.AQUA))
+                .append(Component.literal(" | " + UasMoneyFormatter.display(item.getCurrentPrice())).withStyle(ChatFormatting.GOLD))
+                .append(Component.literal(" | " + status).withStyle(ChatFormatting.GRAY));
+
+        if (item.getState() == AuctionState.ACTIVE && item.getHighestBidderId() == null && !item.isExpired()) {
+            row.append(Component.literal(" [Cancel]").withStyle(style -> style
+                    .withColor(ChatFormatting.RED)
+                    .withClickEvent(new ClickEvent(ClickEvent.Action.RUN_COMMAND, "/ah cancel " + item.getAuctionId()))));
+        }
+        if ((item.getState() == AuctionState.ENDED || item.isExpired() || item.getState() == AuctionState.FAILED_SETTLEMENT)
+                && item.getHighestBidderId() == null) {
+            row.append(Component.literal(" [Claim]").withStyle(style -> style
+                    .withColor(ChatFormatting.GREEN)
+                    .withClickEvent(new ClickEvent(ClickEvent.Action.RUN_COMMAND, "/ah claim " + item.getAuctionId()))));
+        }
+        row.withStyle(style -> style.withHoverEvent(new HoverEvent(HoverEvent.Action.SHOW_ITEM, new HoverEvent.ItemStackInfo(stack))));
+        source.sendSystemMessage(row);
+    }
+
+    private static String sellerStatusLabel(CommandSourceStack source, AuctionItem item) {
+        if (item.getState() == AuctionState.CANCELLED) {
+            return "cancelled";
+        }
+        if (item.getHighestBidderId() != null) {
+            return "highest bidder " + playerName(source, item.getHighestBidderId());
+        }
+        if (item.getState() == AuctionState.ACTIVE && !item.isExpired()) {
+            return "active, " + timeLeftText(item);
+        }
+        return "expired without bids";
+    }
+
+    private static int sendSellerStats(CommandContext<CommandSourceStack> context) {
+        AuctionHouse house = auctionHouse;
+        if (house == null) {
+            context.getSource().sendFailure(UasTranslations.literal("Auction house is not initialized."));
+            return 0;
+        }
+        UUID sellerId = resolvePlayerId(context.getSource(), StringArgumentType.getString(context, "player"));
+        if (sellerId == null) {
+            return 0;
+        }
+        SellerAuctionStats stats = house.getSellerStats(sellerId);
+        context.getSource().sendSystemMessage(Component.literal("=== UAS Seller Auctions ===").withStyle(ChatFormatting.GOLD));
+        context.getSource().sendSystemMessage(Component.literal("Seller: " + sellerId).withStyle(ChatFormatting.GRAY));
+        context.getSource().sendSystemMessage(Component.literal("Active: " + stats.active() + "/" + stats.activeLimit()).withStyle(ChatFormatting.GREEN));
+        context.getSource().sendSystemMessage(Component.literal("Sold: " + stats.sold()).withStyle(ChatFormatting.GOLD));
+        context.getSource().sendSystemMessage(Component.literal("Cancelled: " + stats.cancelled()).withStyle(ChatFormatting.RED));
+        context.getSource().sendSystemMessage(Component.literal("Expired: " + stats.expired()).withStyle(ChatFormatting.YELLOW));
+        context.getSource().sendSystemMessage(Component.literal("Total: " + stats.total()).withStyle(ChatFormatting.AQUA));
         return Command.SINGLE_SUCCESS;
     }
 
@@ -260,9 +446,9 @@ public class AUSCommands {
         sendInspectLine(source, "State", auction.getState().name(), colorForState(auction.getState()));
         sendInspectLine(source, "Seller player", String.valueOf(auction.getPlayerId()), ChatFormatting.GRAY);
         sendInspectLine(source, "Seller account", String.valueOf(auction.getSellerAccountId()), ChatFormatting.GRAY);
-        sendInspectLine(source, "Starting price", "$" + auction.getStartingBidPrice().toPlainString(), ChatFormatting.GOLD);
-        sendInspectLine(source, "Current price", "$" + auction.getCurrentPrice().toPlainString(), ChatFormatting.GOLD);
-        sendInspectLine(source, "Buyout price", auction.getBuyoutPrice().map(price -> "$" + price.toPlainString()).orElse("(none)"), ChatFormatting.GOLD);
+        sendInspectLine(source, "Starting price", UasMoneyFormatter.display(auction.getStartingBidPrice()), ChatFormatting.GOLD);
+        sendInspectLine(source, "Current price", UasMoneyFormatter.display(auction.getCurrentPrice()), ChatFormatting.GOLD);
+        sendInspectLine(source, "Buyout price", auction.getBuyoutPrice().map(UasMoneyFormatter::display).orElse("(none)"), ChatFormatting.GOLD);
         sendInspectLine(source, "Highest bidder", Optional.ofNullable(auction.getHighestBidderId()).map(UUID::toString).orElse("(none)"), ChatFormatting.GRAY);
         sendInspectLine(source, "Start", formatDate(auction.getDateOfStart()), ChatFormatting.GRAY);
         sendInspectLine(source, "End", formatDate(auction.getDateOfEnd()), ChatFormatting.GRAY);
@@ -283,6 +469,75 @@ public class AUSCommands {
             source.sendSystemMessage(formatBidRecord(record));
         }
         return Command.SINGLE_SUCCESS;
+    }
+
+    private static void sendResult(CommandSourceStack source, AuctionActionResult result) {
+        if (source == null || result == null || result.message().isBlank()) {
+            return;
+        }
+        source.sendSystemMessage(Component.literal(result.message()).withStyle(result.success() ? ChatFormatting.GREEN : ChatFormatting.RED));
+    }
+
+    private static BigDecimal parseMoney(String raw) {
+        if (raw == null || raw.isBlank()) {
+            return null;
+        }
+        try {
+            BigDecimal amount = new BigDecimal(raw.trim().replace("$", "").replace(",", ""));
+            return amount.stripTrailingZeros().scale() > 0 ? null : amount;
+        } catch (NumberFormatException exception) {
+            return null;
+        }
+    }
+
+    private static UUID parseAuctionId(CommandSourceStack source, String raw) {
+        try {
+            return UUID.fromString(raw);
+        } catch (IllegalArgumentException exception) {
+            source.sendFailure(Component.literal("Invalid auction ID. Use the UUID shown in /ah mine or admin inspect."));
+            return null;
+        }
+    }
+
+    private static UUID resolvePlayerId(CommandSourceStack source, String raw) {
+        if (raw == null || raw.isBlank()) {
+            source.sendFailure(Component.literal("Player name or UUID is required."));
+            return null;
+        }
+        try {
+            return UUID.fromString(raw);
+        } catch (IllegalArgumentException ignored) {
+        }
+        ServerPlayer online = source.getServer().getPlayerList().getPlayerByName(raw);
+        if (online != null) {
+            return online.getUUID();
+        }
+        source.sendFailure(Component.literal("Could not resolve player. Use an online player name or UUID."));
+        return null;
+    }
+
+    private static String playerName(CommandSourceStack source, UUID playerId) {
+        if (playerId == null) {
+            return "none";
+        }
+        ServerPlayer player = source.getServer().getPlayerList().getPlayer(playerId);
+        return player == null ? playerId.toString().substring(0, 8) : player.getName().getString();
+    }
+
+    private static String timeLeftText(AuctionItem item) {
+        java.time.Duration duration = java.time.Duration.between(java.time.LocalDateTime.now(), item.getDateOfEnd());
+        if (duration.isNegative() || duration.isZero()) {
+            return "ended";
+        }
+        long days = duration.toDays();
+        if (days > 0) {
+            return days + "d " + duration.toHoursPart() + "h left";
+        }
+        long hours = duration.toHours();
+        if (hours > 0) {
+            return hours + "h " + duration.toMinutesPart() + "m left";
+        }
+        return Math.max(1, duration.toMinutes()) + "m left";
     }
 
     private static void sendStatusLine(CommandSourceStack source, String label, String value, ChatFormatting valueColor) {
@@ -321,7 +576,7 @@ public class AUSCommands {
         return Component.literal("- ")
                 .withStyle(ChatFormatting.GRAY)
                 .append(Component.literal(record.getResult().name()).withStyle(resultColor))
-                .append(Component.literal(" $" + record.getAmount().toPlainString()).withStyle(ChatFormatting.GOLD))
+                .append(Component.literal(" " + UasMoneyFormatter.display(record.getAmount())).withStyle(ChatFormatting.GOLD))
                 .append(Component.literal(" bidder=" + record.getBidderId()).withStyle(ChatFormatting.GRAY))
                 .append(Component.literal(" account=" + record.getBidderAccountId().map(UUID::toString).orElse("(none)")).withStyle(ChatFormatting.GRAY))
                 .append(Component.literal(" at=" + formatDate(record.getTimestamp())).withStyle(ChatFormatting.GRAY))

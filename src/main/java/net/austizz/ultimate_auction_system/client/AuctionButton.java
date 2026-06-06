@@ -16,7 +16,8 @@ public class AuctionButton extends AbstractButton {
         GREEN,
         RED,
         DARK,
-        TAB_ACTIVE
+        TAB_ACTIVE,
+        CLAIMED
     }
 
     private final Consumer<AuctionButton> onPress;
@@ -60,8 +61,8 @@ public class AuctionButton extends AbstractButton {
 
         Font font = Minecraft.getInstance().font;
         String label = trimToWidth(font, getMessage().getString(), width - 10);
-        int color = active ? textColor() : 0xFF8E8E8E;
-        Component renderedLabel = style == Style.GREEN
+        int color = active ? textColor() : disabledTextColor();
+        Component renderedLabel = style == Style.GREEN || style == Style.CLAIMED
                 ? Component.literal(label).withStyle(ChatFormatting.BOLD)
                 : Component.literal(label);
         graphics.drawCenteredString(font, renderedLabel, x1 + width / 2, y1 + (height - 8) / 2, color);
@@ -69,6 +70,9 @@ public class AuctionButton extends AbstractButton {
 
     private int fillColor(boolean hovered) {
         if (!active) {
+            if (style == Style.CLAIMED) {
+                return 0xFF314135;
+            }
             return 0xFF2F2F2F;
         }
         return switch (style) {
@@ -76,6 +80,7 @@ public class AuctionButton extends AbstractButton {
             case RED -> hovered ? 0xFFFF6666 : 0xFFFF4545;
             case DARK -> hovered ? 0xFF4B4B4B : 0xFF2A2A2A;
             case TAB_ACTIVE -> hovered ? 0xFF777777 : 0xFF606060;
+            case CLAIMED -> hovered ? 0xFF516755 : 0xFF455A49;
             case GRAY -> hovered ? 0xFF747474 : 0xFF5B5B5B;
         };
     }
@@ -84,8 +89,13 @@ public class AuctionButton extends AbstractButton {
         return switch (style) {
             case GREEN -> 0xFFFFFFFF;
             case RED -> 0xFFFFFFFF;
+            case CLAIMED -> 0xFFE8FFE8;
             default -> 0xFFFFFFFF;
         };
+    }
+
+    private int disabledTextColor() {
+        return style == Style.CLAIMED ? 0xFF9DDBA2 : 0xFF8E8E8E;
     }
 
     private static String trimToWidth(Font font, String text, int maxWidth) {

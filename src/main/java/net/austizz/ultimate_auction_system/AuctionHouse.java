@@ -6,10 +6,12 @@ import net.austizz.ultimate_auction_system.banking.UasBankingResult;
 import net.austizz.ultimate_auction_system.banking.UasBankingService;
 import net.austizz.ultimate_auction_system.banking.UbsBankingService;
 import net.austizz.ultimate_auction_system.banking.UasAccountSnapshot;
+import net.austizz.ultimate_auction_system.banking.UasMoneyFormatter;
 import net.austizz.ultimate_auction_system.i18n.UasTranslations;
 import net.minecraft.ChatFormatting;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.core.registries.Registries;
+import net.minecraft.network.chat.ClickEvent;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.MutableComponent;
 import net.minecraft.resources.ResourceLocation;
@@ -44,6 +46,7 @@ public class AuctionHouse {
     private static final int ALERT_DURATION_MS = 5000;
 
     private final ConcurrentHashMap<UUID, AuctionItem> AuctionItems;
+    private final ConcurrentHashMap<UUID, PendingAuctionListing> pendingListings = new ConcurrentHashMap<>();
     private final UasBankingService bankingService;
     private final AuctionSavedData savedData;
     private final boolean mutationsBlocked;
@@ -152,7 +155,7 @@ public class AuctionHouse {
                     .append(UasTranslations.literal("Successfully listed ").withStyle(ChatFormatting.GRAY))
                     .append(Component.literal(item.getItem().getCount() + "x " + item.getItem().getHoverName().getString()).withStyle(ChatFormatting.AQUA))
                     .append(UasTranslations.literal(" for ").withStyle(ChatFormatting.GRAY))
-                    .append(Component.literal("$" + item.getStartingBidPrice()).withStyle(ChatFormatting.GREEN))
+                    .append(Component.literal(moneyLabel(item.getStartingBidPrice())).withStyle(ChatFormatting.GREEN))
                     .append(UasTranslations.literal(". Use /ah to view your listing!").withStyle(ChatFormatting.DARK_GRAY));
             player.sendSystemMessage(message, false);
         } catch (RuntimeException exception) {
@@ -168,6 +171,14 @@ public class AuctionHouse {
                                                          BigDecimal buyoutPrice,
                                                          long durationHours,
                                                          String description) {
+        return prepareAuctionFromMainHand(player, startingBidPrice, buyoutPrice, durationHours, description);
+    }
+
+    public AuctionActionResult prepareAuctionFromMainHand(ServerPlayer player,
+                                                          BigDecimal startingBidPrice,
+                                                          BigDecimal buyoutPrice,
+                                                          long durationHours,
+                                                          String description) {
         if (player == null) {
             return AuctionActionResult.fail("Only players can create auctions.");
         }
@@ -183,23 +194,20 @@ public class AuctionHouse {
             return validation;
         }
 
-        Optional<UUID> sellerAccountId = bankingService.getPrimaryAccountId(player.getUUID());
-        if (sellerAccountId.isEmpty()) {
-            return AuctionActionResult.fail("UAS could not find your UBS primary account.");
-        }
-
-        AuctionActionResult feeResult = chargeListingFee(player, sellerAccountId.get(), startingBidPrice);
-        if (!feeResult.success()) {
-            return feeResult;
-        }
-
-        ItemStack escrowStack = itemInHand.copy();
-        if (!takeEscrowFromSeller(player, escrowStack)) {
-            refundListingFee(sellerAccountId.get(), startingBidPrice, "UAS_LISTING_FEE_REFUND:MAIN_HAND");
-            return AuctionActionResult.fail("The item in your main hand no longer matches this listing.");
-        }
-
-        return activateAuction(player, escrowStack, description, end, now, startingBidPrice, buyoutPrice, sellerAccountId.get(), "SELLER_MAIN_HAND");
+        PendingAuctionListing pending = new PendingAuctionListing(
+                player.getUUID(),
+                PendingAuctionListing.MAIN_HAND_SLOT,
+                itemInHand,
+                startingBidPrice,
+                buyoutPrice,
+                end,
+                description,
+                now,
+                now.plusSeconds(Config.pendingListingConfirmationSeconds),
+                "Main Hand"
+        );
+        pendingListings.put(player.getUUID(), pending);
+        return AuctionActionResult.ok(pendingPreviewMessage(pending));
     }
 
     public AuctionActionResult createAuctionFromInventorySlot(ServerPlayer player,
@@ -208,8 +216,17 @@ public class AuctionHouse {
                                                               BigDecimal buyoutPrice,
                                                               long durationHours,
                                                               String description) {
+        return prepareAuctionFromInventorySlot(player, slot, startingBidPrice, buyoutPrice, durationHours, description);
+    }
+
+    public AuctionActionResult prepareAuctionFromInventorySlot(ServerPlayer player,
+                                                               int slot,
+                                                               BigDecimal startingBidPrice,
+                                                               BigDecimal buyoutPrice,
+                                                               long durationHours,
+                                                               String description) {
         LocalDateTime now = LocalDateTime.now();
-        return createAuctionFromInventorySlot(player, slot, startingBidPrice, buyoutPrice, now.plusHours(Math.max(1L, durationHours)), description);
+        return prepareAuctionFromInventorySlot(player, slot, startingBidPrice, buyoutPrice, now.plusHours(Math.max(1L, durationHours)), description);
     }
 
     public AuctionActionResult createAuctionFromInventorySlot(ServerPlayer player,
@@ -218,6 +235,15 @@ public class AuctionHouse {
                                                               BigDecimal buyoutPrice,
                                                               LocalDateTime end,
                                                               String description) {
+        return prepareAuctionFromInventorySlot(player, slot, startingBidPrice, buyoutPrice, end, description);
+    }
+
+    public AuctionActionResult prepareAuctionFromInventorySlot(ServerPlayer player,
+                                                               int slot,
+                                                               BigDecimal startingBidPrice,
+                                                               BigDecimal buyoutPrice,
+                                                               LocalDateTime end,
+                                                               String description) {
         if (player == null) {
             return AuctionActionResult.fail("Only players can create auctions.");
         }
@@ -235,20 +261,114 @@ public class AuctionHouse {
             return validation;
         }
 
-        Optional<UUID> sellerAccountId = bankingService.getPrimaryAccountId(player.getUUID());
-        if (sellerAccountId.isEmpty()) {
-            return AuctionActionResult.fail("UAS could not find your UBS primary account.");
+        PendingAuctionListing pending = new PendingAuctionListing(
+                player.getUUID(),
+                slot,
+                stack,
+                startingBidPrice,
+                buyoutPrice,
+                end,
+                description,
+                now,
+                now.plusSeconds(Config.pendingListingConfirmationSeconds),
+                "Inventory Slot " + (slot + 1)
+        );
+        pendingListings.put(player.getUUID(), pending);
+        return AuctionActionResult.ok(pendingPreviewMessage(pending));
+    }
+
+    public AuctionActionResult confirmPendingAuction(ServerPlayer player) {
+        if (player == null) {
+            return AuctionActionResult.fail("Only players can create auctions.");
+        }
+        PendingAuctionListing pending = pendingListings.get(player.getUUID());
+        if (pending == null) {
+            return AuctionActionResult.fail("You do not have a pending auction listing to confirm.");
+        }
+        LocalDateTime now = LocalDateTime.now();
+        if (pending.isExpired(now)) {
+            pendingListings.remove(player.getUUID());
+            return AuctionActionResult.fail("Your pending auction listing expired. Start the listing again.");
+        }
+        if (!pending.stillMatches(player)) {
+            pendingListings.remove(player.getUUID());
+            return AuctionActionResult.fail("The item no longer matches the pending auction listing. Start the listing again.");
         }
 
-        AuctionActionResult feeResult = chargeListingFee(player, sellerAccountId.get(), startingBidPrice);
+        ItemStack currentStack = pending.currentStack(player);
+        AuctionActionResult validation = validateListingRequest(player, currentStack, pending.startingBid(), pending.buyoutPrice(), pending.endsAt());
+        if (!validation.success()) {
+            return validation;
+        }
+
+        Optional<UUID> sellerAccountId = bankingService.getPrimaryAccountId(player.getUUID());
+        if (sellerAccountId.isEmpty()) {
+            return AuctionActionResult.fail(accountSetupMessage(player.getUUID()));
+        }
+
+        UUID auctionId = UUID.randomUUID();
+        AuctionActionResult feeResult = chargeListingFee(player, sellerAccountId.get(), pending.startingBid(), "UAS_LISTING_FEE:" + auctionId);
         if (!feeResult.success()) {
             return feeResult;
         }
 
-        ItemStack escrowStack = stack.copy();
-        player.getInventory().setItem(slot, ItemStack.EMPTY);
-        player.getInventory().setChanged();
-        return activateAuction(player, escrowStack, description, end, now, startingBidPrice, buyoutPrice, sellerAccountId.get(), "SELLER_INVENTORY_SLOT_" + slot);
+        ItemStack escrowStack = pending.itemSnapshot();
+        if (pending.slot() == PendingAuctionListing.MAIN_HAND_SLOT) {
+            if (!takeEscrowFromSeller(player, escrowStack)) {
+                refundListingFee(sellerAccountId.get(), pending.startingBid(), "UAS_LISTING_FEE_REFUND:" + auctionId);
+                pendingListings.remove(player.getUUID());
+                return AuctionActionResult.fail("The item in your main hand no longer matches this listing.");
+            }
+        } else {
+            ItemStack slotStack = player.getInventory().getItem(pending.slot());
+            if (slotStack.isEmpty()
+                    || slotStack.getCount() < escrowStack.getCount()
+                    || !ItemStack.isSameItemSameComponents(slotStack, escrowStack)) {
+                refundListingFee(sellerAccountId.get(), pending.startingBid(), "UAS_LISTING_FEE_REFUND:" + auctionId);
+                pendingListings.remove(player.getUUID());
+                return AuctionActionResult.fail("The selected inventory item no longer matches this listing.");
+            }
+            player.getInventory().setItem(pending.slot(), ItemStack.EMPTY);
+            player.getInventory().setChanged();
+        }
+
+        pendingListings.remove(player.getUUID());
+        return activateAuction(
+                auctionId,
+                player,
+                escrowStack,
+                pending.description(),
+                pending.endsAt(),
+                now,
+                pending.startingBid(),
+                pending.buyoutPrice(),
+                sellerAccountId.get(),
+                pending.slot() == PendingAuctionListing.MAIN_HAND_SLOT ? "SELLER_MAIN_HAND" : "SELLER_INVENTORY_SLOT_" + pending.slot()
+        );
+    }
+
+    public AuctionActionResult discardPendingAuction(ServerPlayer player) {
+        if (player == null) {
+            return AuctionActionResult.fail("Only players can discard auction listings.");
+        }
+        PendingAuctionListing removed = pendingListings.remove(player.getUUID());
+        return removed == null
+                ? AuctionActionResult.fail("You do not have a pending auction listing to discard.")
+                : AuctionActionResult.ok("Pending auction listing discarded.");
+    }
+
+    public Optional<AuctionListingPreview> getPendingListingPreview(UUID playerId) {
+        if (playerId == null) {
+            return Optional.empty();
+        }
+        pruneExpiredPendingListings();
+        PendingAuctionListing pending = pendingListings.get(playerId);
+        return pending == null ? Optional.empty() : Optional.of(pending.toPreview());
+    }
+
+    public void pruneExpiredPendingListings() {
+        LocalDateTime now = LocalDateTime.now();
+        pendingListings.entrySet().removeIf(entry -> entry.getValue() == null || entry.getValue().isExpired(now));
     }
 
     public AuctionActionResult placeBidWithEscrow(ServerPlayer bidder, UUID auctionId, BigDecimal amount) {
@@ -287,7 +407,7 @@ public class AuctionHouse {
             BigDecimal safeAmount = safeMoney(amount);
             BigDecimal minimum = minimumAcceptedBid(item);
             if (safeAmount.compareTo(minimum) < 0) {
-                return AuctionActionResult.fail("Bid must be at least $" + minimum.toPlainString() + ".");
+                return AuctionActionResult.fail("Bid must be at least " + moneyLabel(minimum) + ".");
             }
 
             Optional<UUID> bidderAccountId = bankingService.getPrimaryAccountId(bidderId);
@@ -377,6 +497,10 @@ public class AuctionHouse {
             if (item.getHighestBidderId() != null) {
                 return AuctionActionResult.fail("You cannot cancel an auction after bids are placed.");
             }
+            AuctionActionResult cancellationFee = chargeCancellationFee(seller, item);
+            if (!cancellationFee.success()) {
+                return cancellationFee;
+            }
             if (!item.transitionTo(AuctionState.CANCELLED, "seller cancelled auction with no bids")) {
                 return AuctionActionResult.fail("Auction could not be cancelled.");
             }
@@ -384,6 +508,47 @@ public class AuctionHouse {
             markChanged("Auction storage marked dirty after auction cancellation.");
             notifyAuctionCancelled(item, seller.getUUID());
             return AuctionActionResult.ok("Auction cancelled and item returned.");
+        }
+    }
+
+    public AuctionActionResult adminForceCancel(ServerPlayer admin, UUID auctionId, AuctionDeliverySavedData deliveryData) {
+        if (admin == null) {
+            return AuctionActionResult.fail("Only admins can force-cancel auctions.");
+        }
+        if (!admin.hasPermissions(Config.adminStatusPermissionLevel)) {
+            return AuctionActionResult.fail("You do not have permission to force-cancel auctions.");
+        }
+        AuctionItem item = getAuctionItem(auctionId);
+        if (item == null) {
+            return AuctionActionResult.fail("Auction not found.");
+        }
+        synchronized (item) {
+            if (item.getState() == AuctionState.CLAIMED || item.getState() == AuctionState.CANCELLED) {
+                return AuctionActionResult.fail("Auction has already been claimed or cancelled.");
+            }
+
+            UUID winnerAccountId = item.getWinningBidRecord()
+                    .flatMap(AuctionBidRecord::getBidderAccountId)
+                    .orElse(null);
+            UUID winnerId = item.getHighestBidderId();
+            if (winnerId != null && winnerAccountId != null && item.getHighestBid().compareTo(BigDecimal.ZERO) > 0) {
+                UasBankingResult refund = bankingService.deposit(winnerAccountId, item.getHighestBid(), "UAS_ADMIN_FORCE_CANCEL_REFUND:" + item.getAuctionId());
+                if (!refund.success()) {
+                    return AuctionActionResult.fail("Could not refund the highest bid before force-cancelling: " + refund.reason());
+                }
+            }
+
+            if (!item.transitionTo(AuctionState.CANCELLED, "admin force-cancelled by " + admin.getGameProfile().getName())) {
+                return AuctionActionResult.fail("Auction could not be force-cancelled.");
+            }
+            giveOrDeliver(item.getPlayerId(), item.getItem(), deliveryData, auctionId, "Admin force-cancel return");
+            markChanged("Auction storage marked dirty after admin force-cancel.");
+            sendAuctionAlert(item.getPlayerId(), "Auction Force-Cancelled", itemName(item) + " was force-cancelled by an admin and returned.", "WARNING");
+            if (winnerId != null) {
+                sendAuctionAlert(winnerId, "Auction Force-Cancelled", "Your bid on " + itemName(item) + " was refunded after an admin force-cancel.", "WARNING");
+            }
+            alertSubscribers(item, exclusions(item.getPlayerId(), winnerId), "Auction Force-Cancelled", itemName(item) + " was force-cancelled by an admin.", "WARNING");
+            return AuctionActionResult.ok("Auction force-cancelled and item returned.");
         }
     }
 
@@ -482,7 +647,7 @@ public class AuctionHouse {
 
     private void notifyBidPlaced(AuctionItem item, UUID bidderId, UUID previousBidderId, BigDecimal amount) {
         String itemName = itemName(item);
-        String bidAmount = "$" + moneyLabel(amount);
+        String bidAmount = moneyLabel(amount);
         String bidderName = playerName(bidderId);
         UUID sellerId = item.getPlayerId();
 
@@ -499,7 +664,7 @@ public class AuctionHouse {
 
     private void notifyAuctionSold(AuctionItem item, UUID buyerId, BigDecimal amount) {
         String itemName = itemName(item);
-        String saleAmount = "$" + moneyLabel(amount);
+        String saleAmount = moneyLabel(amount);
         String buyerName = playerName(buyerId);
         UUID sellerId = item.getPlayerId();
 
@@ -591,7 +756,7 @@ public class AuctionHouse {
     }
 
     private String moneyLabel(BigDecimal amount) {
-        return safeMoney(amount).stripTrailingZeros().toPlainString();
+        return UasMoneyFormatter.display(safeMoney(amount));
     }
 
     public AuctionHouseSnapshot buildSnapshot(ServerPlayer viewer,
@@ -599,13 +764,24 @@ public class AuctionHouse {
                                                AuctionUiQuery query,
                                                String message,
                                                boolean success) {
+        return buildSnapshot(viewer, deliveryData, query, message, success, false);
+    }
+
+    public AuctionHouseSnapshot buildSnapshot(ServerPlayer viewer,
+                                               AuctionDeliverySavedData deliveryData,
+                                               AuctionUiQuery query,
+                                               String message,
+                                               boolean success,
+                                               boolean adminMode) {
+        pruneExpiredPendingListings();
         UUID viewerId = viewer == null ? null : viewer.getUUID();
+        boolean resolvedAdminMode = adminMode && viewer != null && viewer.hasPermissions(Config.adminStatusPermissionLevel);
         AuctionUiQuery safeQuery = query == null ? AuctionUiQuery.defaults() : query;
         List<AuctionListingSummary> all = getAuctionItems().values().stream()
                 .map(item -> toSummary(item, viewer))
                 .toList();
         List<AuctionListingSummary> browse = all.stream()
-                .filter(summary -> summary.state() == AuctionState.ACTIVE)
+                .filter(summary -> resolvedAdminMode || summary.state() == AuctionState.ACTIVE)
                 .filter(summary -> matchesQuery(summary, safeQuery))
                 .sorted(comparatorFor(safeQuery.safeSort()))
                 .limit(120)
@@ -628,7 +804,52 @@ public class AuctionHouse {
         List<AuctionDeliveryEntry> deliveries = viewerId == null || deliveryData == null
                 ? List.of()
                 : deliveryData.getDeliveries(viewerId);
-        return new AuctionHouseSnapshot(browse, myBids, myAuctions, deliveries, primaryAccount, Config.listingFeeRate, message == null ? "" : message, success);
+        AuctionListingPreview pendingListing = viewerId == null
+                ? null
+                : getPendingListingPreview(viewerId).orElse(null);
+        return new AuctionHouseSnapshot(browse, myBids, myAuctions, deliveries, primaryAccount, pendingListing, Config.listingFeeRate, message == null ? "" : message, success, resolvedAdminMode);
+    }
+
+    public List<AuctionItem> getSellerListings(UUID sellerId, AuctionSellerFilter filter) {
+        AuctionSellerFilter safeFilter = filter == null ? AuctionSellerFilter.ALL : filter;
+        if (sellerId == null) {
+            return List.of();
+        }
+        return AuctionItems.values().stream()
+                .filter(item -> item != null && sellerId.equals(item.getPlayerId()))
+                .filter(safeFilter::matches)
+                .sorted(Comparator.comparing(AuctionItem::getUpdatedAt).reversed())
+                .toList();
+    }
+
+    public SellerAuctionStats getSellerStats(UUID sellerId) {
+        if (sellerId == null) {
+            return new SellerAuctionStats(null, 0, 0, 0, 0, 0, Config.maxActiveListingsPerPlayer);
+        }
+        int active = 0;
+        int sold = 0;
+        int cancelled = 0;
+        int expired = 0;
+        int total = 0;
+        for (AuctionItem item : AuctionItems.values()) {
+            if (item == null || !sellerId.equals(item.getPlayerId())) {
+                continue;
+            }
+            total++;
+            if (AuctionSellerFilter.ACTIVE.matches(item)) {
+                active++;
+            }
+            if (AuctionSellerFilter.SOLD.matches(item)) {
+                sold++;
+            }
+            if (AuctionSellerFilter.CANCELLED.matches(item)) {
+                cancelled++;
+            }
+            if (AuctionSellerFilter.EXPIRED.matches(item)) {
+                expired++;
+            }
+        }
+        return new SellerAuctionStats(sellerId, active, sold, cancelled, expired, total, Config.maxActiveListingsPerPlayer);
     }
 
     public void removeAuctionItem(AuctionItem item) {
@@ -760,8 +981,68 @@ public class AuctionHouse {
         }
     }
 
+    private void sendAuctionCreatedMessage(ServerPlayer player, AuctionItem item) {
+        if (player == null || item == null) {
+            return;
+        }
+        MutableComponent message = Component.empty()
+                .append(Component.literal("Auction created: ").withStyle(ChatFormatting.GREEN))
+                .append(Component.literal(item.getAuctionId().toString()).withStyle(ChatFormatting.AQUA))
+                .append(Component.literal(" "))
+                .append(Component.literal("[Open /ah]").withStyle(style -> style
+                        .withColor(ChatFormatting.YELLOW)
+                        .withClickEvent(new ClickEvent(ClickEvent.Action.RUN_COMMAND, "/ah"))))
+                .append(Component.literal(" "))
+                .append(Component.literal("[My Auctions]").withStyle(style -> style
+                        .withColor(ChatFormatting.GOLD)
+                        .withClickEvent(new ClickEvent(ClickEvent.Action.RUN_COMMAND, "/ah mine active"))));
+        player.sendSystemMessage(message, false);
+    }
+
+    private String pendingPreviewMessage(PendingAuctionListing pending) {
+        AuctionListingPreview preview = pending.toPreview();
+        String buyout = preview.buyoutPrice().compareTo(BigDecimal.ZERO) > 0
+                ? moneyLabel(preview.buyoutPrice())
+                : "none";
+        return "Pending auction created. Confirm within "
+                + Config.pendingListingConfirmationSeconds
+                + "s: "
+                + preview.itemCount()
+                + "x "
+                + preview.itemName()
+                + ", start "
+                + moneyLabel(preview.startingBid())
+                + ", buyout "
+                + buyout
+                + ", duration "
+                + preview.durationHours()
+                + "h"
+                + ", fee "
+                + moneyLabel(preview.listingFee())
+                + ".";
+    }
+
     private MutableComponent listingError(String message) {
         return UasTranslations.literal(message).withStyle(ChatFormatting.RED);
+    }
+
+    private String accountSetupMessage(UUID playerId) {
+        if (playerId != null && bankingService.playerHasFrozenAccount(playerId)) {
+            return "Your UBS account is frozen. Open UBS or ask an admin to resolve the frozen account before creating auctions.";
+        }
+        if (playerId != null && bankingService.playerHasAnyAccount(playerId)) {
+            return "UAS could not find a usable UBS primary account. Open UBS and select a primary account, then try again.";
+        }
+        return "UAS could not find your UBS primary account. Open UBS and create or select a usable primary account, then try again.";
+    }
+
+    private String feeFailureMessage(String feeLabel, BigDecimal required, UasBankingResult result) {
+        String current = result == null ? "unknown" : moneyLabel(result.balanceAfter());
+        String reason = result == null ? "UBS returned no result" : result.reason();
+        return "Your UBS primary account cannot pay the " + feeLabel
+                + ". Required: " + moneyLabel(required)
+                + ", available: " + current
+                + ". UBS says: " + reason;
     }
 
     private boolean takeEscrowFromSeller(ServerPlayer player, ItemStack escrowStack) {
@@ -869,7 +1150,8 @@ public class AuctionHouse {
 
     }
 
-    private AuctionActionResult activateAuction(ServerPlayer player,
+    private AuctionActionResult activateAuction(UUID auctionId,
+                                                ServerPlayer player,
                                                 ItemStack escrowStack,
                                                 String description,
                                                 LocalDateTime end,
@@ -878,7 +1160,7 @@ public class AuctionHouse {
                                                 BigDecimal buyoutPrice,
                                                 UUID sellerAccountId,
                                                 String escrowSource) {
-        AuctionItem item = new AuctionItem(escrowStack, description, end, start, startingBidPrice, player.getUUID(), sellerAccountId, buyoutPrice);
+        AuctionItem item = new AuctionItem(auctionId, escrowStack, description, end, start, startingBidPrice, player.getUUID(), sellerAccountId, buyoutPrice);
         item.markEscrowed(escrowSource);
         Optional<String> activationError = item.validateForActivation();
         if (activationError.isPresent()) {
@@ -889,7 +1171,8 @@ public class AuctionHouse {
         attachMutationTracking(item);
         AuctionItems.put(item.getAuctionId(), item);
         markChanged("Auction storage marked dirty after listing creation.");
-        return AuctionActionResult.ok("Auction created.");
+        sendAuctionCreatedMessage(player, item);
+        return AuctionActionResult.ok("Auction created: " + item.getAuctionId());
     }
 
     private AuctionActionResult validateListingRequest(ServerPlayer player,
@@ -907,15 +1190,24 @@ public class AuctionHouse {
         if (startingBid.compareTo(BigDecimal.ZERO) < 0) {
             return AuctionActionResult.fail("Starting bid must be zero or higher.");
         }
+        if (hasFractionalDollars(startingBid)) {
+            return AuctionActionResult.fail("Prices must use whole dollars.");
+        }
         BigDecimal normalizedBuyout = buyoutPrice == null ? BigDecimal.ZERO : buyoutPrice;
+        if (hasFractionalDollars(normalizedBuyout)) {
+            return AuctionActionResult.fail("Prices must use whole dollars.");
+        }
         if (normalizedBuyout.compareTo(BigDecimal.ZERO) > 0 && normalizedBuyout.compareTo(startingBid) < 0) {
             return AuctionActionResult.fail("Buyout price must be at least the starting bid.");
         }
         if (end == null || !end.isAfter(LocalDateTime.now())) {
             return AuctionActionResult.fail("Auction duration must be in the future.");
         }
-        long hours = Duration.between(LocalDateTime.now(), end).toHours();
-        if (hours > Config.maxAuctionDurationHours) {
+        Duration requestedDuration = Duration.between(LocalDateTime.now(), end).plusSeconds(1);
+        if (requestedDuration.compareTo(Duration.ofHours(Config.minAuctionDurationHours)) < 0) {
+            return AuctionActionResult.fail("Auction duration must be at least " + Config.minAuctionDurationHours + " hours.");
+        }
+        if (requestedDuration.compareTo(Duration.ofHours(Config.maxAuctionDurationHours)) > 0) {
             return AuctionActionResult.fail("Auction duration cannot be longer than " + Config.maxAuctionDurationHours + " hours.");
         }
         long activeListings = AuctionItems.values().stream()
@@ -930,9 +1222,14 @@ public class AuctionHouse {
         }
         Optional<UUID> sellerAccountId = bankingService.getPrimaryAccountId(player.getUUID());
         if (Config.requireUbsForListing && sellerAccountId.isEmpty()) {
-            return AuctionActionResult.fail("UAS could not find your UBS primary account.");
+            return AuctionActionResult.fail(accountSetupMessage(player.getUUID()));
         }
         if (sellerAccountId.isPresent()) {
+            Optional<UasAccountSnapshot> snapshot = bankingService.getAccountSnapshot(sellerAccountId.get());
+            if (snapshot.isPresent() && snapshot.get().frozen()) {
+                String reason = snapshot.get().frozenReason().isBlank() ? "no reason provided" : snapshot.get().frozenReason();
+                return AuctionActionResult.fail("Your UBS primary account is frozen and cannot list auctions right now: " + reason);
+            }
             UasBankingResult canReceive = bankingService.validateCanReceive(sellerAccountId.get());
             if (!canReceive.success()) {
                 return AuctionActionResult.fail("Your UBS primary account cannot receive auction payouts right now: " + canReceive.reason());
@@ -941,22 +1238,36 @@ public class AuctionHouse {
             if (listingFee.compareTo(BigDecimal.ZERO) > 0) {
                 UasBankingResult canPayFee = bankingService.validateCanSend(sellerAccountId.get(), listingFee);
                 if (!canPayFee.success()) {
-                    return AuctionActionResult.fail("Your UBS primary account cannot pay the listing fee: " + canPayFee.reason());
+                    return AuctionActionResult.fail(feeFailureMessage("listing fee", listingFee, canPayFee));
                 }
             }
         }
         return AuctionActionResult.ok("");
     }
 
-    private AuctionActionResult chargeListingFee(ServerPlayer player, UUID sellerAccountId, BigDecimal startingBidPrice) {
+    private AuctionActionResult chargeListingFee(ServerPlayer player, UUID sellerAccountId, BigDecimal startingBidPrice, String reference) {
         BigDecimal listingFee = Config.calculateListingFee(startingBidPrice);
         if (listingFee.compareTo(BigDecimal.ZERO) <= 0) {
             return AuctionActionResult.ok("");
         }
-        UasBankingResult result = bankingService.withdraw(sellerAccountId, listingFee, "UAS_LISTING_FEE:" + player.getUUID());
+        UasBankingResult result = bankingService.withdraw(sellerAccountId, listingFee, reference);
         return result.success()
                 ? AuctionActionResult.ok("")
-                : AuctionActionResult.fail("Your UBS primary account cannot pay the listing fee: " + result.reason());
+                : AuctionActionResult.fail(feeFailureMessage("listing fee", listingFee, result));
+    }
+
+    private AuctionActionResult chargeCancellationFee(ServerPlayer seller, AuctionItem item) {
+        BigDecimal cancellationFee = Config.calculateCancellationFee(item == null ? BigDecimal.ZERO : item.getStartingBidPrice());
+        if (cancellationFee.compareTo(BigDecimal.ZERO) <= 0) {
+            return AuctionActionResult.ok("");
+        }
+        if (item == null || item.getSellerAccountId() == null) {
+            return AuctionActionResult.fail("Your UBS primary account could not be found for the cancellation fee.");
+        }
+        UasBankingResult result = bankingService.withdraw(item.getSellerAccountId(), cancellationFee, "UAS_CANCELLATION_FEE:" + item.getAuctionId());
+        return result.success()
+                ? AuctionActionResult.ok("")
+                : AuctionActionResult.fail(feeFailureMessage("cancellation fee", cancellationFee, result));
     }
 
     private void refundListingFee(UUID sellerAccountId, BigDecimal startingBidPrice, String reference) {
@@ -1010,6 +1321,25 @@ public class AuctionHouse {
             }
         }
         player.getInventory().setChanged();
+    }
+
+    private void giveOrDeliver(UUID playerId,
+                               ItemStack stack,
+                               AuctionDeliverySavedData deliveryData,
+                               UUID auctionId,
+                               String reason) {
+        if (playerId == null || stack == null || stack.isEmpty()) {
+            return;
+        }
+        MinecraftServer server = ServerLifecycleHooks.getCurrentServer();
+        ServerPlayer onlinePlayer = server == null ? null : server.getPlayerList().getPlayer(playerId);
+        if (onlinePlayer != null) {
+            giveOrDeliver(onlinePlayer, stack, deliveryData, auctionId, reason);
+            return;
+        }
+        if (deliveryData != null) {
+            deliveryData.addDelivery(playerId, auctionId, stack, reason);
+        }
     }
 
     private boolean isBannedFromAuctions(ItemStack stack) {
@@ -1142,5 +1472,9 @@ public class AuctionHouse {
 
     private BigDecimal safeMoney(BigDecimal amount) {
         return amount == null ? BigDecimal.ZERO : amount;
+    }
+
+    private boolean hasFractionalDollars(BigDecimal amount) {
+        return amount != null && amount.stripTrailingZeros().scale() > 0;
     }
 }

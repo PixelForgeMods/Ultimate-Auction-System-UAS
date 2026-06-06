@@ -55,8 +55,20 @@ public class AuctionItem {
                        UUID playerId,
                        UUID sellerAccountId,
                        BigDecimal buyoutPrice) {
+        this(UUID.randomUUID(), item, description, dateOfEnd, dateOfStart, startingBidPrice, playerId, sellerAccountId, buyoutPrice);
+    }
+
+    AuctionItem(UUID auctionId,
+                ItemStack item,
+                String description,
+                LocalDateTime dateOfEnd,
+                LocalDateTime dateOfStart,
+                BigDecimal startingBidPrice,
+                UUID playerId,
+                UUID sellerAccountId,
+                BigDecimal buyoutPrice) {
         this(
-                UUID.randomUUID(),
+                auctionId,
                 item,
                 description,
                 dateOfEnd,
