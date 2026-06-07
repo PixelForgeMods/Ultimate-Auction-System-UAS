@@ -46,6 +46,8 @@ The browser filters run server-side before listings are sent to the client. Text
 
 Bid and raise-bid modals use a two-step confirmation flow. The first click refreshes the player's UBS primary account snapshot and shows the selected account, current balance, bid amount, expected remaining balance, and any unavailable/frozen/insufficient-funds warning. The second click submits to the same server-side bid service used by `/ah bid`.
 
+Auction events use the UBS Alerts API and also send clickable chat companions to online players. Outbid, won, sold, expired, cancelled, settlement failed/recovered, payout, and refund-related messages include the auction ID plus relevant shortcuts such as `[Bid]`, `[Claim]`, `[Open /ah]`, or `[My Auctions]`.
+
 ## Admin Commands
 
 Show dependency, storage, config, and auction health:
