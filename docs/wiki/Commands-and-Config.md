@@ -40,6 +40,10 @@ Create an auction from the item in your main hand:
 
 Most creation flows should use the GUI because it supports buyout, expiry selection, inventory item selection, listing-fee preview, and validation.
 
+## Auction House GUI Filters
+
+The browser filters run server-side before listings are sent to the client. Text search matches item display names, item registry IDs such as `minecraft:diamond_sword`, bundled item names/registry IDs, seller names, seller UUIDs, descriptions, and auction IDs. Price filters match either the current bid or a positive buyout price, and the time filter limits results to auctions ending within the selected window.
+
 ## Admin Commands
 
 Show dependency, storage, config, and auction health:

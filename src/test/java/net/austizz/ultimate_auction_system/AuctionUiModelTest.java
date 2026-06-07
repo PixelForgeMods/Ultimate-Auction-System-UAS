@@ -144,6 +144,52 @@ class AuctionUiModelTest {
     }
 
     @Test
+    void priceRangeMatchesCurrentBidOrPositiveBuyout() {
+        assertTrue(AuctionHouse.matchesPriceRange(
+                new BigDecimal("25"),
+                BigDecimal.ZERO,
+                new BigDecimal("20"),
+                new BigDecimal("30")
+        ));
+
+        assertTrue(AuctionHouse.matchesPriceRange(
+                new BigDecimal("10"),
+                new BigDecimal("75"),
+                new BigDecimal("70"),
+                new BigDecimal("80")
+        ));
+
+        assertFalse(AuctionHouse.matchesPriceRange(
+                new BigDecimal("10"),
+                BigDecimal.ZERO,
+                new BigDecimal("70"),
+                new BigDecimal("80")
+        ));
+    }
+
+    @Test
+    void priceRangeSupportsOpenEndedBounds() {
+        assertTrue(AuctionHouse.matchesPriceRange(
+                new BigDecimal("50"),
+                BigDecimal.ZERO,
+                new BigDecimal("25"),
+                BigDecimal.ZERO
+        ));
+        assertTrue(AuctionHouse.matchesPriceRange(
+                new BigDecimal("50"),
+                BigDecimal.ZERO,
+                BigDecimal.ZERO,
+                new BigDecimal("75")
+        ));
+        assertFalse(AuctionHouse.matchesPriceRange(
+                new BigDecimal("100"),
+                BigDecimal.ZERO,
+                BigDecimal.ZERO,
+                new BigDecimal("75")
+        ));
+    }
+
+    @Test
     void fakeBankingServiceRecordsUiAlerts() {
         FakeUasBankingService banking = new FakeUasBankingService();
         UUID playerId = UUID.randomUUID();

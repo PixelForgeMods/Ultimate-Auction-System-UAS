@@ -2244,20 +2244,12 @@ public class AuctionHouse {
         }
         String search = query.safeSearch().toLowerCase(Locale.ROOT);
         if (!search.isEmpty()) {
-            String contentNames = summary.contents().stream()
-                    .map(stack -> stack.getHoverName().getString())
-                    .reduce("", (left, right) -> left + " " + right);
-            String haystack = (summary.itemName() + " " + contentNames + " " + summary.sellerName() + " " + summary.description()).toLowerCase(Locale.ROOT);
+            String haystack = searchHaystack(summary).toLowerCase(Locale.ROOT);
             if (!haystack.contains(search)) {
                 return false;
             }
         }
-        if (query.minimumPrice() != null && query.minimumPrice().compareTo(BigDecimal.ZERO) > 0
-                && summary.currentBid().compareTo(query.minimumPrice()) < 0) {
-            return false;
-        }
-        if (query.maximumPrice() != null && query.maximumPrice().compareTo(BigDecimal.ZERO) > 0
-                && summary.currentBid().compareTo(query.maximumPrice()) > 0) {
+        if (!matchesPriceRange(summary.currentBid(), summary.buyoutPrice(), query.minimumPrice(), query.maximumPrice())) {
             return false;
         }
         if (query.maximumHoursLeft() > 0) {
@@ -2269,12 +2261,68 @@ public class AuctionHouse {
         return true;
     }
 
+    private String searchHaystack(AuctionListingSummary summary) {
+        StringBuilder haystack = new StringBuilder()
+                .append(safeSearchToken(summary.itemName())).append(' ')
+                .append(safeSearchToken(summary.sellerName())).append(' ')
+                .append(summary.sellerId() == null ? "" : summary.sellerId()).append(' ')
+                .append(summary.auctionId() == null ? "" : summary.auctionId()).append(' ')
+                .append(safeSearchToken(summary.description()));
+        for (ItemStack stack : summary.contents()) {
+            if (stack == null || stack.isEmpty()) {
+                continue;
+            }
+            haystack.append(' ')
+                    .append(safeSearchToken(stack.getHoverName().getString()))
+                    .append(' ')
+                    .append(itemRegistryId(stack));
+        }
+        return haystack.toString();
+    }
+
+    private String safeSearchToken(String value) {
+        return value == null ? "" : value;
+    }
+
+    static boolean matchesPriceRange(BigDecimal currentBid,
+                                     BigDecimal buyoutPrice,
+                                     BigDecimal minimumPrice,
+                                     BigDecimal maximumPrice) {
+        BigDecimal min = minimumPrice == null ? BigDecimal.ZERO : minimumPrice;
+        BigDecimal max = maximumPrice == null ? BigDecimal.ZERO : maximumPrice;
+        if (min.compareTo(BigDecimal.ZERO) <= 0 && max.compareTo(BigDecimal.ZERO) <= 0) {
+            return true;
+        }
+        List<BigDecimal> candidates = new ArrayList<>();
+        candidates.add(safeMoney(currentBid));
+        BigDecimal safeBuyout = safeMoney(buyoutPrice);
+        if (safeBuyout.compareTo(BigDecimal.ZERO) > 0) {
+            candidates.add(safeBuyout);
+        }
+        for (BigDecimal candidate : candidates) {
+            boolean aboveMin = min.compareTo(BigDecimal.ZERO) <= 0 || candidate.compareTo(min) >= 0;
+            boolean belowMax = max.compareTo(BigDecimal.ZERO) <= 0 || candidate.compareTo(max) <= 0;
+            if (aboveMin && belowMax) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     private String itemModId(ItemStack stack) {
         if (stack == null || stack.isEmpty()) {
             return "";
         }
         ResourceLocation itemId = BuiltInRegistries.ITEM.getKey(stack.getItem());
         return itemId == null ? "" : itemId.getNamespace().toLowerCase(Locale.ROOT);
+    }
+
+    private String itemRegistryId(ItemStack stack) {
+        if (stack == null || stack.isEmpty()) {
+            return "";
+        }
+        ResourceLocation itemId = BuiltInRegistries.ITEM.getKey(stack.getItem());
+        return itemId == null ? "" : itemId.toString().toLowerCase(Locale.ROOT);
     }
 
     private String modDisplayName(String modId) {
@@ -2356,7 +2404,7 @@ public class AuctionHouse {
                 .toList();
     }
 
-    private BigDecimal safeMoney(BigDecimal amount) {
+    private static BigDecimal safeMoney(BigDecimal amount) {
         return amount == null ? BigDecimal.ZERO : amount;
     }
 
