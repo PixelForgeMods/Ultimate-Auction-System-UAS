@@ -75,6 +75,7 @@ Fix:
 - Run `/uas admin inspect <auctionId>` to see state and bid history.
 - Run `/uas status` to confirm UBS is available.
 - Check UBS account status for sender and receiver.
+- If the auction is in `FAILED_SETTLEMENT`, run `/uas admin settlement retry <auctionId>`. The command prints the previous failure and proposed retry action before it executes.
 
 ## Saved Data Recovery
 

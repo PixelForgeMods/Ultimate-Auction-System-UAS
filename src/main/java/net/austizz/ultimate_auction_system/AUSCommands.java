@@ -81,6 +81,13 @@ public class AUSCommands {
                         .then(Commands.literal("cancel")
                                 .then(Commands.argument("auctionId", StringArgumentType.word())
                                         .executes(AUSCommands::cancelOwnAuction)))
+                        .then(Commands.literal("bid")
+                                .then(Commands.argument("auctionId", StringArgumentType.word())
+                                        .then(Commands.argument("amount", StringArgumentType.word())
+                                                .executes(AUSCommands::bidAuction))))
+                        .then(Commands.literal("buyout")
+                                .then(Commands.argument("auctionId", StringArgumentType.word())
+                                        .executes(AUSCommands::buyoutAuction)))
                         .then(Commands.literal("claim")
                                 .then(Commands.argument("auctionId", StringArgumentType.word())
                                         .executes(AUSCommands::claimAuction)))
@@ -112,6 +119,13 @@ public class AUSCommands {
                                 .then(Commands.literal("inspect")
                                         .then(Commands.argument("auctionId", StringArgumentType.string())
                                                 .executes(AUSCommands::inspectAuction)
+                                        )
+                                )
+                                .then(Commands.literal("settlement")
+                                        .then(Commands.literal("retry")
+                                                .then(Commands.argument("auctionId", StringArgumentType.string())
+                                                        .executes(AUSCommands::retrySettlement)
+                                                )
                                         )
                                 )
                         )
@@ -219,6 +233,84 @@ public class AUSCommands {
         AuctionActionResult result = auctionHouse.claimAuction(player, auctionId, AuctionDeliverySavedData.get(player.getServer()));
         auctionHouse.sendActionAlert(player, result);
         sendResult(context.getSource(), result);
+        return result.success() ? Command.SINGLE_SUCCESS : 0;
+    }
+
+    private static int bidAuction(CommandContext<CommandSourceStack> context) {
+        ServerPlayer player = context.getSource().getPlayer();
+        if (player == null || auctionHouse == null) {
+            context.getSource().sendFailure(UasTranslations.literal("Only players can bid on auctions."));
+            return 0;
+        }
+        UUID auctionId = parseAuctionId(context.getSource(), StringArgumentType.getString(context, "auctionId"));
+        BigDecimal amount = parseMoney(StringArgumentType.getString(context, "amount"));
+        if (auctionId == null) {
+            return 0;
+        }
+        if (amount == null) {
+            context.getSource().sendFailure(Component.literal("Incorrect number format. Use whole dollars only, for example 50."));
+            return 0;
+        }
+        AuctionActionResult result = auctionHouse.placeBidWithEscrow(player, auctionId, amount);
+        auctionHouse.sendActionAlert(player, result);
+        sendResult(context.getSource(), result);
+        return result.success() ? Command.SINGLE_SUCCESS : 0;
+    }
+
+    private static int buyoutAuction(CommandContext<CommandSourceStack> context) {
+        ServerPlayer player = context.getSource().getPlayer();
+        if (player == null || auctionHouse == null) {
+            context.getSource().sendFailure(UasTranslations.literal("Only players can buy out auctions."));
+            return 0;
+        }
+        UUID auctionId = parseAuctionId(context.getSource(), StringArgumentType.getString(context, "auctionId"));
+        if (auctionId == null) {
+            return 0;
+        }
+        AuctionActionResult result = auctionHouse.buyout(player, auctionId);
+        auctionHouse.sendActionAlert(player, result);
+        sendResult(context.getSource(), result);
+        return result.success() ? Command.SINGLE_SUCCESS : 0;
+    }
+
+    private static int retrySettlement(CommandContext<CommandSourceStack> context) {
+        CommandSourceStack source = context.getSource();
+        AuctionHouse house = auctionHouse;
+        if (house == null) {
+            source.sendFailure(UasTranslations.literal("Auction house is not initialized."));
+            return 0;
+        }
+        UUID auctionId = parseAuctionId(source, StringArgumentType.getString(context, "auctionId"));
+        if (auctionId == null) {
+            return 0;
+        }
+
+        AuctionActionResult preview = house.settlementRetryPreview(auctionId);
+        sendResult(source, preview);
+        if (!preview.success()) {
+            return 0;
+        }
+
+        ServerPlayer admin = source.getPlayer();
+        UUID adminId = admin == null ? null : admin.getUUID();
+        String adminName = admin == null ? "Console" : admin.getGameProfile().getName();
+        AuctionActionResult result = house.adminRetrySettlement(
+                adminId,
+                adminName,
+                source.hasPermission(Config.adminStatusPermissionLevel),
+                auctionId,
+                AuctionDeliverySavedData.get(source.getServer())
+        );
+        AuctionAdminSavedData.get(source.getServer()).addAudit(
+                "RETRY_SETTLEMENT",
+                adminId,
+                adminName,
+                String.valueOf(auctionId),
+                preview.message(),
+                result.success(),
+                result.message()
+        );
+        sendResult(source, result);
         return result.success() ? Command.SINGLE_SUCCESS : 0;
     }
 
@@ -463,10 +555,20 @@ public class AUSCommands {
         source.sendSystemMessage(Component.literal("Bid history (" + bidRecords.size() + ")").withStyle(ChatFormatting.GOLD));
         if (bidRecords.isEmpty()) {
             source.sendSystemMessage(Component.literal("- No bid records.").withStyle(ChatFormatting.GRAY));
-            return Command.SINGLE_SUCCESS;
+        } else {
+            for (AuctionBidRecord record : bidRecords) {
+                source.sendSystemMessage(formatBidRecord(record));
+            }
         }
-        for (AuctionBidRecord record : bidRecords) {
-            source.sendSystemMessage(formatBidRecord(record));
+
+        List<AuctionFinancialEvent> financialEvents = auction.getFinancialEvents();
+        source.sendSystemMessage(Component.literal("Financial events (" + financialEvents.size() + ")").withStyle(ChatFormatting.GOLD));
+        if (financialEvents.isEmpty()) {
+            source.sendSystemMessage(Component.literal("- No financial events.").withStyle(ChatFormatting.GRAY));
+        } else {
+            for (AuctionFinancialEvent event : financialEvents) {
+                source.sendSystemMessage(formatFinancialEvent(event));
+            }
         }
         return Command.SINGLE_SUCCESS;
     }
@@ -584,6 +686,18 @@ public class AUSCommands {
                 .append(Component.literal(" settlement=" + record.getSettlementReference().orElse("(none)")).withStyle(ChatFormatting.GRAY))
                 .append(Component.literal(" txn=" + record.getSettlementTransactionId().map(UUID::toString).orElse("(none)")).withStyle(ChatFormatting.GRAY))
                 .append(Component.literal(" settlementResult=" + record.getSettlementResult().orElse("(none)")).withStyle(ChatFormatting.GRAY));
+    }
+
+    private static MutableComponent formatFinancialEvent(AuctionFinancialEvent event) {
+        ChatFormatting resultColor = event.success() ? ChatFormatting.GREEN : ChatFormatting.RED;
+        return Component.literal("- ")
+                .withStyle(ChatFormatting.GRAY)
+                .append(Component.literal(event.type()).withStyle(resultColor))
+                .append(Component.literal(" " + UasMoneyFormatter.display(event.amount())).withStyle(ChatFormatting.GOLD))
+                .append(Component.literal(" auction=" + event.auctionId()).withStyle(ChatFormatting.GRAY))
+                .append(Component.literal(" ref=" + event.reference()).withStyle(ChatFormatting.GRAY))
+                .append(Component.literal(" txn=" + (event.transactionId() == null ? "(none)" : event.transactionId())).withStyle(ChatFormatting.GRAY))
+                .append(Component.literal(" result=" + blankFallback(event.result(), "(none)")).withStyle(ChatFormatting.GRAY));
     }
 
     private static ChatFormatting colorForState(AuctionState state) {

@@ -8,6 +8,7 @@ import net.minecraft.network.codec.StreamCodec;
 import net.minecraft.world.item.ItemStack;
 
 import java.time.LocalDateTime;
+import java.util.List;
 
 public record AuctionPendingListingSummary(
         boolean present,
@@ -20,7 +21,9 @@ public record AuctionPendingListingSummary(
         String endsAt,
         String expiresAt,
         String description,
-        String sourceLabel
+        String sourceLabel,
+        List<ItemStack> contents,
+        boolean bundle
 ) {
     public static final AuctionPendingListingSummary EMPTY = new AuctionPendingListingSummary(
             false,
@@ -33,8 +36,19 @@ public record AuctionPendingListingSummary(
             "",
             "",
             "",
-            ""
+            "",
+            List.of(),
+            false
     );
+
+    public AuctionPendingListingSummary {
+        contents = contents == null || contents.isEmpty()
+                ? List.of(item == null ? ItemStack.EMPTY : item.copy())
+                : contents.stream()
+                .filter(stack -> stack != null && !stack.isEmpty())
+                .map(ItemStack::copy)
+                .toList();
+    }
 
     public static final StreamCodec<RegistryFriendlyByteBuf, AuctionPendingListingSummary> STREAM_CODEC = StreamCodec.of(
             (buf, summary) -> {
@@ -49,6 +63,8 @@ public record AuctionPendingListingSummary(
                 ByteBufCodecs.STRING_UTF8.encode(buf, summary.expiresAt());
                 ByteBufCodecs.STRING_UTF8.encode(buf, summary.description());
                 ByteBufCodecs.STRING_UTF8.encode(buf, summary.sourceLabel());
+                ItemStack.OPTIONAL_STREAM_CODEC.apply(ByteBufCodecs.list(18)).encode(buf, summary.contents());
+                ByteBufCodecs.BOOL.encode(buf, summary.bundle());
             },
             buf -> new AuctionPendingListingSummary(
                     ByteBufCodecs.BOOL.decode(buf),
@@ -61,7 +77,9 @@ public record AuctionPendingListingSummary(
                     ByteBufCodecs.STRING_UTF8.decode(buf),
                     ByteBufCodecs.STRING_UTF8.decode(buf),
                     ByteBufCodecs.STRING_UTF8.decode(buf),
-                    ByteBufCodecs.STRING_UTF8.decode(buf)
+                    ByteBufCodecs.STRING_UTF8.decode(buf),
+                    ItemStack.OPTIONAL_STREAM_CODEC.apply(ByteBufCodecs.list(18)).decode(buf),
+                    ByteBufCodecs.BOOL.decode(buf)
             )
     );
 
@@ -80,7 +98,9 @@ public record AuctionPendingListingSummary(
                 time(preview.endsAt()),
                 time(preview.expiresAt()),
                 preview.description(),
-                preview.sourceLabel()
+                preview.sourceLabel(),
+                preview.contents(),
+                preview.bundle()
         );
     }
 

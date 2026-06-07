@@ -9,11 +9,43 @@ public record AuctionHouseSnapshot(
         List<AuctionListingSummary> myBids,
         List<AuctionListingSummary> myAuctions,
         List<AuctionDeliveryEntry> deliveries,
+        List<AuctionModFilterSummary> modFilters,
         UasAccountSnapshot primaryAccount,
         AuctionListingPreview pendingListing,
         double listingFeeRate,
         String message,
         boolean success,
-        boolean adminMode
+        boolean adminMode,
+        AuctionAdminDashboardSnapshot adminDashboard
 ) {
+    public AuctionHouseSnapshot {
+        adminDashboard = adminDashboard == null ? AuctionAdminDashboardSnapshot.empty() : adminDashboard;
+    }
+
+    public AuctionHouseSnapshot(List<AuctionListingSummary> browseListings,
+                                List<AuctionListingSummary> myBids,
+                                List<AuctionListingSummary> myAuctions,
+                                List<AuctionDeliveryEntry> deliveries,
+                                List<AuctionModFilterSummary> modFilters,
+                                UasAccountSnapshot primaryAccount,
+                                AuctionListingPreview pendingListing,
+                                double listingFeeRate,
+                                String message,
+                                boolean success,
+                                boolean adminMode) {
+        this(
+                browseListings,
+                myBids,
+                myAuctions,
+                deliveries,
+                modFilters,
+                primaryAccount,
+                pendingListing,
+                listingFeeRate,
+                message,
+                success,
+                adminMode,
+                AuctionAdminDashboardSnapshot.empty()
+        );
+    }
 }

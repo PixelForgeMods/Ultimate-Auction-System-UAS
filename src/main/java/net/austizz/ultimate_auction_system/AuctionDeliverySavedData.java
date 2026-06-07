@@ -64,11 +64,23 @@ public final class AuctionDeliverySavedData extends SavedData {
         if (playerId == null || stack == null || stack.isEmpty()) {
             return;
         }
+        addDelivery(playerId, auctionId, List.of(stack), reason);
+    }
+
+    public synchronized void addDelivery(UUID playerId, UUID auctionId, List<ItemStack> stacks, String reason) {
+        if (playerId == null || stacks == null || stacks.stream().noneMatch(stack -> stack != null && !stack.isEmpty())) {
+            return;
+        }
+        List<ItemStack> safeStacks = stacks.stream()
+                .filter(stack -> stack != null && !stack.isEmpty())
+                .limit(AuctionItem.MAX_BUNDLE_CONTENTS)
+                .map(ItemStack::copy)
+                .toList();
         deliveries.computeIfAbsent(playerId, ignored -> new ArrayList<>()).add(new AuctionDeliveryEntry(
                 UUID.randomUUID(),
                 playerId,
                 auctionId,
-                stack.copy(),
+                safeStacks,
                 reason == null ? "" : reason,
                 LocalDateTime.now()
         ));
@@ -111,6 +123,16 @@ public final class AuctionDeliverySavedData extends SavedData {
                 deliveryTag.putString("reason", entry.reason() == null ? "" : entry.reason());
                 deliveryTag.putString("createdAt", entry.createdAt().toString());
                 deliveryTag.put("item", saveItemStack(entry.item(), registries));
+                ListTag itemTags = new ListTag();
+                for (ItemStack stack : entry.items()) {
+                    if (stack == null || stack.isEmpty()) {
+                        continue;
+                    }
+                    CompoundTag itemTag = new CompoundTag();
+                    itemTag.put("item", saveItemStack(stack, registries));
+                    itemTags.add(itemTag);
+                }
+                deliveryTag.put("items", itemTags);
                 deliveryTags.add(deliveryTag);
             }
         }
@@ -133,7 +155,8 @@ public final class AuctionDeliverySavedData extends SavedData {
                 UUID playerId = deliveryTag.getUUID("playerId");
                 UUID auctionId = deliveryTag.contains("auctionId") ? deliveryTag.getUUID("auctionId") : null;
                 ItemStack stack = ItemStack.parseOptional(registries, deliveryTag.getCompound("item"));
-                if (stack.isEmpty()) {
+                List<ItemStack> stacks = loadDeliveryItems(deliveryTag, registries, stack);
+                if (stacks.isEmpty()) {
                     continue;
                 }
                 LocalDateTime createdAt = LocalDateTime.parse(deliveryTag.getString("createdAt"));
@@ -141,7 +164,7 @@ public final class AuctionDeliverySavedData extends SavedData {
                         deliveryId,
                         playerId,
                         auctionId,
-                        stack,
+                        stacks,
                         deliveryTag.getString("reason"),
                         createdAt
                 ));
@@ -154,5 +177,26 @@ public final class AuctionDeliverySavedData extends SavedData {
 
     private static CompoundTag saveItemStack(ItemStack stack, HolderLookup.Provider registries) {
         return UasItemStackNbt.saveOptional(stack, registries);
+    }
+
+    private static List<ItemStack> loadDeliveryItems(CompoundTag deliveryTag, HolderLookup.Provider registries, ItemStack fallback) {
+        ArrayList<ItemStack> stacks = new ArrayList<>();
+        ListTag itemTags = deliveryTag.getList("items", Tag.TAG_COMPOUND);
+        for (Tag raw : itemTags) {
+            if (!(raw instanceof CompoundTag itemTag)) {
+                continue;
+            }
+            ItemStack stack = ItemStack.parseOptional(registries, itemTag.getCompound("item"));
+            if (!stack.isEmpty()) {
+                stacks.add(stack.copy());
+            }
+        }
+        if (stacks.isEmpty() && fallback != null && !fallback.isEmpty()) {
+            stacks.add(fallback.copy());
+        }
+        return stacks.stream()
+                .limit(AuctionItem.MAX_BUNDLE_CONTENTS)
+                .map(ItemStack::copy)
+                .toList();
     }
 }

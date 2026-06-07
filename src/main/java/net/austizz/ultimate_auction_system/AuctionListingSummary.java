@@ -35,6 +35,18 @@ public record AuctionListingSummary(
         boolean canCancel,
         boolean canClaim,
         List<AuctionBidRecord> bidHistory,
-        Map<UUID, String> bidderNames
+        Map<UUID, String> bidderNames,
+        List<ItemStack> contents,
+        boolean bundle,
+        int totalItemCount
 ) {
+    public AuctionListingSummary {
+        contents = contents == null || contents.isEmpty()
+                ? List.of(item == null ? ItemStack.EMPTY : item.copy())
+                : contents.stream()
+                .filter(stack -> stack != null && !stack.isEmpty())
+                .limit(AuctionItem.MAX_BUNDLE_CONTENTS)
+                .map(ItemStack::copy)
+                .toList();
+    }
 }

@@ -12,10 +12,16 @@ public final class FakeUasBankingService implements UasBankingService {
     public record Alert(UUID playerId, String title, String message, String tone, int durationMs) {
     }
 
+    public record Transaction(UUID accountId, BigDecimal amount, String reference, String type, boolean success) {
+    }
+
     private final Map<UUID, UUID> primaryAccounts = new HashMap<>();
     private final Map<UUID, UasAccountSnapshot> accounts = new HashMap<>();
     private final List<Alert> alerts = new ArrayList<>();
+    private final List<Transaction> transactions = new ArrayList<>();
     private String nextFailureReason;
+    private String nextDepositFailureReason;
+    private String nextWithdrawFailureReason;
 
     public UUID createPrimaryAccount(UUID playerId, BigDecimal balance) {
         UUID accountId = UUID.randomUUID();
@@ -38,8 +44,20 @@ public final class FakeUasBankingService implements UasBankingService {
         this.nextFailureReason = reason == null || reason.isBlank() ? "Forced banking failure" : reason;
     }
 
+    public void failNextDeposit(String reason) {
+        this.nextDepositFailureReason = reason == null || reason.isBlank() ? "Forced deposit failure" : reason;
+    }
+
+    public void failNextWithdraw(String reason) {
+        this.nextWithdrawFailureReason = reason == null || reason.isBlank() ? "Forced withdrawal failure" : reason;
+    }
+
     public List<Alert> alerts() {
         return List.copyOf(alerts);
+    }
+
+    public List<Transaction> transactions() {
+        return List.copyOf(transactions);
     }
 
     @Override
@@ -62,12 +80,12 @@ public final class FakeUasBankingService implements UasBankingService {
 
     @Override
     public UasBankingResult deposit(UUID accountId, BigDecimal amount, String reference) {
-        return adjustBalance(accountId, amount, true);
+        return adjustBalance(accountId, amount, reference, "DEPOSIT", true);
     }
 
     @Override
     public UasBankingResult withdraw(UUID accountId, BigDecimal amount, String reference) {
-        return adjustBalance(accountId, amount, false);
+        return adjustBalance(accountId, amount, reference, "WITHDRAW", false);
     }
 
     @Override
@@ -191,21 +209,34 @@ public final class FakeUasBankingService implements UasBankingService {
         return recordAlert(playerId, title, message, "WARNING", durationMs);
     }
 
-    private UasBankingResult adjustBalance(UUID accountId, BigDecimal amount, boolean deposit) {
+    private UasBankingResult adjustBalance(UUID accountId, BigDecimal amount, String reference, String type, boolean deposit) {
+        BigDecimal value = safeAmount(amount);
+        String typedFailure = deposit ? nextDepositFailureReason : nextWithdrawFailureReason;
+        if (typedFailure != null) {
+            if (deposit) {
+                nextDepositFailureReason = null;
+            } else {
+                nextWithdrawFailureReason = null;
+            }
+            transactions.add(new Transaction(accountId, value, reference, type, false));
+            return UasBankingResult.fail(typedFailure, BigDecimal.ZERO);
+        }
         if (nextFailureReason != null) {
             String reason = nextFailureReason;
             nextFailureReason = null;
+            transactions.add(new Transaction(accountId, value, reference, type, false));
             return UasBankingResult.fail(reason, BigDecimal.ZERO);
         }
 
         UasAccountSnapshot current = accounts.get(accountId);
         if (current == null) {
+            transactions.add(new Transaction(accountId, value, reference, type, false));
             return UasBankingResult.fail("Account not found", BigDecimal.ZERO);
         }
 
-        BigDecimal value = safeAmount(amount);
         BigDecimal nextBalance = deposit ? current.balance().add(value) : current.balance().subtract(value);
         if (nextBalance.compareTo(BigDecimal.ZERO) < 0) {
+            transactions.add(new Transaction(accountId, value, reference, type, false));
             return UasBankingResult.fail("Insufficient funds", current.balance());
         }
 
@@ -220,7 +251,8 @@ public final class FakeUasBankingService implements UasBankingService {
                 current.frozen(),
                 current.frozenReason()
         ));
-        return UasBankingResult.ok(nextBalance);
+        transactions.add(new Transaction(accountId, value, reference, type, true));
+        return UasBankingResult.ok(nextBalance, UUID.randomUUID(), reference);
     }
 
     private UasAlertResult recordAlert(UUID playerId, String title, String message, String tone, int durationMs) {

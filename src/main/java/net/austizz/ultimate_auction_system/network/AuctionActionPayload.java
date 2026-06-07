@@ -7,6 +7,7 @@ import net.minecraft.network.codec.StreamCodec;
 import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
 import net.minecraft.resources.ResourceLocation;
 
+import java.util.List;
 import java.util.UUID;
 
 public record AuctionActionPayload(
@@ -14,6 +15,8 @@ public record AuctionActionPayload(
         UUID auctionId,
         UUID deliveryId,
         int slot,
+        List<Integer> slots,
+        String title,
         String amount,
         String startingBid,
         String buyoutPrice,
@@ -26,6 +29,7 @@ public record AuctionActionPayload(
         String minimumPrice,
         String maximumPrice,
         long maximumHoursLeft,
+        String modId,
         boolean adminMode
 ) implements CustomPacketPayload {
     public static final Type<AuctionActionPayload> TYPE = new Type<>(
@@ -37,6 +41,8 @@ public record AuctionActionPayload(
                 UasNetworkCodecs.OPTIONAL_UUID_CODEC.encode(buf, payload.auctionId());
                 UasNetworkCodecs.OPTIONAL_UUID_CODEC.encode(buf, payload.deliveryId());
                 ByteBufCodecs.INT.encode(buf, payload.slot());
+                ByteBufCodecs.INT.apply(ByteBufCodecs.list(18)).encode(buf, payload.slots());
+                ByteBufCodecs.STRING_UTF8.encode(buf, payload.title());
                 ByteBufCodecs.STRING_UTF8.encode(buf, payload.amount());
                 ByteBufCodecs.STRING_UTF8.encode(buf, payload.startingBid());
                 ByteBufCodecs.STRING_UTF8.encode(buf, payload.buyoutPrice());
@@ -49,6 +55,7 @@ public record AuctionActionPayload(
                 ByteBufCodecs.STRING_UTF8.encode(buf, payload.minimumPrice());
                 ByteBufCodecs.STRING_UTF8.encode(buf, payload.maximumPrice());
                 ByteBufCodecs.VAR_LONG.encode(buf, payload.maximumHoursLeft());
+                ByteBufCodecs.STRING_UTF8.encode(buf, payload.modId());
                 ByteBufCodecs.BOOL.encode(buf, payload.adminMode());
             },
             buf -> new AuctionActionPayload(
@@ -56,6 +63,8 @@ public record AuctionActionPayload(
                     UasNetworkCodecs.OPTIONAL_UUID_CODEC.decode(buf),
                     UasNetworkCodecs.OPTIONAL_UUID_CODEC.decode(buf),
                     ByteBufCodecs.INT.decode(buf),
+                    ByteBufCodecs.INT.apply(ByteBufCodecs.list(18)).decode(buf),
+                    ByteBufCodecs.STRING_UTF8.decode(buf),
                     ByteBufCodecs.STRING_UTF8.decode(buf),
                     ByteBufCodecs.STRING_UTF8.decode(buf),
                     ByteBufCodecs.STRING_UTF8.decode(buf),
@@ -68,16 +77,33 @@ public record AuctionActionPayload(
                     ByteBufCodecs.STRING_UTF8.decode(buf),
                     ByteBufCodecs.STRING_UTF8.decode(buf),
                     ByteBufCodecs.VAR_LONG.decode(buf),
+                    ByteBufCodecs.STRING_UTF8.decode(buf),
                     ByteBufCodecs.BOOL.decode(buf)
             )
     );
+
+    public AuctionActionPayload {
+        slots = slots == null ? List.of() : slots.stream().filter(selectedSlot -> selectedSlot != null).limit(18).toList();
+        title = title == null ? "" : title;
+    }
 
     public static AuctionActionPayload refresh(String search, String category, String sort, String min, String max, long hoursLeft) {
         return refresh(search, category, sort, min, max, hoursLeft, false);
     }
 
     public static AuctionActionPayload refresh(String search, String category, String sort, String min, String max, long hoursLeft, boolean adminMode) {
-        return new AuctionActionPayload("REFRESH", null, null, -1, "", "", "", 0, "", "", search, category, sort, min, max, hoursLeft, adminMode);
+        return refresh(search, category, sort, min, max, hoursLeft, "", adminMode);
+    }
+
+    public static AuctionActionPayload refresh(String search, String category, String sort, String min, String max, long hoursLeft, String modId, boolean adminMode) {
+        return new AuctionActionPayload("REFRESH", null, null, -1, List.of(), "", "", "", "", 0, "", "", search, category, sort, min, max, hoursLeft, modId, adminMode);
+    }
+
+    public List<Integer> selectedSlots() {
+        if (slots != null && !slots.isEmpty()) {
+            return slots;
+        }
+        return slot >= 0 ? List.of(slot) : List.of();
     }
 
     @Override

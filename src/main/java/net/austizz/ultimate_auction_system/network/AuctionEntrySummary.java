@@ -35,8 +35,21 @@ public record AuctionEntrySummary(
         boolean canBuyout,
         boolean canCancel,
         boolean canClaim,
-        List<AuctionBidSummary> bidHistory
+        List<AuctionBidSummary> bidHistory,
+        List<ItemStack> contents,
+        boolean bundle,
+        int totalItemCount
 ) {
+    public AuctionEntrySummary {
+        contents = contents == null || contents.isEmpty()
+                ? List.of(item == null ? ItemStack.EMPTY : item.copy())
+                : contents.stream()
+                .filter(stack -> stack != null && !stack.isEmpty())
+                .map(ItemStack::copy)
+                .toList();
+        totalItemCount = Math.max(totalItemCount, contents.stream().mapToInt(ItemStack::getCount).sum());
+    }
+
     public static final StreamCodec<RegistryFriendlyByteBuf, AuctionEntrySummary> STREAM_CODEC = StreamCodec.of(
             (buf, summary) -> {
                 UasNetworkCodecs.UUID_CODEC.encode(buf, summary.auctionId());
@@ -63,6 +76,9 @@ public record AuctionEntrySummary(
                 ByteBufCodecs.BOOL.encode(buf, summary.canCancel());
                 ByteBufCodecs.BOOL.encode(buf, summary.canClaim());
                 AuctionBidSummary.STREAM_CODEC.apply(ByteBufCodecs.list(128)).encode(buf, summary.bidHistory());
+                ItemStack.OPTIONAL_STREAM_CODEC.apply(ByteBufCodecs.list(18)).encode(buf, summary.contents());
+                ByteBufCodecs.BOOL.encode(buf, summary.bundle());
+                ByteBufCodecs.INT.encode(buf, summary.totalItemCount());
             },
             buf -> new AuctionEntrySummary(
                     UasNetworkCodecs.UUID_CODEC.decode(buf),
@@ -88,7 +104,10 @@ public record AuctionEntrySummary(
                     ByteBufCodecs.BOOL.decode(buf),
                     ByteBufCodecs.BOOL.decode(buf),
                     ByteBufCodecs.BOOL.decode(buf),
-                    AuctionBidSummary.STREAM_CODEC.apply(ByteBufCodecs.list(128)).decode(buf)
+                    AuctionBidSummary.STREAM_CODEC.apply(ByteBufCodecs.list(128)).decode(buf),
+                    ItemStack.OPTIONAL_STREAM_CODEC.apply(ByteBufCodecs.list(18)).decode(buf),
+                    ByteBufCodecs.BOOL.decode(buf),
+                    ByteBufCodecs.INT.decode(buf)
             )
     );
 
@@ -119,7 +138,10 @@ public record AuctionEntrySummary(
                 summary.canClaim(),
                 summary.bidHistory().stream()
                         .map(record -> AuctionBidSummary.fromRecord(record, summary.bidderNames().get(record.getBidderId())))
-                        .toList()
+                        .toList(),
+                summary.contents(),
+                summary.bundle(),
+                summary.totalItemCount()
         );
     }
 

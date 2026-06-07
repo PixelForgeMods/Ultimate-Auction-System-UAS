@@ -5,6 +5,7 @@ import net.minecraft.world.item.ItemStack;
 import java.math.BigDecimal;
 import java.time.Duration;
 import java.time.LocalDateTime;
+import java.util.List;
 
 public record AuctionListingPreview(
         ItemStack item,
@@ -16,7 +17,9 @@ public record AuctionListingPreview(
         LocalDateTime endsAt,
         LocalDateTime expiresAt,
         String description,
-        String sourceLabel
+        String sourceLabel,
+        List<ItemStack> contents,
+        boolean bundle
 ) {
     public AuctionListingPreview {
         item = item == null ? ItemStack.EMPTY : item.copy();
@@ -26,6 +29,13 @@ public record AuctionListingPreview(
         listingFee = listingFee == null ? BigDecimal.ZERO : listingFee;
         description = description == null ? "" : description;
         sourceLabel = sourceLabel == null ? "" : sourceLabel;
+        contents = contents == null || contents.isEmpty()
+                ? List.of(item)
+                : contents.stream()
+                .filter(stack -> stack != null && !stack.isEmpty())
+                .limit(AuctionItem.MAX_BUNDLE_CONTENTS)
+                .map(ItemStack::copy)
+                .toList();
     }
 
     public long durationHours() {

@@ -20,10 +20,15 @@ import java.util.concurrent.ConcurrentSkipListMap;
 import java.util.concurrent.atomic.AtomicReference;
 
 public class AuctionItem {
+    public static final int MAX_BUNDLE_CONTENTS = 18;
+    private static final String CONTENTS_TAG = "contents";
+
     private final UUID auctionId;
     private final UUID playerId;
     private UUID sellerAccountId;
     private final ItemStack item;
+    private final List<ItemStack> contents;
+    private final String title;
     private String description;
     private final LocalDateTime dateOfEnd;
     private final LocalDateTime dateOfStart;
@@ -36,6 +41,7 @@ public class AuctionItem {
     private BigDecimal buyoutPrice;
     private ConcurrentSkipListMap<UUID, BigDecimal> bids;
     private final ArrayList<AuctionBidRecord> bidRecords;
+    private final ArrayList<AuctionFinancialEvent> financialEvents;
     private final ConcurrentSkipListSet<UUID> notificationSubscribers;
     private final AtomicReference<BigDecimal> highestBid = new AtomicReference<>(BigDecimal.ZERO);
     private final AtomicReference<UUID> highestBidderId = new AtomicReference<>();
@@ -67,9 +73,23 @@ public class AuctionItem {
                 UUID playerId,
                 UUID sellerAccountId,
                 BigDecimal buyoutPrice) {
+        this(auctionId, List.of(item), "", description, dateOfEnd, dateOfStart, startingBidPrice, playerId, sellerAccountId, buyoutPrice);
+    }
+
+    AuctionItem(UUID auctionId,
+                List<ItemStack> contents,
+                String title,
+                String description,
+                LocalDateTime dateOfEnd,
+                LocalDateTime dateOfStart,
+                BigDecimal startingBidPrice,
+                UUID playerId,
+                UUID sellerAccountId,
+                BigDecimal buyoutPrice) {
         this(
                 auctionId,
-                item,
+                contents,
+                title,
                 description,
                 dateOfEnd,
                 dateOfStart,
@@ -85,6 +105,7 @@ public class AuctionItem {
                 AuctionState.ACTIVE,
                 new ConcurrentSkipListMap<>(),
                 new ArrayList<>(),
+                new ArrayList<>(),
                 startingBidPrice,
                 null,
                 new ConcurrentSkipListSet<>()
@@ -92,7 +113,8 @@ public class AuctionItem {
     }
 
     private AuctionItem(UUID auctionId,
-                        ItemStack item,
+                        List<ItemStack> contents,
+                        String title,
                         String description,
                         LocalDateTime dateOfEnd,
                         LocalDateTime dateOfStart,
@@ -108,10 +130,13 @@ public class AuctionItem {
                         AuctionState state,
                         ConcurrentSkipListMap<UUID, BigDecimal> bids,
                         List<AuctionBidRecord> bidRecords,
+                        List<AuctionFinancialEvent> financialEvents,
                         BigDecimal highestBid,
                         UUID highestBidderId,
                         ConcurrentSkipListSet<UUID> notificationSubscribers) {
-        this.item = item.copy(); // CRITICAL: Always copy ItemStacks to prevent inventory reference bugs!
+        this.contents = sanitizeContents(contents);
+        this.item = this.contents.isEmpty() ? ItemStack.EMPTY : this.contents.getFirst().copy();
+        this.title = title == null ? "" : title.trim();
         this.description = description == null ? "" : description;
         this.dateOfEnd = dateOfEnd;
         this.dateOfStart = dateOfStart;
@@ -124,6 +149,7 @@ public class AuctionItem {
         this.buyoutPrice = normalizeOptionalPrice(buyoutPrice);
         this.bids = bids == null ? new ConcurrentSkipListMap<>() : bids;
         this.bidRecords = bidRecords == null ? new ArrayList<>() : new ArrayList<>(bidRecords);
+        this.financialEvents = financialEvents == null ? new ArrayList<>() : new ArrayList<>(financialEvents);
         this.notificationSubscribers = notificationSubscribers == null ? new ConcurrentSkipListSet<>() : new ConcurrentSkipListSet<>(notificationSubscribers);
         this.auctionId = auctionId == null ? UUID.randomUUID() : auctionId;
         this.playerId = playerId;
@@ -136,6 +162,17 @@ public class AuctionItem {
 
     public UUID getAuctionId() { return auctionId; }
     public ItemStack getItem() { return item.copy(); }
+    public List<ItemStack> getContents() { return contents.stream().map(ItemStack::copy).toList(); }
+    public boolean isBundle() { return contents.size() > 1; }
+    public int getContentStackCount() { return contents.size(); }
+    public int getTotalItemCount() { return contents.stream().mapToInt(ItemStack::getCount).sum(); }
+    public String getTitle() { return title; }
+    public String getDisplayTitle() {
+        if (isBundle()) {
+            return title.isBlank() ? generatedBundleTitle(contents) : title;
+        }
+        return item.isEmpty() ? "" : item.getHoverName().getString();
+    }
     public String getDescription() { return description; }
     public LocalDateTime getDateOfEnd() { return dateOfEnd; }
     public LocalDateTime getDateOfStart() { return dateOfStart; }
@@ -154,6 +191,7 @@ public class AuctionItem {
     public String getEscrowSource() { return escrowSource; }
     public ConcurrentSkipListMap<UUID, BigDecimal> getBids() { return new ConcurrentSkipListMap<>(bids); }
     public synchronized List<AuctionBidRecord> getBidRecords() { return List.copyOf(bidRecords); }
+    public synchronized List<AuctionFinancialEvent> getFinancialEvents() { return List.copyOf(financialEvents); }
     public List<UUID> getNotificationSubscribers() { return List.copyOf(notificationSubscribers); }
     public AuctionState getState() { return state; }
 
@@ -290,7 +328,9 @@ public class AuctionItem {
             transitionTo(AuctionState.ENDED, "bid rejected after auction end time");
             return recordRejectedBid(bidderId, bidderAccountId, bid, AuctionBidResult.REJECTED_AUCTION_ENDED, "Auction already ended.");
         }
-        if (bid.compareTo(highestBid.get()) <= 0) {
+        boolean firstAcceptedBid = highestBidderId.get() == null;
+        if ((!firstAcceptedBid && bid.compareTo(highestBid.get()) <= 0)
+                || (firstAcceptedBid && bid.compareTo(startingBidPrice) < 0)) {
             return recordRejectedBid(bidderId, bidderAccountId, bid, AuctionBidResult.REJECTED_TOO_LOW, "Bid must be higher than the current price.");
         }
 
@@ -340,6 +380,29 @@ public class AuctionItem {
             winningBidRecord.get().linkSettlement(reference, result);
             markChanged();
         }
+    }
+
+    public synchronized void recordFinancialEvent(AuctionFinancialEvent event) {
+        if (event != null && event.isValidForAuction(auctionId)) {
+            financialEvents.add(event);
+            markChanged();
+        }
+    }
+
+    public synchronized boolean hasSuccessfulFinancialEvent(String type) {
+        String normalized = type == null ? "" : type.trim().toUpperCase(java.util.Locale.ROOT);
+        return financialEvents.stream()
+                .anyMatch(event -> event != null && event.success() && normalized.equals(event.type()));
+    }
+
+    public synchronized Optional<AuctionFinancialEvent> latestFailedFinancialEvent() {
+        for (int index = financialEvents.size() - 1; index >= 0; index--) {
+            AuctionFinancialEvent event = financialEvents.get(index);
+            if (event != null && !event.success()) {
+                return Optional.of(event);
+            }
+        }
+        return Optional.empty();
     }
 
     boolean repairLoadedBidState() {
@@ -457,8 +520,16 @@ public class AuctionItem {
         if (sellerAccountId == null) {
             return Optional.of("missing seller account ID");
         }
-        if (item == null || item.isEmpty() || item.getCount() <= 0) {
+        if (contents.isEmpty() || item == null || item.isEmpty() || item.getCount() <= 0) {
             return Optional.of("missing item stack or quantity");
+        }
+        if (contents.size() > MAX_BUNDLE_CONTENTS) {
+            return Optional.of("bundle contains too many item stacks");
+        }
+        for (ItemStack content : contents) {
+            if (content == null || content.isEmpty() || content.getCount() <= 0) {
+                return Optional.of("bundle contains an invalid item stack");
+            }
         }
         if (requireEscrow && state != AuctionState.DRAFT && !escrowed) {
             return Optional.of("auction item is not held in server escrow");
@@ -487,6 +558,11 @@ public class AuctionItem {
         for (AuctionBidRecord bidRecord : bidRecords) {
             if (!bidRecord.isValidForAuction(auctionId)) {
                 return Optional.of("invalid bid record");
+            }
+        }
+        for (AuctionFinancialEvent event : financialEvents) {
+            if (event == null || !event.isValidForAuction(auctionId)) {
+                return Optional.of("invalid financial event");
             }
         }
         return Optional.empty();
@@ -519,11 +595,24 @@ public class AuctionItem {
         if (this.buyoutPrice != null) {
             tag.putString("buyoutPrice", this.buyoutPrice.toPlainString());
         }
+        if (this.title != null && !this.title.isBlank()) {
+            tag.putString("title", this.title);
+        }
         tag.putString("state", this.state.name());
         if (this.highestBidderId.get() != null) {
             tag.putUUID("highestBidderId", this.highestBidderId.get());
         }
         tag.put("item", saveItemStack(this.item, registries));
+        ListTag contentTags = new ListTag();
+        for (ItemStack content : contents) {
+            if (content == null || content.isEmpty()) {
+                continue;
+            }
+            CompoundTag contentTag = new CompoundTag();
+            contentTag.put("item", saveItemStack(content, registries));
+            contentTags.add(contentTag);
+        }
+        tag.put(CONTENTS_TAG, contentTags);
 
         ListTag bidList = new ListTag();
         for (var entry : this.bids.entrySet()) {
@@ -541,6 +630,14 @@ public class AuctionItem {
             }
         }
         tag.put("bidRecords", bidRecordList);
+
+        ListTag financialEventList = new ListTag();
+        for (AuctionFinancialEvent event : financialEvents) {
+            if (event != null && event.isValidForAuction(auctionId)) {
+                financialEventList.add(event.save());
+            }
+        }
+        tag.put("financialEvents", financialEventList);
 
         ListTag subscriberList = new ListTag();
         for (UUID subscriberId : notificationSubscribers) {
@@ -595,11 +692,14 @@ public class AuctionItem {
             UUID highestBidderId = tag.contains("highestBidderId") ? tag.getUUID("highestBidderId") : null;
             ConcurrentSkipListMap<UUID, BigDecimal> bids = loadBids(tag);
             List<AuctionBidRecord> bidRecords = loadBidRecords(tag, auctionId);
+            List<AuctionFinancialEvent> financialEvents = loadFinancialEvents(tag, auctionId);
             ConcurrentSkipListSet<UUID> notificationSubscribers = loadNotificationSubscribers(tag);
+            List<ItemStack> contents = loadContents(tag, registries, item);
 
             AuctionItem auction = new AuctionItem(
                     auctionId,
-                    item,
+                    contents,
+                    tag.getString("title"),
                     tag.getString("description"),
                     dateOfEnd,
                     dateOfStart,
@@ -615,6 +715,7 @@ public class AuctionItem {
                     AuctionState.fromSerializedName(tag.getString("state")),
                     bids,
                     bidRecords,
+                    financialEvents,
                     currentPrice,
                     highestBidderId,
                     notificationSubscribers
@@ -658,6 +759,20 @@ public class AuctionItem {
         return loaded;
     }
 
+    private static List<AuctionFinancialEvent> loadFinancialEvents(CompoundTag tag, UUID auctionId) {
+        ArrayList<AuctionFinancialEvent> loaded = new ArrayList<>();
+        ListTag eventList = tag.getList("financialEvents", Tag.TAG_COMPOUND);
+        for (Tag rawEvent : eventList) {
+            if (!(rawEvent instanceof CompoundTag eventTag)) {
+                continue;
+            }
+            AuctionFinancialEvent.load(eventTag)
+                    .filter(event -> event.isValidForAuction(auctionId))
+                    .ifPresent(loaded::add);
+        }
+        return loaded;
+    }
+
     private static ConcurrentSkipListSet<UUID> loadNotificationSubscribers(CompoundTag tag) {
         ConcurrentSkipListSet<UUID> loaded = new ConcurrentSkipListSet<>();
         ListTag subscriberList = tag.getList("notificationSubscribers", Tag.TAG_COMPOUND);
@@ -671,6 +786,48 @@ public class AuctionItem {
             }
         }
         return loaded;
+    }
+
+    private static List<ItemStack> loadContents(CompoundTag tag, HolderLookup.Provider registries, ItemStack fallback) {
+        ArrayList<ItemStack> loaded = new ArrayList<>();
+        ListTag contentTags = tag.getList(CONTENTS_TAG, Tag.TAG_COMPOUND);
+        for (Tag rawContent : contentTags) {
+            if (!(rawContent instanceof CompoundTag contentTag)) {
+                continue;
+            }
+            ItemStack stack = ItemStack.parseOptional(registries, contentTag.getCompound("item"));
+            if (!stack.isEmpty()) {
+                loaded.add(stack.copy());
+            }
+        }
+        if (loaded.isEmpty() && fallback != null && !fallback.isEmpty()) {
+            loaded.add(fallback.copy());
+        }
+        return sanitizeContents(loaded);
+    }
+
+    private static List<ItemStack> sanitizeContents(List<ItemStack> rawContents) {
+        if (rawContents == null || rawContents.isEmpty()) {
+            return List.of();
+        }
+        return rawContents.stream()
+                .filter(stack -> stack != null && !stack.isEmpty())
+                .limit(MAX_BUNDLE_CONTENTS)
+                .map(ItemStack::copy)
+                .toList();
+    }
+
+    public static String generatedBundleTitle(List<ItemStack> contents) {
+        List<ItemStack> safeContents = sanitizeContents(contents);
+        if (safeContents.isEmpty()) {
+            return "Bundle";
+        }
+        ItemStack first = safeContents.getFirst();
+        int remaining = safeContents.size() - 1;
+        if (remaining <= 0) {
+            return first.getHoverName().getString();
+        }
+        return "Bundle: " + first.getHoverName().getString() + " + " + remaining + " more";
     }
 
     private static CompoundTag saveItemStack(ItemStack stack, HolderLookup.Provider registries) {

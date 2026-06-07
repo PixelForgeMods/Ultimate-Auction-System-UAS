@@ -1,6 +1,7 @@
 package net.austizz.ultimate_auction_system.network;
 
 import net.austizz.ultimate_auction_system.AuctionActionResult;
+import net.austizz.ultimate_auction_system.AuctionAdminSavedData;
 import net.austizz.ultimate_auction_system.AuctionCategory;
 import net.austizz.ultimate_auction_system.AuctionDeliverySavedData;
 import net.austizz.ultimate_auction_system.AuctionHouse;
@@ -19,6 +20,8 @@ import net.neoforged.neoforge.network.registration.PayloadRegistrar;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeParseException;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.UUID;
 
 @EventBusSubscriber(modid = UltimateAuctionSystem.MODID)
@@ -30,6 +33,7 @@ public final class UasPayloads {
     public static void register(RegisterPayloadHandlersEvent event) {
         PayloadRegistrar registrar = event.registrar("1");
         registrar.playToServer(AuctionActionPayload.TYPE, AuctionActionPayload.STREAM_CODEC, UasPayloads::handleAuctionAction);
+        registrar.playToServer(AuctionAdminActionPayload.TYPE, AuctionAdminActionPayload.STREAM_CODEC, UasPayloads::handleAuctionAdminAction);
         registrar.playToClient(AuctionSnapshotPayload.TYPE, AuctionSnapshotPayload.STREAM_CODEC, UasPayloads::handleAuctionSnapshot);
     }
 
@@ -59,9 +63,10 @@ public final class UasPayloads {
             AuctionDeliverySavedData deliveryData = AuctionDeliverySavedData.get(player.getServer());
             boolean adminMode = payload.adminMode() && player.hasPermissions(net.austizz.ultimate_auction_system.Config.adminStatusPermissionLevel);
             AuctionActionResult result = switch (safe(payload.action())) {
-                case "PREPARE_CREATE" -> house.prepareAuctionFromInventorySlot(
+                case "PREPARE_CREATE" -> house.prepareAuctionFromInventorySlots(
                         player,
-                        payload.slot(),
+                        payload.selectedSlots(),
+                        payload.title(),
                         money(payload.startingBid()),
                         money(payload.buyoutPrice()),
                         endDateTime(payload),
@@ -80,9 +85,156 @@ public final class UasPayloads {
                 case "WITHDRAW_DELIVERY" -> house.withdrawDelivery(player, payload.deliveryId(), deliveryData);
                 default -> AuctionActionResult.ok("");
             };
+            if (adminMode && "ADMIN_FORCE_CANCEL".equals(safe(payload.action()))) {
+                AuctionAdminSavedData.get(player.getServer()).addAudit(
+                        "FORCE_CANCEL",
+                        player.getUUID(),
+                        player.getGameProfile().getName(),
+                        String.valueOf(payload.auctionId()),
+                        "Admin dashboard force cancel",
+                        result.success(),
+                        result.message()
+                );
+            }
             house.sendActionAlert(player, result);
             sendSnapshot(player, query, result.message(), result.success(), adminMode);
         });
+    }
+
+    private static void handleAuctionAdminAction(AuctionAdminActionPayload payload, IPayloadContext context) {
+        context.enqueueWork(() -> {
+            if (!(context.player() instanceof ServerPlayer player)) {
+                return;
+            }
+            AuctionHouse house = UltimateAuctionSystem.auctionHouse;
+            if (house == null) {
+                sendSnapshot(player, AuctionUiQuery.defaults(), "Auction house is not initialized.", false, false);
+                return;
+            }
+            boolean adminMode = player.hasPermissions(net.austizz.ultimate_auction_system.Config.adminStatusPermissionLevel);
+            if (!adminMode) {
+                sendSnapshot(player, AuctionUiQuery.defaults(), "You do not have permission to use auction admin tools.", false, false);
+                return;
+            }
+
+            AuctionAdminSavedData adminData = AuctionAdminSavedData.get(player.getServer());
+            AuctionDeliverySavedData deliveryData = AuctionDeliverySavedData.get(player.getServer());
+            AuctionActionResult result = handleAdminAction(payload, player, house, adminData, deliveryData);
+            house.sendActionAlert(player, result);
+            sendSnapshot(player, AuctionUiQuery.defaults(), result.message(), result.success(), true);
+        });
+    }
+
+    private static AuctionActionResult handleAdminAction(AuctionAdminActionPayload payload,
+                                                        ServerPlayer admin,
+                                                        AuctionHouse house,
+                                                        AuctionAdminSavedData adminData,
+                                                        AuctionDeliverySavedData deliveryData) {
+        String action = safe(payload.action());
+        return switch (action) {
+            case "ADMIN_FORCE_CANCEL" -> auditedAdminAuctionAction(
+                    adminData,
+                    admin,
+                    "FORCE_CANCEL",
+                    String.valueOf(payload.auctionId()),
+                    "Admin dashboard force cancel",
+                    house.adminForceCancel(admin, payload.auctionId(), deliveryData)
+            );
+            case "ADMIN_RETRY_SETTLEMENT" -> auditedAdminAuctionAction(
+                    adminData,
+                    admin,
+                    "RETRY_SETTLEMENT",
+                    String.valueOf(payload.auctionId()),
+                    "Admin dashboard settlement retry",
+                    house.adminRetrySettlement(admin, payload.auctionId(), deliveryData)
+            );
+            case "APPLY_BAN" -> applyPlayerBan(payload, admin, adminData);
+            case "REVOKE_BAN" -> revokePlayerBan(payload, admin, adminData);
+            case "ADD_BANNED_ENTRY" -> addBannedEntry(payload, admin, adminData);
+            case "REMOVE_BANNED_ENTRY" -> removeBannedEntry(payload, admin, adminData);
+            default -> AuctionActionResult.fail("Unknown admin action.");
+        };
+    }
+
+    private static AuctionActionResult auditedAdminAuctionAction(AuctionAdminSavedData adminData,
+                                                                ServerPlayer admin,
+                                                                String action,
+                                                                String target,
+                                                                String reason,
+                                                                AuctionActionResult result) {
+        adminData.addAudit(action, admin.getUUID(), admin.getGameProfile().getName(), target, reason, result.success(), result.message());
+        return result;
+    }
+
+    private static AuctionActionResult applyPlayerBan(AuctionAdminActionPayload payload,
+                                                      ServerPlayer admin,
+                                                      AuctionAdminSavedData adminData) {
+        if (payload.playerId() == null) {
+            return AuctionActionResult.fail("Select a player before applying a ban.");
+        }
+        if (!payload.blockCreate() && !payload.blockBid() && !payload.blockBuyout() && !payload.blockWatch()) {
+            return AuctionActionResult.fail("Select at least one auction-house action to block.");
+        }
+        LocalDateTime expiresAt;
+        try {
+            expiresAt = parseAdminExpiry(payload.expiresAt());
+        } catch (DateTimeParseException exception) {
+            return AuctionActionResult.fail("Ban expiry must be blank or ISO date-time, for example 2026-06-06T18:30.");
+        }
+        String playerName = playerName(admin, payload.playerId(), payload.playerName());
+        adminData.applyBan(
+                payload.playerId(),
+                playerName,
+                payload.blockCreate(),
+                payload.blockBid(),
+                payload.blockBuyout(),
+                payload.blockWatch(),
+                payload.reason(),
+                expiresAt,
+                admin.getUUID(),
+                admin.getGameProfile().getName()
+        );
+        return AuctionActionResult.ok("Auction-house ban updated for " + playerName + ".");
+    }
+
+    private static AuctionActionResult revokePlayerBan(AuctionAdminActionPayload payload,
+                                                       ServerPlayer admin,
+                                                       AuctionAdminSavedData adminData) {
+        if (payload.playerId() == null) {
+            return AuctionActionResult.fail("Select a player before revoking a ban.");
+        }
+        boolean revoked = adminData.revokeBan(payload.playerId(), admin.getUUID(), admin.getGameProfile().getName(), payload.reason());
+        return revoked ? AuctionActionResult.ok("Auction-house ban revoked.") : AuctionActionResult.fail("No auction-house ban exists for that player.");
+    }
+
+    private static AuctionActionResult addBannedEntry(AuctionAdminActionPayload payload,
+                                                     ServerPlayer admin,
+                                                     AuctionAdminSavedData adminData) {
+        String entry = net.austizz.ultimate_auction_system.Config.normalizeAuctionRestriction(payload.bannedEntry());
+        if (!net.austizz.ultimate_auction_system.Config.isValidAuctionRestriction(entry)) {
+            adminData.addAudit("BANNED_ENTRY_ADD", admin.getUUID(), admin.getGameProfile().getName(), entry, "Admin dashboard banned-entry add", false, "Invalid banned auction entry.");
+            return AuctionActionResult.fail("Invalid banned auction entry.");
+        }
+        List<String> entries = new ArrayList<>(net.austizz.ultimate_auction_system.Config.bannedAuctionEntries);
+        if (!entries.contains(entry)) {
+            entries.add(entry);
+        }
+        AuctionActionResult result = net.austizz.ultimate_auction_system.Config.replaceBannedAuctionEntries(entries);
+        adminData.addAudit("BANNED_ENTRY_ADD", admin.getUUID(), admin.getGameProfile().getName(), entry, "Admin dashboard banned-entry add", result.success(), result.message());
+        return result;
+    }
+
+    private static AuctionActionResult removeBannedEntry(AuctionAdminActionPayload payload,
+                                                        ServerPlayer admin,
+                                                        AuctionAdminSavedData adminData) {
+        String entry = net.austizz.ultimate_auction_system.Config.normalizeAuctionRestriction(payload.bannedEntry());
+        List<String> entries = new ArrayList<>(net.austizz.ultimate_auction_system.Config.bannedAuctionEntries);
+        boolean removed = entries.removeIf(current -> entry.equals(net.austizz.ultimate_auction_system.Config.normalizeAuctionRestriction(current)));
+        AuctionActionResult result = removed
+                ? net.austizz.ultimate_auction_system.Config.replaceBannedAuctionEntries(entries)
+                : AuctionActionResult.fail("Banned auction entry was not found.");
+        adminData.addAudit("BANNED_ENTRY_REMOVE", admin.getUUID(), admin.getGameProfile().getName(), entry, "Admin dashboard banned-entry remove", result.success(), result.message());
+        return result;
     }
 
     private static void sendSnapshot(ServerPlayer player, AuctionUiQuery query, String message, boolean success) {
@@ -99,6 +251,26 @@ public final class UasPayloads {
         PacketDistributor.sendToPlayer(player, AuctionSnapshotPayload.fromSnapshot(snapshot));
     }
 
+    private static LocalDateTime parseAdminExpiry(String raw) {
+        if (raw == null || raw.isBlank() || "never".equalsIgnoreCase(raw.trim())) {
+            return null;
+        }
+        return LocalDateTime.parse(raw.trim());
+    }
+
+    private static String playerName(ServerPlayer admin, UUID playerId, String fallback) {
+        if (fallback != null && !fallback.isBlank()) {
+            return fallback.trim();
+        }
+        if (admin != null && admin.getServer() != null && playerId != null) {
+            ServerPlayer online = admin.getServer().getPlayerList().getPlayer(playerId);
+            if (online != null) {
+                return online.getGameProfile().getName();
+            }
+        }
+        return playerId == null ? "Unknown" : playerId.toString().substring(0, 8);
+    }
+
     private static AuctionUiQuery queryFrom(AuctionActionPayload payload) {
         return new AuctionUiQuery(
                 payload.search(),
@@ -106,7 +278,8 @@ public final class UasPayloads {
                 money(payload.minimumPrice()),
                 money(payload.maximumPrice()),
                 Math.max(0L, payload.maximumHoursLeft()),
-                AuctionSort.fromToken(payload.sort())
+                AuctionSort.fromToken(payload.sort()),
+                payload.modId()
         );
     }
 

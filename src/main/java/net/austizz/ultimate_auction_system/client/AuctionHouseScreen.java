@@ -3,18 +3,23 @@ package net.austizz.ultimate_auction_system.client;
 import net.austizz.ultimate_auction_system.AuctionCategory;
 import net.austizz.ultimate_auction_system.AuctionSort;
 import net.austizz.ultimate_auction_system.banking.UasMoneyFormatter;
+import net.austizz.ultimate_auction_system.network.AuctionAdminActionPayload;
+import net.austizz.ultimate_auction_system.network.AuctionAdminDashboardPayload;
 import net.austizz.ultimate_auction_system.network.AuctionActionPayload;
 import net.austizz.ultimate_auction_system.network.AuctionBidSummary;
 import net.austizz.ultimate_auction_system.network.AuctionDeliverySummary;
 import net.austizz.ultimate_auction_system.network.AuctionEntrySummary;
+import net.austizz.ultimate_auction_system.network.AuctionModFilterSummaryPayload;
 import net.austizz.ultimate_auction_system.network.AuctionPendingListingSummary;
 import net.austizz.ultimate_auction_system.network.AuctionSnapshotPayload;
 import net.minecraft.ChatFormatting;
 import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.client.gui.components.AbstractButton;
 import net.minecraft.client.gui.components.AbstractWidget;
 import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.client.gui.components.Renderable;
 import net.minecraft.client.gui.components.events.GuiEventListener;
+import net.minecraft.client.gui.narration.NarrationElementOutput;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.network.chat.Component;
 import net.minecraft.world.entity.player.Inventory;
@@ -38,13 +43,32 @@ import java.util.UUID;
 import java.util.function.Consumer;
 
 public class AuctionHouseScreen extends Screen {
-    private record DatePickerLayout(int cell, int calendarWidth, int calendarX, int monthY, int weekdayY, int dayTop, int hourY, int actionY) {
+    private static final Duration MIN_CLIENT_AUCTION_DURATION = Duration.ofMinutes(5);
+    private static final int SEARCH_REFRESH_DEBOUNCE_TICKS = 4;
+
+    private record DatePickerLayout(int cell,
+                                    int calendarWidth,
+                                    int calendarX,
+                                    int monthY,
+                                    int weekdayY,
+                                    int dayTop,
+                                    int timeX,
+                                    int timeY,
+                                    int timeWidth,
+                                    int actionY,
+                                    boolean sideBySide) {
     }
 
     private record RowAction(String label, AuctionButton.Style style, Consumer<AuctionButton> onPress, boolean active) {
         private RowAction(String label, AuctionButton.Style style, Consumer<AuctionButton> onPress) {
             this(label, style, onPress, true);
         }
+    }
+
+    private record ModOption(String modId, String displayName, int activeAuctionCount) {
+    }
+
+    private record ChartMetric(String label, int color, BigDecimal value, String display) {
     }
 
     private enum Tab {
@@ -59,6 +83,22 @@ public class AuctionHouseScreen extends Screen {
         }
     }
 
+    private enum AdminSection {
+        OVERVIEW("Overview"),
+        AUCTIONS("Auctions"),
+        PLAYERS("Players"),
+        ECONOMY("Economy"),
+        MODERATION("Moderation"),
+        BANNED_ITEMS("Banned Items"),
+        AUDIT("Audit");
+
+        private final String label;
+
+        AdminSection(String label) {
+            this.label = label;
+        }
+    }
+
     private enum Modal {
         NONE,
         BID,
@@ -67,15 +107,19 @@ public class AuctionHouseScreen extends Screen {
         DATE_PICKER,
         BIDS,
         DELIVERY,
-        FILTER
+        FILTER,
+        MOD_FILTER,
+        CONTENTS
     }
 
     private AuctionSnapshotPayload payload;
     private Tab activeTab = Tab.BROWSE;
+    private AdminSection adminSection = AdminSection.OVERVIEW;
     private Modal modal = Modal.NONE;
     private AuctionEntrySummary selectedAuction;
     private int selectedInventorySlot = -1;
-    private int page = 0;
+    private List<Integer> selectedInventorySlots = new ArrayList<>();
+    private int auctionScroll = 0;
     private AuctionCategory category = AuctionCategory.ALL;
     private AuctionSort sort = AuctionSort.ENDING_SOON;
     private long maxHoursLeft = 0L;
@@ -84,9 +128,23 @@ public class AuctionHouseScreen extends Screen {
     private String maxPriceDraft = "";
     private String startingBidDraft = "";
     private String buyoutDraft = "";
+    private String bundleTitleDraft = "";
     private String descriptionDraft = "";
+    private String selectedModId = "";
+    private String pendingModId = "";
+    private String modSearchDraft = "";
+    private String adminSearchDraft = "";
+    private String adminBannedEntryDraft = "";
+    private String adminBanReasonDraft = "";
+    private String adminBanExpiryDraft = "";
+    private UUID selectedAdminPlayerId;
+    private boolean adminBlockCreate = true;
+    private boolean adminBlockBid = true;
+    private boolean adminBlockBuyout = true;
+    private boolean adminBlockWatch = true;
     private LocalDate selectedEndDate = LocalDate.now().plusDays(1);
     private int selectedEndHour = 12;
+    private int selectedEndMinute = 0;
     private YearMonth calendarMonth = YearMonth.now();
 
     private EditBox searchBox;
@@ -95,7 +153,15 @@ public class AuctionHouseScreen extends Screen {
     private EditBox bidBox;
     private EditBox startingBidBox;
     private EditBox buyoutBox;
+    private EditBox bundleTitleBox;
     private EditBox descriptionBox;
+    private EditBox endHourBox;
+    private EditBox endMinuteBox;
+    private EditBox modSearchBox;
+    private EditBox adminSearchBox;
+    private EditBox adminBannedEntryBox;
+    private EditBox adminBanReasonBox;
+    private EditBox adminBanExpiryBox;
 
     private int panelLeft;
     private int panelTop;
@@ -111,8 +177,15 @@ public class AuctionHouseScreen extends Screen {
     private int createScroll = 0;
     private int filterScroll = 0;
     private int bidsScroll = 0;
+    private int modScroll = 0;
+    private int contentsScroll = 0;
+    private int adminScroll = 0;
     private int modalRenderableStart = 0;
     private int modalChildStart = 0;
+    private int searchRefreshDelay = 0;
+    private boolean modSearchRebuildPending = false;
+    private boolean refocusHeaderSearch = false;
+    private boolean refocusModSearch = false;
 
     public AuctionHouseScreen(AuctionSnapshotPayload payload) {
         super(Component.translatable("Auction House"));
@@ -135,15 +208,43 @@ public class AuctionHouseScreen extends Screen {
     }
 
     @Override
+    public void tick() {
+        super.tick();
+        if (searchRefreshDelay > 0) {
+            searchRefreshDelay--;
+            if (searchRefreshDelay == 0) {
+                refreshFromServer();
+            }
+        }
+        if (modSearchRebuildPending) {
+            modSearchRebuildPending = false;
+            refocusModSearch = true;
+            rebuildWidgets();
+        }
+    }
+
+    @Override
     protected void rebuildWidgets() {
         searchDraft = value(searchBox, searchDraft);
-        minPriceDraft = value(minPriceBox, minPriceDraft);
-        maxPriceDraft = value(maxPriceBox, maxPriceDraft);
+        minPriceDraft = sanitizeMoneyInput(value(minPriceBox, minPriceDraft));
+        maxPriceDraft = sanitizeMoneyInput(value(maxPriceBox, maxPriceDraft));
+        startingBidDraft = sanitizeMoneyInput(value(startingBidBox, startingBidDraft));
+        buyoutDraft = sanitizeMoneyInput(value(buyoutBox, buyoutDraft));
+        bundleTitleDraft = value(bundleTitleBox, bundleTitleDraft);
+        adminSearchDraft = value(adminSearchBox, adminSearchDraft);
+        adminBannedEntryDraft = value(adminBannedEntryBox, adminBannedEntryDraft);
+        adminBanReasonDraft = value(adminBanReasonBox, adminBanReasonDraft);
+        adminBanExpiryDraft = value(adminBanExpiryBox, adminBanExpiryDraft);
         clearWidgets();
         panelWidth = Math.min(1000, Math.max(360, width - 22));
         panelHeight = Math.min(700, Math.max(260, height - 22));
         panelLeft = (width - panelWidth) / 2;
         panelTop = (height - panelHeight) / 2;
+
+        if (payload.adminMode()) {
+            rebuildAdminWidgets();
+            return;
+        }
 
         boolean compactHeader = panelWidth < 760;
         boolean narrowHeader = panelWidth < 560;
@@ -186,8 +287,17 @@ public class AuctionHouseScreen extends Screen {
         searchBox = new AuctionEditBox(font, searchLeft, searchY, searchWidth, 22, Component.translatable("Search"));
         searchBox.setValue(searchDraft);
         searchBox.setHint(Component.translatable("Search items or sellers"));
-        searchBox.setResponder(value -> searchDraft = value);
+        searchBox.setResponder(value -> {
+            searchDraft = value;
+            auctionScroll = 0;
+            refocusHeaderSearch = true;
+            scheduleSearchRefresh();
+        });
         addRenderableWidget(searchBox);
+        if (refocusHeaderSearch && modal == Modal.NONE) {
+            setFocused(searchBox);
+            searchBox.setFocused(true);
+        }
 
         int tabX = panelLeft + 16;
         addAuctionButton(tabX, stackedTabs ? tabY - 30 : tabY, 74, 24, "Filters", filtersActive() ? AuctionButton.Style.TAB_ACTIVE : AuctionButton.Style.GRAY, button -> {
@@ -210,6 +320,7 @@ public class AuctionHouseScreen extends Screen {
             });
         }
 
+        clampAuctionScroll();
         addContentButtons();
 
         modalRenderableStart = renderables.size();
@@ -218,17 +329,97 @@ public class AuctionHouseScreen extends Screen {
             clearFocus();
             clampModalScrolls();
             addModalWidgets();
+            if (refocusModSearch && modal == Modal.MOD_FILTER && modSearchBox != null) {
+                setFocused(modSearchBox);
+                modSearchBox.setFocused(true);
+            }
+            refocusHeaderSearch = false;
+            refocusModSearch = false;
+        } else {
+            refocusHeaderSearch = false;
         }
     }
 
     private void addTabButton(int x, int y, int w, Tab tab) {
         AuctionButton button = addAuctionButton(x, y, w, 24, tab.label, activeTab == tab ? AuctionButton.Style.TAB_ACTIVE : AuctionButton.Style.DARK, ignored -> {
             activeTab = tab;
-            page = 0;
+            auctionScroll = 0;
             modal = Modal.NONE;
             rebuildWidgets();
         });
         button.active = activeTab != tab;
+    }
+
+    private void rebuildAdminWidgets() {
+        boolean wideNav = adminWideNav();
+        headerHeight = wideNav ? 70 : 112;
+        int navW = wideNav ? 136 : 0;
+        contentLeft = panelLeft + 16 + navW;
+        contentTop = panelTop + headerHeight + 12;
+        contentWidth = panelWidth - 32 - navW;
+        contentHeight = Math.max(48, panelHeight - headerHeight - 34);
+
+        int closeW = 58;
+        int closeX = panelLeft + panelWidth - closeW - 16;
+        addAuctionButton(closeX, panelTop + 14, closeW, 22, "Close", AuctionButton.Style.GRAY, button -> onClose());
+        addAuctionButton(closeX - 88, panelTop + 14, 80, 22, "Refresh", AuctionButton.Style.GRAY, button -> refreshFromServer());
+
+        addAdminNavButtons(wideNav);
+        clampAdminScroll();
+        if (adminSection == AdminSection.AUCTIONS || adminSection == AdminSection.MODERATION) {
+            clampAuctionScroll();
+            addContentButtons();
+        } else if (adminSection == AdminSection.PLAYERS) {
+            addAdminPlayerWidgets();
+        } else if (adminSection == AdminSection.BANNED_ITEMS) {
+            addAdminBannedEntryWidgets();
+        }
+
+        modalRenderableStart = renderables.size();
+        modalChildStart = children().size();
+        if (modal != Modal.NONE) {
+            clearFocus();
+            clampModalScrolls();
+            addModalWidgets();
+            refocusHeaderSearch = false;
+            refocusModSearch = false;
+        }
+    }
+
+    private boolean adminWideNav() {
+        return panelWidth >= 720;
+    }
+
+    private void addAdminNavButtons(boolean wideNav) {
+        AdminSection[] sections = AdminSection.values();
+        if (wideNav) {
+            int x = panelLeft + 18;
+            int y = contentTop;
+            for (AdminSection section : sections) {
+                addAdminSectionButton(x, y, 112, 22, section);
+                y += 28;
+            }
+            return;
+        }
+
+        int x = panelLeft + 16;
+        int y = panelTop + 74;
+        int buttonW = Math.max(78, (panelWidth - 44) / 4);
+        for (int i = 0; i < sections.length; i++) {
+            AdminSection section = sections[i];
+            addAdminSectionButton(x + (i % 4) * (buttonW + 4), y + (i / 4) * 26, buttonW, 22, section);
+        }
+    }
+
+    private void addAdminSectionButton(int x, int y, int w, int h, AdminSection section) {
+        AuctionButton button = addAuctionButton(x, y, w, h, section.label, adminSection == section ? AuctionButton.Style.TAB_ACTIVE : AuctionButton.Style.DARK, ignored -> {
+            adminSection = section;
+            adminScroll = 0;
+            auctionScroll = 0;
+            modal = Modal.NONE;
+            rebuildWidgets();
+        });
+        button.active = adminSection != section;
     }
 
     private AuctionButton addAuctionButton(int x, int y, int w, int h, String label, AuctionButton.Style style, Consumer<AuctionButton> onPress) {
@@ -239,40 +430,55 @@ public class AuctionHouseScreen extends Screen {
         return addRenderableWidget(new AuctionButton(x, y, w, h, label, style, onPress));
     }
 
+    private AbstractButton addInvisibleButton(int x, int y, int w, int h, Component label, Consumer<AbstractButton> onPress) {
+        AbstractButton button = new AbstractButton(x, y, w, h, label) {
+            @Override
+            public void onPress() {
+                if (onPress != null) {
+                    onPress.accept(this);
+                }
+            }
+
+            @Override
+            protected void renderWidget(GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {
+            }
+
+            @Override
+            protected void updateWidgetNarration(NarrationElementOutput narrationElementOutput) {
+                defaultButtonNarrationText(narrationElementOutput);
+            }
+        };
+        return addRenderableWidget(button);
+    }
+
     private void addContentButtons() {
         List<AuctionEntrySummary> entries = visibleEntries();
         int rowHeight = auctionRowHeight();
-        int perPage = Math.max(1, contentHeight / rowHeight);
-        int start = page * perPage;
-        int end = Math.min(entries.size(), start + perPage);
-        int y = contentTop + 8;
+        int listTop = auctionListTop();
+        int listBottom = auctionListBottom();
+        int start = Math.max(0, auctionScroll / rowHeight);
+        int visibleRows = Math.max(1, auctionListViewportHeight() / rowHeight);
+        int end = Math.min(entries.size(), start + visibleRows + 2);
 
         for (int i = start; i < end; i++) {
             AuctionEntrySummary entry = entries.get(i);
-            int rowTop = y + (i - start) * rowHeight;
+            int rowTop = listTop + i * rowHeight - auctionScroll;
+            if (rowTop + rowHeight < listTop || rowTop > listBottom) {
+                continue;
+            }
             addRowActionButtons(entry, rowTop, rowHeight);
         }
-
-        int pagerY = panelTop + panelHeight - 28;
-        AuctionButton prev = addAuctionButton(contentLeft, pagerY, 58, 20, "Prev", AuctionButton.Style.GRAY, button -> {
-            page = Math.max(0, page - 1);
-            rebuildWidgets();
-        });
-        prev.active = page > 0;
-
-        AuctionButton next = addAuctionButton(contentLeft + 64, pagerY, 58, 20, "Next", AuctionButton.Style.GRAY, button -> {
-            page++;
-            rebuildWidgets();
-        });
-        next.active = end < entries.size();
     }
 
     private void addRowActionButtons(AuctionEntrySummary entry, int rowTop, int rowHeight) {
         List<RowAction> actions = new ArrayList<>();
         if (payload.adminMode()) {
             actions.add(new RowAction("Inspect", AuctionButton.Style.GRAY, button -> openBids(entry)));
+            if ("FAILED_SETTLEMENT".equals(normalizedState(entry))) {
+                actions.add(new RowAction("Retry Pay", AuctionButton.Style.GREEN, button -> sendAdminAuctionAction("ADMIN_RETRY_SETTLEMENT", entry)));
+            }
             if (adminCanForceCancel(entry)) {
-                actions.add(new RowAction("Force Cancel", AuctionButton.Style.RED, button -> sendAuctionAction("ADMIN_FORCE_CANCEL", entry, "", null)));
+                actions.add(new RowAction("Force Cancel", AuctionButton.Style.RED, button -> sendAdminAuctionAction("ADMIN_FORCE_CANCEL", entry)));
             }
             addRowButtons(actions, rowTop);
             return;
@@ -280,6 +486,9 @@ public class AuctionHouseScreen extends Screen {
 
         actions.add(new RowAction(entry.viewerReceivesNotifications() ? "Watching" : "Notify", entry.viewerReceivesNotifications() ? AuctionButton.Style.GREEN : AuctionButton.Style.GRAY, button -> sendAuctionAction("TOGGLE_NOTIFICATIONS", entry, "", null)));
         actions.add(new RowAction("View Bids", AuctionButton.Style.GRAY, button -> openBids(entry)));
+        if (entry.bundle()) {
+            actions.add(new RowAction("Contents", AuctionButton.Style.GRAY, button -> openContents(entry)));
+        }
 
         if (activeTab == Tab.BROWSE) {
             if (entry.canBid()) {
@@ -292,20 +501,20 @@ public class AuctionHouseScreen extends Screen {
             if (entry.canBid()) {
                 actions.add(new RowAction("Raise Bid", AuctionButton.Style.GREEN, button -> openBid(entry)));
             }
-            if (entry.canClaim()) {
-                actions.add(new RowAction("Claim", AuctionButton.Style.GREEN, button -> sendAuctionAction("CLAIM", entry, "", null)));
-            } else if (isClaimed(entry)) {
+            if (isClaimed(entry)) {
                 actions.add(new RowAction("Claimed", AuctionButton.Style.CLAIMED, button -> {
                 }, false));
+            } else if (entry.canClaim()) {
+                actions.add(new RowAction("Claim", AuctionButton.Style.GREEN, button -> sendAuctionAction("CLAIM", entry, "", null)));
             }
         } else {
             if (entry.canCancel()) {
                 actions.add(new RowAction("Cancel", AuctionButton.Style.RED, button -> sendAuctionAction("CANCEL", entry, "", null)));
-            } else if (entry.canClaim()) {
-                actions.add(new RowAction("Claim", AuctionButton.Style.GREEN, button -> sendAuctionAction("CLAIM", entry, "", null)));
             } else if (isClaimed(entry)) {
                 actions.add(new RowAction("Claimed", AuctionButton.Style.CLAIMED, button -> {
                 }, false));
+            } else if (entry.canClaim()) {
+                actions.add(new RowAction("Claim", AuctionButton.Style.GREEN, button -> sendAuctionAction("CLAIM", entry, "", null)));
             }
         }
 
@@ -323,6 +532,7 @@ public class AuctionHouseScreen extends Screen {
             for (RowAction action : actions) {
                 AuctionButton button = addAuctionButton(x, y, buttonW, buttonH, action.label(), action.style(), action.onPress());
                 button.active = action.active();
+                setVisibleInAuctionList(button);
                 x += buttonW + gap;
             }
             return;
@@ -334,6 +544,7 @@ public class AuctionHouseScreen extends Screen {
         for (RowAction action : actions) {
             AuctionButton button = addAuctionButton(x, y, stackedButtonW, buttonH, action.label(), action.style(), action.onPress());
             button.active = action.active();
+            setVisibleInAuctionList(button);
             y += buttonH + gap;
         }
     }
@@ -372,6 +583,10 @@ public class AuctionHouseScreen extends Screen {
             }
         } else if (modal == Modal.FILTER) {
             addFilterModalWidgets(x, y, modalW, modalH);
+        } else if (modal == Modal.MOD_FILTER) {
+            addModFilterModalWidgets(x, y, modalW, modalH);
+        } else if (modal == Modal.CONTENTS) {
+            addAuctionButton(x + modalW - 100, closeY, 80, 24, "Close", AuctionButton.Style.GRAY, button -> closeModal());
         }
     }
 
@@ -393,6 +608,7 @@ public class AuctionHouseScreen extends Screen {
 
         bidBox = new AuctionEditBox(font, inputX, inputY + 16, modalW - 40 - minW - gap, 24, Component.translatable("Bid Amount"));
         bidBox.setHint(Component.translatable("Bid Amount"));
+        bidBox.setFilter(this::moneyInput);
         bidBox.setValue(nextBidValue(selectedAuction));
         addRenderableWidget(bidBox);
 
@@ -407,7 +623,7 @@ public class AuctionHouseScreen extends Screen {
 
         int actionW = Math.max(110, (modalW - 52) / 2);
         addAuctionButton(x + 20, actionY, actionW, 26, "Cancel", AuctionButton.Style.GRAY, button -> closeModal());
-        addAuctionButton(x + modalW - actionW - 20, actionY, actionW, 26, "Confirm Bid", AuctionButton.Style.GREEN, button -> sendAuctionAction("BID", selectedAuction, bidBox.getValue(), null));
+        addAuctionButton(x + modalW - actionW - 20, actionY, actionW, 26, "Confirm Bid", AuctionButton.Style.GREEN, button -> sendAuctionAction("BID", selectedAuction, sanitizeMoneyInput(bidBox.getValue()), null));
     }
 
     private void addCreateModalWidgets(int x, int y, int modalW, int modalH) {
@@ -415,14 +631,26 @@ public class AuctionHouseScreen extends Screen {
         int scroll = createScroll;
         int bodyTop = modalBodyTop(y);
         int bodyBottom = modalBodyBottom(y, modalH);
-        int startingY = y + (compact ? 274 : 190) - scroll;
-        int buyoutY = y + (compact ? 322 : 190) - scroll;
-        int endY = y + (compact ? 370 : 190) - scroll;
-        int descriptionY = y + (compact ? 418 : 238) - scroll;
+        int bundleOffset = createSelectionIsBundle() ? 48 : 0;
+        int startingY = y + (compact ? 274 : 190) + bundleOffset - scroll;
+        int buyoutY = y + (compact ? 322 : 190) + bundleOffset - scroll;
+        int endY = y + (compact ? 370 : 190) + bundleOffset - scroll;
+        int descriptionY = y + (compact ? 418 : 238) + bundleOffset - scroll;
         int fieldW = compact ? modalW - 40 : 138;
+
+        if (createSelectionIsBundle()) {
+            int titleY = y + (compact ? 274 : 190) - scroll;
+            bundleTitleBox = new AuctionEditBox(font, x + 20, titleY, modalW - 40, 22, Component.literal("Bundle Title"));
+            bundleTitleBox.setHint(Component.literal(generatedSelectedBundleTitle()));
+            bundleTitleBox.setValue(bundleTitleDraft);
+            bundleTitleBox.setResponder(value -> bundleTitleDraft = value);
+            setVisibleInModalBody(bundleTitleBox, bodyTop, bodyBottom);
+            addRenderableWidget(bundleTitleBox);
+        }
 
         startingBidBox = new AuctionEditBox(font, x + 20, startingY, fieldW, 22, Component.translatable("Starting Bid"));
         startingBidBox.setHint(Component.translatable("Enter starting bid"));
+        startingBidBox.setFilter(this::moneyInput);
         startingBidBox.setValue(startingBidDraft);
         startingBidBox.setResponder(value -> startingBidDraft = value);
         setVisibleInModalBody(startingBidBox, bodyTop, bodyBottom);
@@ -430,6 +658,7 @@ public class AuctionHouseScreen extends Screen {
 
         buyoutBox = new AuctionEditBox(font, compact ? x + 20 : x + 170, buyoutY, compact ? modalW - 40 : 128, 22, Component.translatable("Buyout"));
         buyoutBox.setHint(Component.translatable("Optional buyout"));
+        buyoutBox.setFilter(this::moneyInput);
         buyoutBox.setValue(buyoutDraft);
         buyoutBox.setResponder(value -> buyoutDraft = value);
         setVisibleInModalBody(buyoutBox, bodyTop, bodyBottom);
@@ -457,7 +686,7 @@ public class AuctionHouseScreen extends Screen {
         int createW = modalW < 360 ? 142 : 160;
         addAuctionButton(x + 20, actionY, cancelW, 26, "Cancel", AuctionButton.Style.GRAY, button -> closeModal());
         AuctionButton createButton = addAuctionButton(x + modalW - createW - 20, actionY, createW, 26, "Create Auction", AuctionButton.Style.GREEN, button -> sendCreateAction());
-        createButton.active = !selectedInventoryStack().isEmpty();
+        createButton.active = !selectedInventoryStacks().isEmpty();
     }
 
     private void addFilterModalWidgets(int x, int y, int modalW, int modalH) {
@@ -470,26 +699,37 @@ public class AuctionHouseScreen extends Screen {
         AuctionButton categoryButton = addAuctionButton(fieldX, y + 78 - scroll, fieldW, 22, category.label(), AuctionButton.Style.GRAY, button -> {
             AuctionCategory[] values = AuctionCategory.values();
             category = values[(category.ordinal() + 1) % values.length];
-            page = 0;
+            auctionScroll = 0;
             rebuildWidgets();
         });
         setVisibleInModalBody(categoryButton, bodyTop, bodyBottom);
 
-        minPriceBox = new AuctionEditBox(font, fieldX, y + 134 - scroll, fieldW, 20, Component.translatable("Min Price"));
+        AuctionButton modButton = addAuctionButton(fieldX, y + 134 - scroll, fieldW, 22, selectedModLabel(), !selectedModId.isBlank() ? AuctionButton.Style.TAB_ACTIVE : AuctionButton.Style.GRAY, button -> {
+            pendingModId = selectedModId;
+            modSearchDraft = "";
+            modScroll = 0;
+            modal = Modal.MOD_FILTER;
+            rebuildWidgets();
+        });
+        setVisibleInModalBody(modButton, bodyTop, bodyBottom);
+
+        minPriceBox = new AuctionEditBox(font, fieldX, y + 190 - scroll, fieldW, 20, Component.translatable("Min Price"));
         minPriceBox.setHint(Component.translatable("Min Price"));
+        minPriceBox.setFilter(this::moneyInput);
         minPriceBox.setValue(minPriceDraft);
         minPriceBox.setResponder(value -> minPriceDraft = value);
         setVisibleInModalBody(minPriceBox, bodyTop, bodyBottom);
         addRenderableWidget(minPriceBox);
 
-        maxPriceBox = new AuctionEditBox(font, fieldX, y + 162 - scroll, fieldW, 20, Component.translatable("Max Price"));
+        maxPriceBox = new AuctionEditBox(font, fieldX, y + 218 - scroll, fieldW, 20, Component.translatable("Max Price"));
         maxPriceBox.setHint(Component.translatable("Max Price"));
+        maxPriceBox.setFilter(this::moneyInput);
         maxPriceBox.setValue(maxPriceDraft);
         maxPriceBox.setResponder(value -> maxPriceDraft = value);
         setVisibleInModalBody(maxPriceBox, bodyTop, bodyBottom);
         addRenderableWidget(maxPriceBox);
 
-        AuctionButton timeButton = addAuctionButton(fieldX, y + 224 - scroll, fieldW, 22, timeFilterLabel(), AuctionButton.Style.GRAY, button -> {
+        AuctionButton timeButton = addAuctionButton(fieldX, y + 280 - scroll, fieldW, 22, timeFilterLabel(), AuctionButton.Style.GRAY, button -> {
             if (maxHoursLeft == 0L) {
                 maxHoursLeft = 1L;
             } else if (maxHoursLeft == 1L) {
@@ -499,21 +739,167 @@ public class AuctionHouseScreen extends Screen {
             } else {
                 maxHoursLeft = 0L;
             }
-            page = 0;
+            auctionScroll = 0;
             rebuildWidgets();
         });
         setVisibleInModalBody(timeButton, bodyTop, bodyBottom);
 
-        AuctionButton sortButton = addAuctionButton(fieldX, y + 286 - scroll, fieldW, 22, sort.label(), AuctionButton.Style.GRAY, button -> {
+        AuctionButton sortButton = addAuctionButton(fieldX, y + 342 - scroll, fieldW, 22, sort.label(), AuctionButton.Style.GRAY, button -> {
             AuctionSort[] values = AuctionSort.values();
             sort = values[(sort.ordinal() + 1) % values.length];
-            page = 0;
+            auctionScroll = 0;
             rebuildWidgets();
         });
         setVisibleInModalBody(sortButton, bodyTop, bodyBottom);
 
         addAuctionButton(x + 18, y + modalH - 36, modalW - 118, 26, "Apply Filters", AuctionButton.Style.GREEN, button -> applyFilters());
         addAuctionButton(x + modalW - 88, y + modalH - 36, 70, 26, "Close", AuctionButton.Style.GRAY, button -> closeModal());
+    }
+
+    private void addModFilterModalWidgets(int x, int y, int modalW, int modalH) {
+        int listTop = y + 88;
+        int listBottom = y + modalH - 52;
+        int rowH = 32;
+
+        modSearchBox = new AuctionEditBox(font, x + 18, y + 54, modalW - 36, 22, Component.translatable("Search Mods"));
+        modSearchBox.setHint(Component.translatable("Search mods"));
+        modSearchBox.setValue(modSearchDraft);
+        modSearchBox.setResponder(value -> {
+            modSearchDraft = value;
+            modScroll = 0;
+            refocusModSearch = true;
+            modSearchRebuildPending = true;
+        });
+        addRenderableWidget(modSearchBox);
+
+        List<ModOption> options = modOptions();
+        int start = Math.max(0, modScroll / rowH);
+        int visibleRows = Math.max(1, (listBottom - listTop) / rowH);
+        int end = Math.min(options.size(), start + visibleRows + 1);
+        for (int i = start; i < end; i++) {
+            ModOption option = options.get(i);
+            int rowY = listTop + i * rowH - modScroll;
+            if (rowY + rowH < listTop || rowY > listBottom) {
+                continue;
+            }
+            int buttonTop = Math.max(rowY, listTop);
+            int buttonBottom = Math.min(rowY + rowH - 3, listBottom);
+            if (buttonBottom <= buttonTop) {
+                continue;
+            }
+            addInvisibleButton(x + 18, buttonTop, modalW - 36, buttonBottom - buttonTop, Component.literal(option.displayName()), button -> {
+                pendingModId = option.modId();
+                rebuildWidgets();
+            });
+        }
+
+        addAuctionButton(x + 18, y + modalH - 36, 112, 26, "Cancel", AuctionButton.Style.GRAY, button -> {
+            modal = Modal.FILTER;
+            rebuildWidgets();
+        });
+        addAuctionButton(x + modalW - 130, y + modalH - 36, 112, 26, "Confirm", AuctionButton.Style.GREEN, button -> {
+            selectedModId = pendingModId == null ? "" : pendingModId;
+            auctionScroll = 0;
+            modal = Modal.FILTER;
+            rebuildWidgets();
+        });
+    }
+
+    private void addAdminPlayerWidgets() {
+        int searchY = contentTop + 8;
+        int searchW = Math.max(120, contentWidth - 18);
+        adminSearchBox = new AuctionEditBox(font, contentLeft, searchY, searchW, 22, Component.literal("Search Players"));
+        adminSearchBox.setHint(Component.literal("Search player or UUID"));
+        adminSearchBox.setValue(adminSearchDraft);
+        adminSearchBox.setResponder(value -> {
+            adminSearchDraft = value;
+            adminScroll = 0;
+        });
+        addRenderableWidget(adminSearchBox);
+
+        AuctionAdminDashboardPayload.Player selected = selectedAdminPlayer();
+        if (selected != null) {
+            int y = contentTop + 42;
+            int controlsY = y + 86;
+            addAuctionButton(contentLeft, controlsY, 66, 20, adminBlockCreate ? "Create" : "- Create", adminBlockCreate ? AuctionButton.Style.GREEN : AuctionButton.Style.GRAY, button -> {
+                adminBlockCreate = !adminBlockCreate;
+                rebuildWidgets();
+            });
+            addAuctionButton(contentLeft + 72, controlsY, 56, 20, adminBlockBid ? "Bid" : "- Bid", adminBlockBid ? AuctionButton.Style.GREEN : AuctionButton.Style.GRAY, button -> {
+                adminBlockBid = !adminBlockBid;
+                rebuildWidgets();
+            });
+            addAuctionButton(contentLeft + 134, controlsY, 66, 20, adminBlockBuyout ? "Buyout" : "- Buyout", adminBlockBuyout ? AuctionButton.Style.GREEN : AuctionButton.Style.GRAY, button -> {
+                adminBlockBuyout = !adminBlockBuyout;
+                rebuildWidgets();
+            });
+            addAuctionButton(contentLeft + 206, controlsY, 62, 20, adminBlockWatch ? "Watch" : "- Watch", adminBlockWatch ? AuctionButton.Style.GREEN : AuctionButton.Style.GRAY, button -> {
+                adminBlockWatch = !adminBlockWatch;
+                rebuildWidgets();
+            });
+
+            int boxTop = controlsY + 28;
+            int formLeft = contentLeft + 6;
+            int formRight = contentLeft + contentWidth - 16;
+            int reasonW = Math.max(120, (formRight - formLeft) / 2 - 8);
+            adminBanReasonBox = new AuctionEditBox(font, formLeft, boxTop, reasonW, 22, Component.literal("Reason"));
+            adminBanReasonBox.setHint(Component.literal("Reason"));
+            adminBanReasonBox.setValue(adminBanReasonDraft);
+            adminBanReasonBox.setResponder(value -> adminBanReasonDraft = value);
+            addRenderableWidget(adminBanReasonBox);
+
+            int expiryX = formLeft + reasonW + 10;
+            adminBanExpiryBox = new AuctionEditBox(font, expiryX, boxTop, Math.max(120, formRight - expiryX), 22, Component.literal("Expires"));
+            adminBanExpiryBox.setHint(Component.literal("Expires: 2026-06-06T18:30 or blank"));
+            adminBanExpiryBox.setValue(adminBanExpiryDraft);
+            adminBanExpiryBox.setResponder(value -> adminBanExpiryDraft = value);
+            addRenderableWidget(adminBanExpiryBox);
+
+            int actionY = boxTop + 30;
+            addAuctionButton(contentLeft, actionY, 116, 22, "Apply Ban", AuctionButton.Style.RED, button -> sendAdminBanAction("APPLY_BAN", selected));
+            addAuctionButton(contentLeft + 124, actionY, 92, 22, "Unban", AuctionButton.Style.GRAY, button -> sendAdminBanAction("REVOKE_BAN", selected));
+        }
+
+        int listTop = adminPlayerListTop();
+        int rowH = 44;
+        List<AuctionAdminDashboardPayload.Player> players = filteredAdminPlayers();
+        int start = Math.max(0, adminScroll / rowH);
+        int rows = Math.max(1, (adminListBottom() - listTop) / rowH);
+        int end = Math.min(players.size(), start + rows + 1);
+        for (int i = start; i < end; i++) {
+            AuctionAdminDashboardPayload.Player player = players.get(i);
+            int rowY = listTop + i * rowH - adminScroll;
+            if (rowY + rowH < listTop || rowY > adminListBottom()) {
+                continue;
+            }
+            addInvisibleButton(contentLeft, Math.max(rowY, listTop), contentWidth - 10, Math.min(rowH - 4, adminListBottom() - rowY), Component.literal(player.playerName()), button -> selectAdminPlayer(player));
+        }
+    }
+
+    private void addAdminBannedEntryWidgets() {
+        int inputW = Math.max(120, contentWidth - 128);
+        adminBannedEntryBox = new AuctionEditBox(font, contentLeft, contentTop + 8, inputW, 22, Component.literal("Banned Entry"));
+        adminBannedEntryBox.setHint(Component.literal("minecraft:bedrock, #minecraft:shulker_boxes, @modid"));
+        adminBannedEntryBox.setValue(adminBannedEntryDraft);
+        adminBannedEntryBox.setResponder(value -> adminBannedEntryDraft = value);
+        addRenderableWidget(adminBannedEntryBox);
+        addAuctionButton(contentLeft + inputW + 8, contentTop + 8, 92, 22, "Add", AuctionButton.Style.GREEN, button -> sendAdminBannedEntryAction("ADD_BANNED_ENTRY", adminBannedEntryDraft));
+
+        int listTop = contentTop + 44;
+        int rowH = 36;
+        List<AuctionAdminDashboardPayload.BannedEntry> entries = adminDashboard().bannedEntries();
+        int start = Math.max(0, adminScroll / rowH);
+        int rows = Math.max(1, (adminListBottom() - listTop) / rowH);
+        int end = Math.min(entries.size(), start + rows + 1);
+        for (int i = start; i < end; i++) {
+            AuctionAdminDashboardPayload.BannedEntry entry = entries.get(i);
+            int rowY = listTop + i * rowH - adminScroll;
+            if (rowY + rowH < listTop || rowY > adminListBottom()) {
+                continue;
+            }
+            AuctionButton remove = addAuctionButton(contentLeft + contentWidth - 86, rowY + 7, 70, 20, "Remove", AuctionButton.Style.RED, button -> sendAdminBannedEntryAction("REMOVE_BANNED_ENTRY", entry.entry()));
+            setVisibleInAdminList(remove);
+        }
     }
 
     private void addDatePickerWidgets(int x, int y, int modalW, int modalH) {
@@ -555,53 +941,99 @@ public class AuctionHouseScreen extends Screen {
             dayButton.active = selectableEndDate(date);
         }
 
-        addAuctionButton(x + 22, layout.hourY(), 30, 24, Component.literal("<"), AuctionButton.Style.GRAY, button -> {
-            selectedEndHour = Math.floorMod(selectedEndHour - 1, 24);
-            rebuildWidgets();
-        });
-        addAuctionButton(x + 58, layout.hourY(), modalW - 116, 24, Component.literal(hourLabel(selectedEndHour)), AuctionButton.Style.DARK, button -> {
-            selectedEndHour = Math.floorMod(selectedEndHour + 1, 24);
-            rebuildWidgets();
-        });
-        addAuctionButton(x + modalW - 52, layout.hourY(), 30, 24, Component.literal(">"), AuctionButton.Style.GRAY, button -> {
-            selectedEndHour = Math.floorMod(selectedEndHour + 1, 24);
-            rebuildWidgets();
-        });
+        addTimePickerWidgets(layout);
 
         addAuctionButton(x + 22, layout.actionY(), 120, 26, "Cancel", AuctionButton.Style.GRAY, button -> {
             modal = Modal.CREATE;
             rebuildWidgets();
         });
         AuctionButton confirm = addAuctionButton(x + modalW - 142, layout.actionY(), 120, 26, "Confirm", AuctionButton.Style.GREEN, button -> {
+            normalizeTimeInputs();
             modal = Modal.CREATE;
             rebuildWidgets();
         });
-        confirm.active = selectedEndDateTime().isAfter(LocalDateTime.now());
+        confirm.active = selectedAuctionDuration().compareTo(MIN_CLIENT_AUCTION_DURATION) >= 0;
     }
 
     private DatePickerLayout datePickerLayout(int x, int y, int modalW, int modalH) {
-        int monthY = y + (modalH < 390 ? 62 : 74);
-        int dayTop = y + (modalH < 390 ? 110 : 128);
+        boolean sideBySide = modalW >= 520 && modalH >= 360;
         int actionY = y + modalH - 38;
-        int hourY = actionY - 58;
-        int availableHeight = Math.max(18, hourY - 24 - dayTop);
-        int cellByHeight = Math.max(18, availableHeight / 6);
-        int cellByWidth = Math.max(18, (modalW - 80) / 7);
-        int cell = Math.max(18, Math.min(30, Math.min(cellByHeight, cellByWidth)));
+        int monthY = y + (modalH < 390 ? 72 : 88);
+        int dayTop = y + (modalH < 390 ? 114 : 140);
+        int contentX = x + 22;
+        int contentWidth = modalW - 44;
+        int columnGap = 28;
+        int columnWidth = sideBySide ? Math.max(1, (contentWidth - columnGap) / 2) : contentWidth;
+        int timeWidth = sideBySide ? Math.min(220, columnWidth) : Math.max(220, modalW - 44);
+        int timeY = sideBySide ? y + (modalH < 390 ? 120 : 130) : actionY - 124;
+        int calendarAreaX = contentX;
+        int calendarAreaWidth = sideBySide ? columnWidth : contentWidth;
+        int availableBottom = sideBySide ? actionY - 18 : timeY - 24;
+        int availableHeight = Math.max(18, availableBottom - dayTop);
+        int minCell = modalH < 390 ? 14 : 18;
+        int cellByHeight = Math.max(minCell, availableHeight / 6);
+        int cellByWidth = Math.max(minCell, calendarAreaWidth / 7);
+        int cell = Math.max(minCell, Math.min(30, Math.min(cellByHeight, cellByWidth)));
         int calendarWidth = cell * 7;
-        int calendarX = x + (modalW - calendarWidth) / 2;
+        int calendarX = calendarAreaX + Math.max(0, (calendarAreaWidth - calendarWidth) / 2);
+        int timeX = sideBySide
+                ? contentX + columnWidth + columnGap + Math.max(0, (columnWidth - timeWidth) / 2)
+                : x + (modalW - timeWidth) / 2;
         int weekdayY = dayTop - 18;
-        return new DatePickerLayout(cell, calendarWidth, calendarX, monthY, weekdayY, dayTop, hourY, actionY);
+        return new DatePickerLayout(cell, calendarWidth, calendarX, monthY, weekdayY, dayTop, timeX, timeY, timeWidth, actionY, sideBySide);
+    }
+
+    private void addTimePickerWidgets(DatePickerLayout layout) {
+        int controlsW = 164;
+        int hourW = 44;
+        int minuteW = 44;
+        int arrowH = 18;
+        int inputH = 24;
+        int controlsX = layout.timeX() + Math.max(0, (layout.timeWidth() - controlsW) / 2);
+        int top = layout.timeY() + 26;
+        int hourX = controlsX;
+        int minuteX = hourX + hourW + 20;
+        int periodX = minuteX + minuteW + 16;
+        int inputY = top + arrowH + 4;
+        int downY = inputY + inputH + 4;
+
+        addAuctionButton(hourX, top, hourW, arrowH, Component.literal("^"), AuctionButton.Style.GRAY, button -> adjustSelectedHour(1));
+        endHourBox = new AuctionEditBox(font, hourX, inputY, hourW, inputH, Component.translatable("Hour"));
+        endHourBox.setMaxLength(2);
+        endHourBox.setFilter(this::timeNumberInput);
+        endHourBox.setValue(String.valueOf(displayEndHour()));
+        endHourBox.setResponder(value -> updateSelectedHourFromInput(value));
+        addRenderableWidget(endHourBox);
+        addAuctionButton(hourX, downY, hourW, arrowH, Component.literal("v"), AuctionButton.Style.GRAY, button -> adjustSelectedHour(-1));
+
+        addAuctionButton(minuteX, top, minuteW, arrowH, Component.literal("^"), AuctionButton.Style.GRAY, button -> adjustSelectedMinute(1));
+        endMinuteBox = new AuctionEditBox(font, minuteX, inputY, minuteW, inputH, Component.translatable("Minute"));
+        endMinuteBox.setMaxLength(2);
+        endMinuteBox.setFilter(this::timeNumberInput);
+        endMinuteBox.setValue(twoDigit(selectedEndMinute));
+        endMinuteBox.setResponder(value -> updateSelectedMinuteFromInput(value));
+        addRenderableWidget(endMinuteBox);
+        addAuctionButton(minuteX, downY, minuteW, arrowH, Component.literal("v"), AuctionButton.Style.GRAY, button -> adjustSelectedMinute(-1));
+
+        addInvisibleButton(periodX, inputY - 12, 42, 22, Component.literal("AM"), button -> setSelectedPeriod(false));
+        addInvisibleButton(periodX, inputY + 18, 42, 22, Component.literal("PM"), button -> setSelectedPeriod(true));
     }
 
     private int modalWidth() {
         if (modal == Modal.FILTER) {
             return Math.min(280, panelWidth - 32);
         }
+        if (modal == Modal.MOD_FILTER) {
+            return Math.min(460, panelWidth - 44);
+        }
         if (modal == Modal.DATE_PICKER) {
-            return Math.min(390, panelWidth - 44);
+            int available = panelWidth - 44;
+            return available >= 560 ? Math.min(580, available) : Math.min(390, available);
         }
         if (modal == Modal.BID || modal == Modal.BIDS || modal == Modal.CONFIRM_CREATE) {
+            return Math.min(560, panelWidth - 44);
+        }
+        if (modal == Modal.CONTENTS) {
             return Math.min(560, panelWidth - 44);
         }
         return Math.min(520, panelWidth - 44);
@@ -611,7 +1043,7 @@ public class AuctionHouseScreen extends Screen {
         if (modal == Modal.FILTER) {
             return Math.max(220, panelHeight - 34);
         }
-        if (modal == Modal.CREATE || modal == Modal.CONFIRM_CREATE || modal == Modal.DATE_PICKER || modal == Modal.BID || modal == Modal.BIDS) {
+        if (modal == Modal.CREATE || modal == Modal.CONFIRM_CREATE || modal == Modal.DATE_PICKER || modal == Modal.BID || modal == Modal.BIDS || modal == Modal.MOD_FILTER || modal == Modal.CONTENTS) {
             return Math.min(430, panelHeight - 48);
         }
         return Math.min(300, panelHeight - 48);
@@ -638,17 +1070,20 @@ public class AuctionHouseScreen extends Screen {
             sendAuctionAction("DISCARD_CREATE", null, "", null);
             return;
         }
-        modal = modal == Modal.DATE_PICKER ? Modal.CREATE : Modal.NONE;
+        modal = modal == Modal.DATE_PICKER ? Modal.CREATE : modal == Modal.MOD_FILTER ? Modal.FILTER : Modal.NONE;
         rebuildWidgets();
     }
 
     private void resetCreateForm() {
         selectedInventorySlot = -1;
+        selectedInventorySlots = new ArrayList<>();
         startingBidDraft = "";
         buyoutDraft = "";
+        bundleTitleDraft = "";
         descriptionDraft = "";
         selectedEndDate = LocalDate.now().plusDays(1);
         selectedEndHour = 12;
+        selectedEndMinute = 0;
         calendarMonth = YearMonth.from(selectedEndDate);
     }
 
@@ -658,32 +1093,209 @@ public class AuctionHouseScreen extends Screen {
     }
 
     private LocalDateTime selectedEndDateTime() {
-        return selectedEndDate.atTime(selectedEndHour, 0);
+        return selectedEndDate.atTime(selectedEndHour, selectedEndMinute);
+    }
+
+    private Duration selectedAuctionDuration() {
+        return Duration.between(LocalDateTime.now(), selectedEndDateTime());
     }
 
     private String endDateDisplay() {
         LocalDateTime end = selectedEndDateTime();
         String month = end.getMonth().getDisplayName(TextStyle.SHORT, Locale.ROOT);
-        return month + " " + end.getDayOfMonth() + ", " + hourLabel(end.getHour());
+        return month + " " + end.getDayOfMonth() + ", " + timeLabel(end.getHour(), end.getMinute());
     }
 
-    private String hourLabel(int hour) {
+    private String timeLabel(int hour, int minute) {
         int displayHour = hour % 12;
         if (displayHour == 0) {
             displayHour = 12;
         }
-        return displayHour + ":00 " + (hour < 12 ? "AM" : "PM");
+        return displayHour + ":" + twoDigit(minute) + " " + (hour < 12 ? "AM" : "PM");
+    }
+
+    private String twoDigit(int value) {
+        return String.format(Locale.ROOT, "%02d", clamp(value, 0, 99));
+    }
+
+    private int displayEndHour() {
+        int displayHour = selectedEndHour % 12;
+        return displayHour == 0 ? 12 : displayHour;
+    }
+
+    private boolean selectedEndPm() {
+        return selectedEndHour >= 12;
+    }
+
+    private void adjustSelectedHour(int delta) {
+        normalizeTimeInputs();
+        selectedEndHour = Math.floorMod(selectedEndHour + delta, 24);
+        rebuildWidgets();
+    }
+
+    private void adjustSelectedMinute(int delta) {
+        normalizeTimeInputs();
+        int totalMinutes = selectedEndHour * 60 + selectedEndMinute + delta;
+        int normalized = Math.floorMod(totalMinutes, 24 * 60);
+        selectedEndHour = normalized / 60;
+        selectedEndMinute = normalized % 60;
+        rebuildWidgets();
+    }
+
+    private void setSelectedPeriod(boolean pm) {
+        normalizeTimeInputs();
+        if (pm && selectedEndHour < 12) {
+            selectedEndHour += 12;
+        } else if (!pm && selectedEndHour >= 12) {
+            selectedEndHour -= 12;
+        }
+        rebuildWidgets();
+    }
+
+    private void normalizeTimeInputs() {
+        if (endHourBox != null) {
+            updateSelectedHourFromInput(endHourBox.getValue());
+        }
+        if (endMinuteBox != null) {
+            updateSelectedMinuteFromInput(endMinuteBox.getValue());
+        }
+    }
+
+    private void updateSelectedHourFromInput(String value) {
+        String digits = digitsOnly(value);
+        if (digits.isBlank()) {
+            return;
+        }
+        int hour = clamp(parsePositiveInt(digits, displayEndHour()), 1, 12);
+        boolean pm = selectedEndPm();
+        if (hour == 12) {
+            selectedEndHour = pm ? 12 : 0;
+        } else {
+            selectedEndHour = pm ? hour + 12 : hour;
+        }
+    }
+
+    private void updateSelectedMinuteFromInput(String value) {
+        String digits = digitsOnly(value);
+        if (digits.isBlank()) {
+            return;
+        }
+        selectedEndMinute = clamp(parsePositiveInt(digits, selectedEndMinute), 0, 59);
+    }
+
+    private String digitsOnly(String value) {
+        if (value == null || value.isBlank()) {
+            return "";
+        }
+        StringBuilder builder = new StringBuilder(value.length());
+        for (int i = 0; i < value.length(); i++) {
+            char c = value.charAt(i);
+            if (Character.isDigit(c)) {
+                builder.append(c);
+            }
+        }
+        return builder.toString();
+    }
+
+    private boolean timeNumberInput(String value) {
+        if (value == null) {
+            return false;
+        }
+        for (int i = 0; i < value.length(); i++) {
+            if (!Character.isDigit(value.charAt(i))) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private boolean moneyInput(String value) {
+        if (value == null) {
+            return false;
+        }
+        boolean dotSeen = false;
+        boolean dollarSeen = false;
+        for (int i = 0; i < value.length(); i++) {
+            char c = value.charAt(i);
+            if (Character.isDigit(c) || c == ',') {
+                continue;
+            }
+            if (c == '.') {
+                if (dotSeen) {
+                    return false;
+                }
+                dotSeen = true;
+                continue;
+            }
+            if (c == '$') {
+                if (dollarSeen || i != 0) {
+                    return false;
+                }
+                dollarSeen = true;
+                continue;
+            }
+            return false;
+        }
+        return true;
+    }
+
+    private String sanitizeMoneyInput(String value) {
+        if (value == null || value.isBlank()) {
+            return "";
+        }
+        StringBuilder builder = new StringBuilder(value.length());
+        boolean dotSeen = false;
+        boolean dollarSeen = false;
+        for (int i = 0; i < value.length(); i++) {
+            char c = value.charAt(i);
+            if (Character.isDigit(c) || c == ',') {
+                builder.append(c);
+            } else if (c == '.' && !dotSeen) {
+                dotSeen = true;
+                builder.append(c);
+            } else if (c == '$' && !dollarSeen && builder.isEmpty()) {
+                dollarSeen = true;
+                builder.append(c);
+            }
+        }
+        return builder.toString();
+    }
+
+    private int parsePositiveInt(String value, int fallback) {
+        try {
+            return Integer.parseInt(value);
+        } catch (NumberFormatException exception) {
+            return fallback;
+        }
     }
 
     private ItemStack selectedInventoryStack() {
-        if (minecraft == null || minecraft.player == null || selectedInventorySlot < 0) {
+        if (minecraft == null || minecraft.player == null || selectedInventorySlots.isEmpty()) {
             return ItemStack.EMPTY;
         }
         Inventory inventory = minecraft.player.getInventory();
+        selectedInventorySlot = selectedInventorySlots.getFirst();
         if (selectedInventorySlot >= inventory.getContainerSize()) {
             return ItemStack.EMPTY;
         }
         return inventory.getItem(selectedInventorySlot);
+    }
+
+    private List<ItemStack> selectedInventoryStacks() {
+        if (minecraft == null || minecraft.player == null || selectedInventorySlots.isEmpty()) {
+            return List.of();
+        }
+        Inventory inventory = minecraft.player.getInventory();
+        return selectedInventorySlots.stream()
+                .filter(slot -> slot >= 0 && slot < inventory.getContainerSize())
+                .map(inventory::getItem)
+                .filter(stack -> stack != null && !stack.isEmpty())
+                .map(ItemStack::copy)
+                .toList();
+    }
+
+    private boolean createSelectionIsBundle() {
+        return selectedInventorySlots.size() > 1;
     }
 
     private void openBid(AuctionEntrySummary entry) {
@@ -696,6 +1308,13 @@ public class AuctionHouseScreen extends Screen {
         selectedAuction = entry;
         modal = Modal.BIDS;
         bidsScroll = 0;
+        rebuildWidgets();
+    }
+
+    private void openContents(AuctionEntrySummary entry) {
+        selectedAuction = entry;
+        modal = Modal.CONTENTS;
+        contentsScroll = 0;
         rebuildWidgets();
     }
 
@@ -712,14 +1331,17 @@ public class AuctionHouseScreen extends Screen {
     }
 
     private void sendCreateAction() {
-        startingBidDraft = value(startingBidBox, startingBidDraft);
-        buyoutDraft = value(buyoutBox, buyoutDraft);
+        startingBidDraft = sanitizeMoneyInput(value(startingBidBox, startingBidDraft));
+        buyoutDraft = sanitizeMoneyInput(value(buyoutBox, buyoutDraft));
+        bundleTitleDraft = value(bundleTitleBox, bundleTitleDraft);
         descriptionDraft = value(descriptionBox, descriptionDraft);
         PacketDistributor.sendToServer(new AuctionActionPayload(
                 "PREPARE_CREATE",
                 null,
                 null,
                 selectedInventorySlot,
+                selectedInventorySlots,
+                createSelectionIsBundle() ? bundleTitleDraft : "",
                 "",
                 startingBidDraft,
                 buyoutDraft,
@@ -732,6 +1354,7 @@ public class AuctionHouseScreen extends Screen {
                 minPriceValue(),
                 maxPriceValue(),
                 maxHoursLeft,
+                selectedModId,
                 payload.adminMode()
         ));
         modal = Modal.NONE;
@@ -743,7 +1366,9 @@ public class AuctionHouseScreen extends Screen {
                 entry == null ? null : entry.auctionId(),
                 deliveryId,
                 -1,
-                amount == null ? "" : amount,
+                List.of(),
+                "",
+                amount == null ? "" : sanitizeMoneyInput(amount),
                 "",
                 "",
                 0,
@@ -755,12 +1380,69 @@ public class AuctionHouseScreen extends Screen {
                 minPriceValue(),
                 maxPriceValue(),
                 maxHoursLeft,
+                selectedModId,
                 payload.adminMode()
         ));
         modal = Modal.NONE;
     }
 
+    private void sendAdminAuctionAction(String action, AuctionEntrySummary entry) {
+        PacketDistributor.sendToServer(new AuctionAdminActionPayload(
+                action,
+                entry == null ? null : entry.auctionId(),
+                null,
+                "",
+                false,
+                false,
+                false,
+                false,
+                "",
+                "",
+                ""
+        ));
+        modal = Modal.NONE;
+    }
+
+    private void sendAdminBanAction(String action, AuctionAdminDashboardPayload.Player player) {
+        if (player == null) {
+            return;
+        }
+        PacketDistributor.sendToServer(new AuctionAdminActionPayload(
+                action,
+                null,
+                player.playerId(),
+                player.playerName(),
+                adminBlockCreate,
+                adminBlockBid,
+                adminBlockBuyout,
+                adminBlockWatch,
+                value(adminBanReasonBox, adminBanReasonDraft),
+                value(adminBanExpiryBox, adminBanExpiryDraft),
+                ""
+        ));
+    }
+
+    private void sendAdminBannedEntryAction(String action, String entry) {
+        PacketDistributor.sendToServer(new AuctionAdminActionPayload(
+                action,
+                null,
+                null,
+                "",
+                false,
+                false,
+                false,
+                false,
+                "",
+                "",
+                entry == null ? "" : entry
+        ));
+        if ("ADD_BANNED_ENTRY".equals(action)) {
+            adminBannedEntryDraft = "";
+        }
+    }
+
     private void refreshFromServer() {
+        searchRefreshDelay = 0;
         PacketDistributor.sendToServer(AuctionActionPayload.refresh(
                 searchValue(),
                 category.name(),
@@ -768,8 +1450,13 @@ public class AuctionHouseScreen extends Screen {
                 minPriceValue(),
                 maxPriceValue(),
                 maxHoursLeft,
+                selectedModId,
                 payload.adminMode()
         ));
+    }
+
+    private void scheduleSearchRefresh() {
+        searchRefreshDelay = SEARCH_REFRESH_DEBOUNCE_TICKS;
     }
 
     @Override
@@ -824,6 +1511,10 @@ public class AuctionHouseScreen extends Screen {
     }
 
     private void renderHeader(GuiGraphics graphics) {
+        if (payload.adminMode()) {
+            renderAdminHeader(graphics);
+            return;
+        }
         graphics.fill(panelLeft + 10, panelTop + 10, panelLeft + panelWidth - 10, panelTop + headerHeight - 10, 0xFF565656);
         graphics.drawString(font, Component.literal(payload.adminMode() ? "ADMIN AUCTIONS" : "AUCTION HOUSE").withStyle(ChatFormatting.BOLD), panelLeft + 18, panelTop + 20, 0xFFFFAA00, false);
         int accountY = panelWidth < 760 ? panelTop + 31 : panelTop + 42;
@@ -842,24 +1533,345 @@ public class AuctionHouseScreen extends Screen {
         // Filters are opened from the header as a scrollable side modal.
     }
 
-    private void renderContent(GuiGraphics graphics, int mouseX, int mouseY) {
+    private void renderAdminHeader(GuiGraphics graphics) {
+        graphics.fill(panelLeft + 10, panelTop + 10, panelLeft + panelWidth - 10, panelTop + headerHeight - 10, 0xFF202020);
+        graphics.fill(panelLeft + 14, panelTop + 14, panelLeft + panelWidth - 14, panelTop + 58, 0xFF303030);
+        graphics.drawString(font, Component.literal("UAS ADMIN DASHBOARD").withStyle(ChatFormatting.BOLD), panelLeft + 22, panelTop + 22, 0xFFFFAA00, false);
+        graphics.drawString(font, Component.literal(adminSection.label), panelLeft + 22, panelTop + 40, 0xFFE0E0E0, false);
+        String generated = adminDashboard().generatedAt().isBlank() ? "" : "Updated " + readableDateTime(adminDashboard().generatedAt());
+        graphics.drawString(font, Component.literal(trimToWidth(generated, Math.max(80, panelWidth / 3))), panelLeft + Math.max(210, panelWidth / 3), panelTop + 40, 0xFF9E9E9E, false);
+        if (!payload.message().isBlank()) {
+            String message = trimToWidth(Component.translatable(payload.message()).getString(), panelWidth - 40);
+            graphics.drawString(font, Component.literal(message), panelLeft + 22, contentTop - 12, payload.success() ? 0xFF55FF55 : 0xFFFF5555, false);
+        }
+    }
+
+    private void renderAdminContent(GuiGraphics graphics, int mouseX, int mouseY) {
+        if (adminWideNav()) {
+            graphics.fill(panelLeft + 14, contentTop - 4, panelLeft + 144, panelTop + panelHeight - 18, 0xFF191919);
+        }
+        graphics.fill(contentLeft - 4, contentTop - 4, contentLeft + contentWidth + 4, contentTop + contentHeight + 4, 0xFF242424);
+        graphics.fill(contentLeft, contentTop, contentLeft + contentWidth, contentTop + contentHeight, 0xFF303030);
+
+        switch (adminSection) {
+            case OVERVIEW -> renderAdminOverview(graphics, mouseX, mouseY);
+            case AUCTIONS -> renderAdminAuctionList(graphics, mouseX, mouseY, "All Auctions");
+            case PLAYERS -> renderAdminPlayers(graphics);
+            case ECONOMY -> renderAdminEconomy(graphics, mouseX, mouseY);
+            case MODERATION -> renderAdminModeration(graphics, mouseX, mouseY);
+            case BANNED_ITEMS -> renderAdminBannedItems(graphics);
+            case AUDIT -> renderAdminAudit(graphics);
+        }
+    }
+
+    private void renderAdminOverview(GuiGraphics graphics, int mouseX, int mouseY) {
+        int y = contentTop + 14 - adminScroll;
+        String hoverText = null;
+        graphics.enableScissor(contentLeft, contentTop, contentLeft + contentWidth, contentTop + contentHeight);
+        renderAdminStatsGrid(graphics, contentLeft + 12, y, contentWidth - 24, true);
+        y += adminStatsGridHeight(true) + 18;
+        hoverText = renderAdminEconomyChart(graphics, contentLeft + 12, y, contentWidth - 24, 156, mouseX, mouseY);
+        y += 174;
+        graphics.drawString(font, Component.literal("Moderation Queues").withStyle(ChatFormatting.BOLD), contentLeft + 12, y, 0xFFFFFFFF, false);
+        y += 20;
+        y = renderAdminQueuePreview(graphics, "Now Restricted", adminDashboard().restrictedListings(), y);
+        y = renderAdminQueuePreview(graphics, "Failed Settlements", adminDashboard().failedSettlements(), y + 8);
+        graphics.disableScissor();
+        if (hoverText != null) {
+            graphics.renderTooltip(font, Component.literal(hoverText), mouseX, mouseY);
+        }
+        renderScrollBar(graphics, contentLeft + contentWidth - 6, contentTop, contentTop + contentHeight, adminScroll, adminContentHeight(), contentHeight);
+    }
+
+    private void renderAdminEconomy(GuiGraphics graphics, int mouseX, int mouseY) {
+        int y = contentTop + 14 - adminScroll;
+        String hoverText = null;
+        graphics.enableScissor(contentLeft, contentTop, contentLeft + contentWidth, contentTop + contentHeight);
+        hoverText = renderAdminEconomyChart(graphics, contentLeft + 12, y, contentWidth - 24, 176, mouseX, mouseY);
+        y += 196;
+        renderAdminStatsGrid(graphics, contentLeft + 12, y, contentWidth - 24, false);
+        graphics.disableScissor();
+        if (hoverText != null) {
+            graphics.renderTooltip(font, Component.literal(hoverText), mouseX, mouseY);
+        }
+        renderScrollBar(graphics, contentLeft + contentWidth - 6, contentTop, contentTop + contentHeight, adminScroll, adminContentHeight(), contentHeight);
+    }
+
+    private String renderAdminEconomyChart(GuiGraphics graphics, int x, int y, int w, int h, int mouseX, int mouseY) {
+        renderAdminCard(graphics, x, y, w, h);
+        graphics.drawString(font, Component.literal("Economy Flow").withStyle(ChatFormatting.BOLD), x + 10, y + 10, 0xFFFFAA00, false);
+        List<AuctionAdminDashboardPayload.Stats> stats = adminDashboard().stats();
+        if (stats.isEmpty()) {
+            graphics.drawString(font, Component.literal("No economy data yet"), x + 10, y + 34, 0xFFBDBDBD, false);
+            return null;
+        }
+
+        int legendY = y + 28;
+        int legendX = x + 10;
+        legendX = renderChartLegend(graphics, legendX, legendY, "Bids", 0xFFFFD700);
+        legendX = renderChartLegend(graphics, legendX + 10, legendY, "Sales", 0xFF55FF55);
+        legendX = renderChartLegend(graphics, legendX + 10, legendY, "Fees", 0xFFFFAA00);
+        renderChartLegend(graphics, legendX + 10, legendY, "Tax", 0xFFFF6666);
+
+        BigDecimal max = BigDecimal.ONE;
+        for (AuctionAdminDashboardPayload.Stats stat : stats) {
+            for (ChartMetric metric : economyMetrics(stat)) {
+                max = max.max(metric.value());
+            }
+        }
+
+        int rowTop = y + 48;
+        int rowH = Math.max(28, (h - 58) / Math.max(1, stats.size()));
+        int labelW = Math.min(82, Math.max(46, w / 5));
+        int barX = x + labelW + 16;
+        int barW = Math.max(36, w - labelW - 34);
+        String hoverText = null;
+        for (int i = 0; i < stats.size(); i++) {
+            AuctionAdminDashboardPayload.Stats stat = stats.get(i);
+            int statY = rowTop + i * rowH;
+            graphics.drawString(font, Component.literal(trimToWidth(stat.label(), labelW)), x + 10, statY + 8, 0xFFE0E0E0, false);
+            List<ChartMetric> metrics = economyMetrics(stat);
+            int barH = Math.max(3, Math.min(5, (rowH - 8) / Math.max(1, metrics.size())));
+            int gap = Math.max(2, (rowH - 8 - metrics.size() * barH) / Math.max(1, metrics.size()));
+            int metricY = statY + 4;
+            for (ChartMetric metric : metrics) {
+                int valueW = metric.value().compareTo(BigDecimal.ZERO) <= 0
+                        ? 1
+                        : metric.value()
+                        .multiply(BigDecimal.valueOf(barW))
+                        .divide(max, 0, RoundingMode.HALF_UP)
+                        .intValue();
+                graphics.fill(barX, metricY, barX + barW, metricY + barH, 0xFF151515);
+                graphics.fill(barX, metricY, barX + Math.min(barW, valueW), metricY + barH, metric.color());
+                if (mouseX >= barX && mouseX <= barX + barW && mouseY >= metricY && mouseY <= metricY + barH
+                        && mouseY >= contentTop && mouseY <= contentTop + contentHeight) {
+                    hoverText = stat.label() + " " + metric.label() + ": " + metric.display();
+                }
+                metricY += barH + gap;
+            }
+        }
+        return hoverText;
+    }
+
+    private int renderChartLegend(GuiGraphics graphics, int x, int y, String label, int color) {
+        graphics.fill(x, y + 2, x + 8, y + 10, color);
+        graphics.drawString(font, Component.literal(label), x + 12, y + 2, 0xFFBDBDBD, false);
+        return x + 12 + font.width(label);
+    }
+
+    private List<ChartMetric> economyMetrics(AuctionAdminDashboardPayload.Stats stat) {
+        return List.of(
+                new ChartMetric("Bids", 0xFFFFD700, moneyDraft(stat.bidVolume()), stat.bidVolume()),
+                new ChartMetric("Sales", 0xFF55FF55, moneyDraft(stat.soldValue()), stat.soldValue()),
+                new ChartMetric("Fees", 0xFFFFAA00, moneyDraft(stat.estimatedListingFees()), stat.estimatedListingFees()),
+                new ChartMetric("Tax", 0xFFFF6666, moneyDraft(stat.estimatedSalesTax()), stat.estimatedSalesTax())
+        );
+    }
+
+    private void renderAdminStatsGrid(GuiGraphics graphics, int x, int y, int w, boolean compact) {
+        int columns = w >= 620 ? 3 : 1;
+        int cardW = columns == 1 ? w : (w - 16) / 3;
+        int cardH = compact ? 100 : 136;
+        List<AuctionAdminDashboardPayload.Stats> stats = adminDashboard().stats();
+        for (int i = 0; i < stats.size(); i++) {
+            AuctionAdminDashboardPayload.Stats stat = stats.get(i);
+            int col = i % columns;
+            int row = i / columns;
+            int cardX = x + col * (cardW + 8);
+            int cardY = y + row * (cardH + 10);
+            renderAdminCard(graphics, cardX, cardY, cardW, cardH);
+            graphics.drawString(font, Component.literal(stat.label()).withStyle(ChatFormatting.BOLD), cardX + 10, cardY + 10, 0xFFFFAA00, false);
+            graphics.drawString(font, Component.literal("Created " + stat.auctionsCreated() + "  Active " + stat.activeAuctions()), cardX + 10, cardY + 28, 0xFFE0E0E0, false);
+            graphics.drawString(font, Component.literal("Sold " + stat.soldAuctions() + "  Cancelled " + stat.cancelledAuctions()), cardX + 10, cardY + 42, 0xFFBDBDBD, false);
+            graphics.drawString(font, Component.literal("Bids " + stat.bidVolume()), cardX + 10, cardY + 58, 0xFFFFD700, false);
+            graphics.drawString(font, Component.literal("Sales " + stat.soldValue()), cardX + 10, cardY + 72, 0xFF55FF55, false);
+            if (!compact) {
+                graphics.drawString(font, Component.literal("Fees " + stat.estimatedListingFees()), cardX + 10, cardY + 90, 0xFFFFD700, false);
+                graphics.drawString(font, Component.literal("Tax " + stat.estimatedSalesTax()), cardX + 10, cardY + 104, 0xFFFFD700, false);
+                graphics.drawString(font, Component.literal("Avg " + stat.averageSale()), cardX + 10, cardY + 118, 0xFFE0E0E0, false);
+            }
+        }
+    }
+
+    private int adminStatsGridHeight(boolean compact) {
+        int columns = contentWidth >= 620 ? 3 : 1;
+        int rows = Math.max(1, (int) Math.ceil(adminDashboard().stats().size() / (double) columns));
+        return rows * (compact ? 110 : 146);
+    }
+
+    private int renderAdminQueuePreview(GuiGraphics graphics, String title, List<AuctionEntrySummary> entries, int y) {
+        renderAdminCard(graphics, contentLeft + 12, y, contentWidth - 24, 58);
+        graphics.drawString(font, Component.literal(title).withStyle(ChatFormatting.BOLD), contentLeft + 22, y + 10, 0xFFFFFFFF, false);
+        String detail = entries.isEmpty() ? "No auctions in this queue" : entries.size() + " auction(s), first: " + entries.getFirst().itemName();
+        graphics.drawString(font, Component.literal(trimToWidth(detail, contentWidth - 56)), contentLeft + 22, y + 30, entries.isEmpty() ? 0xFF9E9E9E : 0xFFFFD700, false);
+        return y + 66;
+    }
+
+    private void renderAdminAuctionList(GuiGraphics graphics, int mouseX, int mouseY, String title) {
+        graphics.drawString(font, Component.literal(title).withStyle(ChatFormatting.BOLD), contentLeft + 10, contentTop + 8, 0xFFFFFFFF, false);
+        renderAdminAuctionRows(graphics, mouseX, mouseY, contentTop + 30);
+    }
+
+    private void renderAdminModeration(GuiGraphics graphics, int mouseX, int mouseY) {
+        graphics.drawString(font, Component.literal("Flagged Auctions").withStyle(ChatFormatting.BOLD), contentLeft + 10, contentTop + 8, 0xFFFFFFFF, false);
+        renderAdminAuctionRows(graphics, mouseX, mouseY, contentTop + 30);
+    }
+
+    private void renderAdminAuctionRows(GuiGraphics graphics, int mouseX, int mouseY, int listTop) {
         List<AuctionEntrySummary> entries = visibleEntries();
         int rowHeight = auctionRowHeight();
-        int perPage = Math.max(1, contentHeight / rowHeight);
-        int start = page * perPage;
-        int end = Math.min(entries.size(), start + perPage);
+        int listBottom = adminListBottom();
+        int start = Math.max(0, auctionScroll / rowHeight);
+        int visibleRows = Math.max(1, (listBottom - listTop) / rowHeight);
+        int end = Math.min(entries.size(), start + visibleRows + 2);
+        if (entries.isEmpty()) {
+            graphics.drawCenteredString(font, Component.literal("No admin auctions to show"), contentLeft + contentWidth / 2, listTop + 60, 0xFFDDDDDD);
+            return;
+        }
+        graphics.enableScissor(contentLeft, listTop, contentLeft + contentWidth, listBottom);
+        for (int i = start; i < end; i++) {
+            AuctionEntrySummary entry = entries.get(i);
+            int y = listTop + i * rowHeight - auctionScroll;
+            if (y + rowHeight < listTop || y > listBottom) {
+                continue;
+            }
+            renderAuctionRow(graphics, entry, contentLeft, y, contentWidth, rowHeight - 8, mouseX, mouseY);
+        }
+        graphics.disableScissor();
+        renderScrollBar(graphics, contentLeft + contentWidth - 6, listTop, listBottom, auctionScroll, auctionListContentHeight(), Math.max(1, listBottom - listTop));
+    }
+
+    private void renderAdminPlayers(GuiGraphics graphics) {
+        int y = adminPlayerListTop();
+        AuctionAdminDashboardPayload.Player selected = selectedAdminPlayer();
+        if (selected != null) {
+            renderAdminCard(graphics, contentLeft, contentTop + 38, contentWidth - 10, 202);
+            graphics.drawString(font, Component.literal("Inspecting " + selected.playerName()).withStyle(ChatFormatting.BOLD), contentLeft + 10, contentTop + 48, 0xFFFFAA00, false);
+            graphics.drawString(font, Component.literal("Active " + selected.activeListings() + "  Bids " + selected.bidCount() + "  Sold " + selected.soldCount() + "  Bought " + selected.boughtCount()), contentLeft + 10, contentTop + 64, 0xFFE0E0E0, false);
+            graphics.drawString(font, Component.literal("Bid volume " + selected.bidVolume() + "  Sold value " + selected.soldValue()), contentLeft + 10, contentTop + 80, 0xFFBDBDBD, false);
+            int maxListings = Math.max(1, selected.maxActiveListings());
+            int limitColor = selected.activeListings() >= maxListings ? 0xFFFF6666 : selected.activeListings() >= Math.max(1, maxListings * 8 / 10) ? 0xFFFFD700 : 0xFF55FF55;
+            graphics.drawString(font, Component.literal("Listing limit " + selected.activeListings() + " / " + maxListings + " active"), contentLeft + 10, contentTop + 96, limitColor, false);
+            graphics.drawString(font, Component.literal("Blocked Actions"), contentLeft + 10, contentTop + 112, 0xFFBDBDBD, false);
+        }
+
+        List<AuctionAdminDashboardPayload.Player> players = filteredAdminPlayers();
+        int rowH = 44;
+        int listBottom = adminListBottom();
+        int start = Math.max(0, adminScroll / rowH);
+        int rows = Math.max(1, (listBottom - y) / rowH);
+        int end = Math.min(players.size(), start + rows + 1);
+        graphics.enableScissor(contentLeft, y, contentLeft + contentWidth, listBottom);
+        for (int i = start; i < end; i++) {
+            AuctionAdminDashboardPayload.Player player = players.get(i);
+            int rowY = y + i * rowH - adminScroll;
+            if (rowY + rowH < y || rowY > listBottom) {
+                continue;
+            }
+            boolean selectedRow = player.playerId().equals(selectedAdminPlayerId);
+            int fill = selectedRow ? 0xFF2F6F35 : 0xFF242424;
+            graphics.fill(contentLeft, rowY, contentLeft + contentWidth - 10, rowY + rowH - 4, 0xFF000000);
+            graphics.fill(contentLeft + 2, rowY + 2, contentLeft + contentWidth - 12, rowY + rowH - 6, fill);
+            graphics.drawString(font, Component.literal(trimToWidth(player.playerName(), contentWidth / 2)).withStyle(ChatFormatting.BOLD), contentLeft + 10, rowY + 8, selectedRow ? 0xFFFFFFFF : 0xFFE0E0E0, false);
+            String detail = "Active " + player.activeListings() + " | Bids " + player.bidCount() + " | Sold " + player.soldCount();
+            graphics.drawString(font, Component.literal(detail), contentLeft + 10, rowY + 24, 0xFFBDBDBD, false);
+            if (player.banActive()) {
+                graphics.drawString(font, Component.literal("BANNED"), contentLeft + contentWidth - 76, rowY + 14, 0xFFFF5555, false);
+            }
+        }
+        graphics.disableScissor();
+        renderScrollBar(graphics, contentLeft + contentWidth - 6, y, listBottom, adminScroll, adminContentHeight(), Math.max(1, listBottom - y));
+    }
+
+    private void renderAdminBannedItems(GuiGraphics graphics) {
+        int listTop = contentTop + 44;
+        int rowH = 36;
+        List<AuctionAdminDashboardPayload.BannedEntry> entries = adminDashboard().bannedEntries();
+        int start = Math.max(0, adminScroll / rowH);
+        int rows = Math.max(1, (adminListBottom() - listTop) / rowH);
+        int end = Math.min(entries.size(), start + rows + 1);
+        graphics.drawString(font, Component.literal("Item id, #tag, or @modid").withStyle(ChatFormatting.BOLD), contentLeft, contentTop + 34, 0xFFBDBDBD, false);
+        graphics.enableScissor(contentLeft, listTop, contentLeft + contentWidth, adminListBottom());
+        for (int i = start; i < end; i++) {
+            AuctionAdminDashboardPayload.BannedEntry entry = entries.get(i);
+            int rowY = listTop + i * rowH - adminScroll;
+            if (rowY + rowH < listTop || rowY > adminListBottom()) {
+                continue;
+            }
+            graphics.fill(contentLeft, rowY, contentLeft + contentWidth - 10, rowY + rowH - 4, 0xFF000000);
+            graphics.fill(contentLeft + 2, rowY + 2, contentLeft + contentWidth - 12, rowY + rowH - 6, 0xFF242424);
+            graphics.drawString(font, Component.literal(entry.type() + ": " + trimToWidth(entry.label(), contentWidth - 160)).withStyle(ChatFormatting.BOLD), contentLeft + 10, rowY + 7, 0xFFE0E0E0, false);
+            graphics.drawString(font, Component.literal(entry.matchingActiveAuctions() + " active match(es)"), contentLeft + 10, rowY + 21, entry.matchingActiveAuctions() > 0 ? 0xFFFFD700 : 0xFF9E9E9E, false);
+        }
+        graphics.disableScissor();
+        if (entries.isEmpty()) {
+            graphics.drawString(font, Component.literal("No banned auction entries configured."), contentLeft + 10, listTop + 12, 0xFFBDBDBD, false);
+        }
+        renderScrollBar(graphics, contentLeft + contentWidth - 6, listTop, adminListBottom(), adminScroll, adminContentHeight(), Math.max(1, adminListBottom() - listTop));
+    }
+
+    private void renderAdminAudit(GuiGraphics graphics) {
+        int y = contentTop + 12;
+        int rowH = 46;
+        List<AuctionAdminDashboardPayload.Audit> audit = adminDashboard().auditLog();
+        int start = Math.max(0, adminScroll / rowH);
+        int rows = Math.max(1, (adminListBottom() - y) / rowH);
+        int end = Math.min(audit.size(), start + rows + 1);
+        graphics.enableScissor(contentLeft, y, contentLeft + contentWidth, adminListBottom());
+        for (int i = start; i < end; i++) {
+            AuctionAdminDashboardPayload.Audit entry = audit.get(i);
+            int rowY = y + i * rowH - adminScroll;
+            if (rowY + rowH < y || rowY > adminListBottom()) {
+                continue;
+            }
+            graphics.fill(contentLeft, rowY, contentLeft + contentWidth - 10, rowY + rowH - 4, 0xFF000000);
+            graphics.fill(contentLeft + 2, rowY + 2, contentLeft + contentWidth - 12, rowY + rowH - 6, entry.success() ? 0xFF242424 : 0xFF3A1C1C);
+            graphics.drawString(font, Component.literal(entry.action() + " by " + entry.adminName()).withStyle(ChatFormatting.BOLD), contentLeft + 10, rowY + 7, entry.success() ? 0xFFE0E0E0 : 0xFFFF7777, false);
+            graphics.drawString(font, Component.literal(trimToWidth(entry.target(), contentWidth - 40)), contentLeft + 10, rowY + 21, 0xFFBDBDBD, false);
+            graphics.drawString(font, Component.literal(readableDateTime(entry.createdAt())), contentLeft + contentWidth - 150, rowY + 7, 0xFF9E9E9E, false);
+        }
+        graphics.disableScissor();
+        if (audit.isEmpty()) {
+            graphics.drawString(font, Component.literal("No admin audit entries yet."), contentLeft + 10, y + 12, 0xFFBDBDBD, false);
+        }
+        renderScrollBar(graphics, contentLeft + contentWidth - 6, y, adminListBottom(), adminScroll, adminContentHeight(), Math.max(1, adminListBottom() - y));
+    }
+
+    private void renderAdminCard(GuiGraphics graphics, int x, int y, int w, int h) {
+        graphics.fill(x, y, x + w, y + h, 0xFF000000);
+        graphics.fill(x + 2, y + 2, x + w - 2, y + h - 2, 0xFF191919);
+        graphics.fill(x + 2, y + 2, x + w - 2, y + 4, 0xFF555555);
+    }
+
+    private void renderContent(GuiGraphics graphics, int mouseX, int mouseY) {
+        if (payload.adminMode()) {
+            renderAdminContent(graphics, mouseX, mouseY);
+            return;
+        }
+        List<AuctionEntrySummary> entries = visibleEntries();
+        int rowHeight = auctionRowHeight();
+        int listTop = auctionListTop();
+        int listBottom = auctionListBottom();
+        int start = Math.max(0, auctionScroll / rowHeight);
+        int visibleRows = Math.max(1, auctionListViewportHeight() / rowHeight);
+        int end = Math.min(entries.size(), start + visibleRows + 2);
 
         if (entries.isEmpty()) {
             graphics.drawCenteredString(font, Component.translatable("No auctions to show"), contentLeft + contentWidth / 2, contentTop + 70, 0xFFDDDDDD);
             return;
         }
 
+        graphics.enableScissor(contentLeft, listTop, contentLeft + contentWidth, listBottom);
         for (int i = start; i < end; i++) {
             AuctionEntrySummary entry = entries.get(i);
-            int y = contentTop + 8 + (i - start) * rowHeight;
+            int y = listTop + i * rowHeight - auctionScroll;
+            if (y + rowHeight < listTop || y > listBottom) {
+                continue;
+            }
             renderAuctionRow(graphics, entry, contentLeft, y, contentWidth, rowHeight - 8, mouseX, mouseY);
         }
-        graphics.drawString(font, Component.literal((page + 1) + " / " + Math.max(1, (int) Math.ceil(entries.size() / (double) perPage))), contentLeft + 130, panelTop + panelHeight - 23, 0xFFE0E0E0, false);
+        graphics.disableScissor();
+        renderScrollBar(graphics, contentLeft + contentWidth - 6, listTop, listBottom, auctionScroll, auctionListContentHeight(), auctionListViewportHeight());
     }
 
     private void renderAuctionRow(GuiGraphics graphics, AuctionEntrySummary entry, int x, int y, int w, int h, int mouseX, int mouseY) {
@@ -868,13 +1880,16 @@ public class AuctionHouseScreen extends Screen {
         int rarityColor = rarityColor(entry.rarity());
         int actionColumnW = rowActionColumnWidth(entry);
         int textX = x + 64;
-        int textW = Math.max(80, w - actionColumnW - 80);
+        String status = isClaimed(entry) ? "CLAIMED" : entry.viewerIsHighestBidder() ? "WINNING" : entry.state();
+        Component statusComponent = Component.translatable(status);
+        int statusWidth = font.width(statusComponent);
+        int statusX = Math.max(textX, x + w - actionColumnW - statusWidth - 8);
+        int textW = Math.max(80, statusX - textX - 8);
         graphics.fill(x + 10, y + 10, x + 54, y + 54, 0xFF1C1C1C);
         graphics.fill(x + 13, y + 13, x + 51, y + 51, 0x33000000 | (rarityColor & 0x00FFFFFF));
-        graphics.renderItem(entry.item(), x + 24, y + 24);
-        graphics.renderItemDecorations(font, entry.item(), x + 24, y + 24);
+        renderBundlePreview(graphics, entry.contents(), x + 13, y + 13, 38, 38);
 
-        String itemTitle = (entry.item().getCount() > 1 ? entry.item().getCount() + "x " : "") + entry.itemName();
+        String itemTitle = entry.bundle() ? entry.itemName() : (entry.item().getCount() > 1 ? entry.item().getCount() + "x " : "") + entry.itemName();
         graphics.drawString(font, Component.literal(trimToWidth(itemTitle, textW)), textX, y + 12, rarityColor, false);
         graphics.drawString(font, Component.literal(Component.translatable("Seller").getString() + ": " + trimToWidth(entry.sellerName(), textW - 40)), textX, y + 28, 0xFFBDBDBD, false);
         graphics.drawString(font, Component.literal(Component.translatable("Bid").getString() + ": " + entry.currentBid()), textX, y + 44, 0xFFFFD966, false);
@@ -891,6 +1906,10 @@ public class AuctionHouseScreen extends Screen {
             graphics.drawString(font, Component.literal(Component.translatable("Buyout").getString() + ": " + entry.buyoutPrice()), textX, buyoutY, 0xFF55FF55, false);
         }
         int descriptionY = hasBuyout ? buyoutY + 16 : buyoutY;
+        if (entry.bundle()) {
+            graphics.drawString(font, Component.literal("Bundle - " + entry.contents().size() + " stacks / " + entry.totalItemCount() + " items"), textX, descriptionY, 0xFF55FF55, false);
+            descriptionY += 12;
+        }
         String description = entry.description() == null || entry.description().isBlank() ? Component.translatable("No description").getString() : entry.description();
         for (String line : wrapText(description, textW, 1)) {
             graphics.drawString(font, Component.literal(line), textX, descriptionY, 0xFFDDDDDD, false);
@@ -901,8 +1920,8 @@ public class AuctionHouseScreen extends Screen {
             descriptionY += 12;
         }
 
-        String status = entry.viewerIsHighestBidder() ? "WINNING" : entry.state();
-        graphics.drawString(font, Component.translatable(status), x + w - actionColumnW, y + 12, entry.viewerIsHighestBidder() ? 0xFF55FF55 : 0xFFE0E0E0, false);
+        int statusColor = isClaimed(entry) ? 0xFF9DDBA2 : entry.viewerIsHighestBidder() ? 0xFF55FF55 : 0xFFE0E0E0;
+        graphics.drawString(font, statusComponent, statusX, y + 12, statusColor, false);
         if (mouseX >= x + 10 && mouseX <= x + 54 && mouseY >= y + 10 && mouseY <= y + 54) {
             graphics.renderTooltip(font, entry.item(), mouseX, mouseY);
         }
@@ -918,9 +1937,13 @@ public class AuctionHouseScreen extends Screen {
         }
         if (payload.adminMode()) {
             int count = adminCanForceCancel(entry) ? 2 : 1;
-            return count * 86 + Math.max(0, count - 1) * 6 + 28;
+            if ("FAILED_SETTLEMENT".equals(normalizedState(entry))) {
+                count++;
+            }
+            return count * 86 + Math.max(0, count - 1) * 6 + 36;
         }
         int count = 2; // notifications + view bids
+        count += entry.bundle() ? 1 : 0;
         if (activeTab == Tab.BROWSE) {
             count += entry.canBid() ? 1 : 0;
             count += entry.canBuyout() ? 1 : 0;
@@ -957,8 +1980,12 @@ public class AuctionHouseScreen extends Screen {
         } else if (modal == Modal.DELIVERY) {
             int rowY = y + 58;
             for (AuctionDeliverySummary delivery : payload.deliveries().stream().limit(6).toList()) {
-                graphics.renderItem(delivery.item(), x + 22, rowY - 2);
-                graphics.drawString(font, Component.literal(delivery.item().getCount() + "x " + delivery.item().getHoverName().getString()), x + 48, rowY, 0xFFE0E0E0, false);
+                graphics.fill(x + 20, rowY - 4, x + 42, rowY + 18, 0xFF0B0B0B);
+                renderBundlePreview(graphics, delivery.contents(), x + 22, rowY - 2, 18, 18);
+                String title = delivery.bundle()
+                        ? "Bundle - " + delivery.contents().size() + " stacks / " + delivery.totalItemCount() + " items"
+                        : delivery.item().getCount() + "x " + delivery.item().getHoverName().getString();
+                graphics.drawString(font, Component.literal(trimToWidth(title, modalW - 160)), x + 48, rowY, 0xFFE0E0E0, false);
                 graphics.drawString(font, Component.literal(delivery.reason()), x + 48, rowY + 12, 0xFFBDBDBD, false);
                 rowY += 34;
             }
@@ -967,6 +1994,10 @@ public class AuctionHouseScreen extends Screen {
             }
         } else if (modal == Modal.FILTER) {
             renderFilterModal(graphics, x, y, modalW, modalH);
+        } else if (modal == Modal.MOD_FILTER) {
+            renderModFilterModal(graphics, x, y, modalW, modalH);
+        } else if (modal == Modal.CONTENTS && selectedAuction != null) {
+            renderContentsModal(graphics, x, y, modalW, modalH, selectedAuction.contents());
         }
     }
 
@@ -983,13 +2014,16 @@ public class AuctionHouseScreen extends Screen {
         graphics.fill(previewX, previewY, previewX + previewSize, previewY + previewSize, 0xFF000000);
         graphics.fill(previewX + 2, previewY + 2, previewX + previewSize - 2, previewY + previewSize - 2, 0xFF1A1A1A);
         graphics.fill(previewX + 4, previewY + 4, previewX + previewSize - 4, previewY + previewSize - 4, 0x33000000 | (rarityColor & 0x00FFFFFF));
-        graphics.renderItem(selectedAuction.item(), previewX + (previewSize - 16) / 2, previewY + (previewSize - 16) / 2);
-        graphics.renderItemDecorations(font, selectedAuction.item(), previewX + (previewSize - 16) / 2, previewY + (previewSize - 16) / 2);
+        renderBundlePreview(graphics, selectedAuction.contents(), previewX + 4, previewY + 4, previewSize - 8, previewSize - 8);
 
         int detailX = previewX + previewSize + 16;
         int detailW = Math.max(80, x + modalW - 22 - detailX);
         graphics.drawString(font, Component.literal(trimToWidth(selectedAuction.itemName(), detailW)).withStyle(ChatFormatting.BOLD), detailX, previewY + 8, rarityColor, false);
-        graphics.drawString(font, Component.literal(Component.translatable("Seller").getString() + ": " + trimToWidth(selectedAuction.sellerName(), detailW - 40)), detailX, previewY + 26, 0xFFBDBDBD, false);
+        String sellerLine = Component.translatable("Seller").getString() + ": " + trimToWidth(selectedAuction.sellerName(), detailW - 40);
+        graphics.drawString(font, Component.literal(sellerLine), detailX, previewY + 26, 0xFFBDBDBD, false);
+        if (selectedAuction.bundle()) {
+            graphics.drawString(font, Component.literal("Bundle - " + selectedAuction.contents().size() + " stacks"), detailX, previewY + 38, 0xFF55FF55, false);
+        }
         graphics.fill(detailX, previewY + 44, detailX + Math.min(detailW, 128), previewY + 66, 0xFF000000);
         graphics.fill(detailX + 2, previewY + 46, detailX + Math.min(detailW, 128) - 2, previewY + 64, 0xFF191919);
         graphics.drawString(font, Component.literal(timeLeft(selectedAuction.endsAt(), selectedAuction.state()) + " " + Component.translatable("remaining").getString()), detailX + 8, previewY + 52, 0xFFFF6666, false);
@@ -1016,12 +2050,14 @@ public class AuctionHouseScreen extends Screen {
         int itemBox = Math.min(58, summaryH - 16);
         graphics.fill(x + 34, summaryTop + 8, x + 34 + itemBox, summaryTop + 8 + itemBox, 0xFF0B0B0B);
         graphics.fill(x + 36, summaryTop + 10, x + 32 + itemBox, summaryTop + 6 + itemBox, 0x33000000 | (rarityColor & 0x00FFFFFF));
-        graphics.renderItem(selectedAuction.item(), x + 34 + (itemBox - 16) / 2, summaryTop + 8 + (itemBox - 16) / 2);
-        graphics.renderItemDecorations(font, selectedAuction.item(), x + 34 + (itemBox - 16) / 2, summaryTop + 8 + (itemBox - 16) / 2);
+        renderBundlePreview(graphics, selectedAuction.contents(), x + 38, summaryTop + 12, itemBox - 8, itemBox - 8);
 
         int detailX = x + 48 + itemBox;
         int detailW = Math.max(80, modalW - 96 - itemBox);
         graphics.drawString(font, Component.literal(trimToWidth(selectedAuction.itemName(), detailW)).withStyle(ChatFormatting.BOLD), detailX, summaryTop + 16, rarityColor, false);
+        if (selectedAuction.bundle()) {
+            graphics.drawString(font, Component.literal("Bundle - " + selectedAuction.contents().size() + " stacks"), detailX, summaryTop + 30, 0xFF55FF55, false);
+        }
         graphics.fill(detailX, summaryTop + 40, detailX + 84, summaryTop + 62, 0xFF000000);
         graphics.fill(detailX + 2, summaryTop + 42, detailX + 82, summaryTop + 60, 0xFF191919);
         graphics.drawString(font, Component.literal(selectedAuction.currentBid()).withStyle(ChatFormatting.BOLD), detailX + 8, summaryTop + 48, 0xFFFFD700, false);
@@ -1065,33 +2101,86 @@ public class AuctionHouseScreen extends Screen {
         renderScrollBar(graphics, x + modalW - 14, listTop + 2, listBottom - 2, bidsScroll, bidsContentHeight(), Math.max(1, listBottom - listTop - 4));
     }
 
+    private void renderContentsModal(GuiGraphics graphics, int x, int y, int modalW, int modalH, List<ItemStack> contents) {
+        List<ItemStack> safeContents = contents == null ? List.of() : contents.stream()
+                .filter(stack -> stack != null && !stack.isEmpty())
+                .toList();
+        int summaryTop = y + 54;
+        int listTop = y + 96;
+        int listBottom = y + modalH - 54;
+        graphics.drawString(font, Component.literal(trimToWidth(selectedAuction.itemName(), modalW - 40)).withStyle(ChatFormatting.BOLD), x + 20, summaryTop, 0xFFFFAA00, false);
+        graphics.drawString(font, Component.literal(safeContents.size() + " stacks / " + safeContents.stream().mapToInt(ItemStack::getCount).sum() + " items"), x + 20, summaryTop + 16, 0xFF55FF55, false);
+
+        graphics.fill(x + 20, listTop, x + modalW - 20, listBottom, 0xFF000000);
+        graphics.fill(x + 22, listTop + 2, x + modalW - 22, listBottom - 2, 0xFF191919);
+        if (safeContents.isEmpty()) {
+            graphics.drawString(font, Component.literal("No contents to show"), x + 34, listTop + 18, 0xFFBDBDBD, false);
+            return;
+        }
+
+        graphics.enableScissor(x + 22, listTop + 2, x + modalW - 22, listBottom - 2);
+        int rowY = listTop + 2 - contentsScroll;
+        int textW = modalW - 116;
+        for (ItemStack stack : safeContents) {
+            List<String> metadataLines = fullItemMetadataLines(stack, textW);
+            int rowH = contentsRowHeight(metadataLines);
+            if (rowY + rowH < listTop || rowY > listBottom) {
+                rowY += rowH;
+                continue;
+            }
+            int textX = x + 82;
+            graphics.fill(x + 22, rowY, x + modalW - 22, rowY + rowH - 1, 0xFF242424);
+            graphics.fill(x + 22, rowY + rowH - 1, x + modalW - 22, rowY + rowH, 0xFF555555);
+            graphics.fill(x + 34, rowY + 9, x + 68, rowY + 43, 0xFF0B0B0B);
+            graphics.renderItem(stack, x + 43, rowY + 18);
+            graphics.renderItemDecorations(font, stack, x + 43, rowY + 18);
+            graphics.drawString(font, Component.literal(stack.getCount() + "x " + trimToWidth(stack.getHoverName().getString(), textW - 32)).withStyle(ChatFormatting.BOLD), textX, rowY + 9, 0xFFE0E0E0, false);
+            int metaY = rowY + 25;
+            for (String line : metadataLines) {
+                graphics.drawString(font, Component.literal(line), textX, metaY, 0xFF9E9E9E, false);
+                metaY += 11;
+            }
+            rowY += rowH;
+        }
+        graphics.disableScissor();
+        renderScrollBar(graphics, x + modalW - 14, listTop + 2, listBottom - 2, contentsScroll, contentsContentHeight(safeContents, modalW - 116), Math.max(1, listBottom - listTop - 4));
+    }
+
     private void renderCreateModal(GuiGraphics graphics, int x, int y, int modalW, int mouseX, int mouseY) {
         int modalH = modalHeight();
         int bodyTop = modalBodyTop(y);
         int bodyBottom = modalBodyBottom(y, modalH);
         boolean compact = compactCreateModal(modalW);
         int scroll = createScroll;
+        int bundleOffset = createSelectionIsBundle() ? 48 : 0;
 
         graphics.enableScissor(x + 6, bodyTop, x + modalW - 6, bodyBottom);
-        graphics.drawString(font, Component.translatable("Select Item from Inventory").withStyle(ChatFormatting.BOLD), x + 20, y + 54 - scroll, 0xFFFFFFFF, false);
+        String selectionTitle = createSelectionIsBundle() ? "Select Bundle Items from Inventory" : "Select Item from Inventory";
+        graphics.drawString(font, Component.literal(selectionTitle).withStyle(ChatFormatting.BOLD), x + 20, y + 54 - scroll, 0xFFFFFFFF, false);
         graphics.fill(inventoryGridLeft - 4, inventoryGridTop - 4, inventoryGridLeft + 202, inventoryGridTop + 92, 0xFF111111);
         graphics.fill(inventoryGridLeft - 2, inventoryGridTop - 2, inventoryGridLeft + 200, inventoryGridTop + 90, 0xFF2C2C2C);
         renderInventoryGrid(graphics, mouseX, mouseY);
         if (compact) {
             renderSelectedItemPreview(graphics, x + 20, y + 174 - scroll, modalW - 40, 74);
-            graphics.drawString(font, Component.translatable("Starting Bid (dollars)").withStyle(ChatFormatting.BOLD), x + 20, y + 262 - scroll, 0xFFFFFFFF, false);
-            graphics.drawString(font, Component.translatable("Buyout (dollars)").withStyle(ChatFormatting.BOLD), x + 20, y + 310 - scroll, 0xFFFFFFFF, false);
-            graphics.drawString(font, Component.translatable("Auction End Date & Time").withStyle(ChatFormatting.BOLD), x + 20, y + 358 - scroll, 0xFFFFFFFF, false);
-            graphics.drawString(font, Component.translatable("Description").withStyle(ChatFormatting.BOLD), x + 20, y + 406 - scroll, 0xFFFFFFFF, false);
+            if (createSelectionIsBundle()) {
+                graphics.drawString(font, Component.literal("Bundle Title").withStyle(ChatFormatting.BOLD), x + 20, y + 262 - scroll, 0xFFFFFFFF, false);
+            }
+            graphics.drawString(font, Component.translatable("Starting Bid (dollars)").withStyle(ChatFormatting.BOLD), x + 20, y + 262 + bundleOffset - scroll, 0xFFFFFFFF, false);
+            graphics.drawString(font, Component.translatable("Buyout (dollars)").withStyle(ChatFormatting.BOLD), x + 20, y + 310 + bundleOffset - scroll, 0xFFFFFFFF, false);
+            graphics.drawString(font, Component.translatable("Auction End Date & Time").withStyle(ChatFormatting.BOLD), x + 20, y + 358 + bundleOffset - scroll, 0xFFFFFFFF, false);
+            graphics.drawString(font, Component.translatable("Description").withStyle(ChatFormatting.BOLD), x + 20, y + 406 + bundleOffset - scroll, 0xFFFFFFFF, false);
         } else {
             renderSelectedItemPreview(graphics, x + 236, y + 72 - scroll, modalW - 256, 88);
-            graphics.drawString(font, Component.translatable("Starting Bid (dollars)").withStyle(ChatFormatting.BOLD), x + 20, y + 178 - scroll, 0xFFFFFFFF, false);
-            graphics.drawString(font, Component.translatable("Buyout (dollars)").withStyle(ChatFormatting.BOLD), x + 170, y + 178 - scroll, 0xFFFFFFFF, false);
-            graphics.drawString(font, Component.translatable("Auction End Date & Time").withStyle(ChatFormatting.BOLD), x + 310, y + 178 - scroll, 0xFFFFFFFF, false);
-            graphics.drawString(font, Component.translatable("Description").withStyle(ChatFormatting.BOLD), x + 20, y + 226 - scroll, 0xFFFFFFFF, false);
+            if (createSelectionIsBundle()) {
+                graphics.drawString(font, Component.literal("Bundle Title").withStyle(ChatFormatting.BOLD), x + 20, y + 178 - scroll, 0xFFFFFFFF, false);
+            }
+            graphics.drawString(font, Component.translatable("Starting Bid (dollars)").withStyle(ChatFormatting.BOLD), x + 20, y + 178 + bundleOffset - scroll, 0xFFFFFFFF, false);
+            graphics.drawString(font, Component.translatable("Buyout (dollars)").withStyle(ChatFormatting.BOLD), x + 170, y + 178 + bundleOffset - scroll, 0xFFFFFFFF, false);
+            graphics.drawString(font, Component.translatable("Auction End Date & Time").withStyle(ChatFormatting.BOLD), x + 310, y + 178 + bundleOffset - scroll, 0xFFFFFFFF, false);
+            graphics.drawString(font, Component.translatable("Description").withStyle(ChatFormatting.BOLD), x + 20, y + 226 + bundleOffset - scroll, 0xFFFFFFFF, false);
         }
 
-        int feeY = y + (compact ? 466 : 274) - scroll;
+        int feeY = y + (compact ? 466 : 274) + bundleOffset - scroll;
         graphics.fill(x + 20, feeY, x + modalW - 20, feeY + 52, 0xFF000000);
         graphics.fill(x + 22, feeY + 2, x + modalW - 22, feeY + 50, 0xFF191919);
         graphics.drawString(font, Component.translatable("Listing Fee").append(Component.literal(" (" + listingFeeRateLabel() + "%)")), x + 34, feeY + 12, 0xFFE0E0E0, false);
@@ -1118,15 +2207,18 @@ public class AuctionHouseScreen extends Screen {
         graphics.fill(x + 22, previewTop + 2, x + modalW - 22, previewTop + previewH - 2, 0xFF191919);
         graphics.fill(itemX, itemY, itemX + itemBox, itemY + itemBox, 0xFF0B0B0B);
         graphics.fill(itemX + 2, itemY + 2, itemX + itemBox - 2, itemY + itemBox - 2, 0x33000000 | (rarityColor & 0x00FFFFFF));
-        graphics.renderItem(pending.item(), itemX + (itemBox - 16) / 2, itemY + (itemBox - 16) / 2);
-        graphics.renderItemDecorations(font, pending.item(), itemX + (itemBox - 16) / 2, itemY + (itemBox - 16) / 2);
+        renderBundlePreview(graphics, pending.contents(), itemX + 4, itemY + 4, itemBox - 8, itemBox - 8);
 
         int detailX = x + 48 + itemBox;
         int detailW = Math.max(100, modalW - 92 - itemBox);
-        String title = (pending.itemCount() > 1 ? pending.itemCount() + "x " : "") + pending.itemName();
+        String title = pending.bundle() ? pending.itemName() : (pending.itemCount() > 1 ? pending.itemCount() + "x " : "") + pending.itemName();
         graphics.drawString(font, Component.literal(trimToWidth(title, detailW)).withStyle(ChatFormatting.BOLD), detailX, previewTop + 14, rarityColor, false);
         graphics.drawString(font, Component.literal(trimToWidth(pending.sourceLabel(), detailW)), detailX, previewTop + 30, 0xFFBDBDBD, false);
         int metadataY = previewTop + 46;
+        if (pending.bundle()) {
+            graphics.drawString(font, Component.literal("Bundle - " + pending.contents().size() + " stacks / " + pending.itemCount() + " items"), detailX, metadataY, 0xFF55FF55, false);
+            metadataY += 12;
+        }
         for (String line : itemMetadataLines(pending.item(), detailW, 2)) {
             graphics.drawString(font, Component.literal(line), detailX, metadataY, 0xFF9E9E9E, false);
             metadataY += 12;
@@ -1170,43 +2262,164 @@ public class AuctionHouseScreen extends Screen {
 
         graphics.enableScissor(x + 6, bodyTop, x + modalW - 6, bodyBottom);
         graphics.drawString(font, Component.translatable("Categories"), labelX, y + 58 - scroll, 0xFFE0E0E0, false);
-        graphics.drawString(font, Component.translatable("Price Range"), labelX, y + 114 - scroll, 0xFFE0E0E0, false);
-        graphics.drawString(font, Component.translatable("Closing Time"), labelX, y + 204 - scroll, 0xFFE0E0E0, false);
-        graphics.drawString(font, Component.translatable("Sort By"), labelX, y + 266 - scroll, 0xFFE0E0E0, false);
+        graphics.drawString(font, Component.translatable("Mod"), labelX, y + 114 - scroll, 0xFFE0E0E0, false);
+        graphics.drawString(font, Component.translatable("Price Range"), labelX, y + 170 - scroll, 0xFFE0E0E0, false);
+        graphics.drawString(font, Component.translatable("Closing Time"), labelX, y + 260 - scroll, 0xFFE0E0E0, false);
+        graphics.drawString(font, Component.translatable("Sort By"), labelX, y + 322 - scroll, 0xFFE0E0E0, false);
         graphics.disableScissor();
         renderScrollBar(graphics, x + modalW - 12, bodyTop, bodyBottom, filterScroll, filterContentHeight(), bodyBottom - bodyTop);
+    }
+
+    private void renderModFilterModal(GuiGraphics graphics, int x, int y, int modalW, int modalH) {
+        int listTop = y + 88;
+        int listBottom = y + modalH - 52;
+        int rowH = 32;
+        List<ModOption> options = modOptions();
+
+        graphics.fill(x + 18, listTop, x + modalW - 18, listBottom, 0xFF111111);
+        graphics.fill(x + 20, listTop + 2, x + modalW - 20, listBottom - 2, 0xFF191919);
+        if (options.isEmpty()) {
+            graphics.drawString(font, Component.translatable("No mods found"), x + 30, listTop + 18, 0xFFBDBDBD, false);
+            return;
+        }
+
+        graphics.enableScissor(x + 20, listTop + 2, x + modalW - 20, listBottom - 2);
+        for (int i = 0; i < options.size(); i++) {
+            ModOption option = options.get(i);
+            int rowY = listTop + 2 + i * rowH - modScroll;
+            if (rowY + rowH < listTop || rowY > listBottom) {
+                continue;
+            }
+            boolean selected = option.modId().equals(pendingModId);
+            int fill = selected ? 0xFF2F6F35 : 0xFF2A2A2A;
+            int border = selected ? 0xFF55FF55 : 0xFF000000;
+            graphics.fill(x + 20, rowY, x + modalW - 20, rowY + rowH - 3, border);
+            graphics.fill(x + 22, rowY + 2, x + modalW - 22, rowY + rowH - 5, fill);
+            Component title = Component.literal(trimToWidth(option.displayName(), modalW - 82))
+                    .withStyle(selected ? ChatFormatting.BOLD : ChatFormatting.WHITE);
+            graphics.drawString(font, title, x + 30, rowY + 7, selected ? 0xFFFFFFFF : 0xFFE0E0E0, false);
+            String detail = option.modId().isBlank()
+                    ? Component.translatable("All listed mods").getString()
+                    : option.modId() + " - " + option.activeAuctionCount() + " " + Component.translatable("auctions").getString();
+            graphics.drawString(font, Component.literal(trimToWidth(detail, modalW - 82)), x + 30, rowY + 19, selected ? 0xFFD7FFD7 : 0xFFBDBDBD, false);
+        }
+        graphics.disableScissor();
+        renderScrollBar(graphics, x + modalW - 14, listTop + 2, listBottom - 2, modScroll, modContentHeight(), Math.max(1, listBottom - listTop - 4));
     }
 
     private void renderSelectedItemPreview(GuiGraphics graphics, int x, int y, int w, int h) {
         graphics.fill(x, y, x + w, y + h, 0xFF000000);
         graphics.fill(x + 2, y + 2, x + w - 2, y + h - 2, 0xFF191919);
-        ItemStack stack = selectedInventoryStack();
+        List<ItemStack> stacks = selectedInventoryStacks();
+        ItemStack stack = stacks.isEmpty() ? ItemStack.EMPTY : stacks.getFirst();
         graphics.fill(x + 16, y + 18, x + 66, y + 68, 0xFF050505);
-        graphics.fill(x + 18, y + 20, x + 64, y + 66, stack.isEmpty() ? 0xFF333333 : 0xFF1B1B62);
+        graphics.fill(x + 18, y + 20, x + 64, y + 66, stack.isEmpty() ? 0xFF333333 : createSelectionIsBundle() ? 0xFF2C3A18 : 0xFF1B1B62);
         if (stack.isEmpty()) {
             graphics.drawString(font, Component.translatable("No item selected"), x + 80, y + 28, 0xFFBDBDBD, false);
             graphics.drawString(font, Component.translatable("Select a slot below"), x + 80, y + 42, 0xFF8E8E8E, false);
             return;
         }
 
-        graphics.renderItem(stack, x + 33, y + 35);
-        graphics.renderItemDecorations(font, stack, x + 33, y + 35);
-        graphics.drawString(font, stack.getHoverName(), x + 80, y + 24, 0xFF5F6BFF, false);
-        graphics.drawString(font, Component.literal(stack.getCount() + "x " + Component.translatable("Inventory Slot").getString() + " " + (selectedInventorySlot + 1)), x + 80, y + 42, 0xFFE0E0E0, false);
+        renderBundlePreview(graphics, stacks, x + 18, y + 20, 46, 46);
+        if (createSelectionIsBundle()) {
+            graphics.drawString(font, Component.literal(trimToWidth(selectedBundlePreviewTitle(), w - 92)).withStyle(ChatFormatting.BOLD), x + 80, y + 18, 0xFFFFAA00, false);
+            graphics.drawString(font, Component.literal(stacks.size() + " stacks, " + stacks.stream().mapToInt(ItemStack::getCount).sum() + " items"), x + 80, y + 34, 0xFFE0E0E0, false);
+            graphics.drawString(font, Component.literal("Bundle"), x + 80, y + 50, 0xFF55FF55, false);
+        } else {
+            graphics.drawString(font, stack.getHoverName(), x + 80, y + 24, 0xFF5F6BFF, false);
+            graphics.drawString(font, Component.literal(stack.getCount() + "x " + Component.translatable("Inventory Slot").getString() + " " + (selectedInventorySlot + 1)), x + 80, y + 42, 0xFFE0E0E0, false);
+        }
+    }
+
+    private void renderBundlePreview(GuiGraphics graphics, List<ItemStack> contents, int x, int y, int w, int h) {
+        List<ItemStack> safeContents = contents == null ? List.of() : contents.stream()
+                .filter(stack -> stack != null && !stack.isEmpty())
+                .toList();
+        if (safeContents.isEmpty()) {
+            return;
+        }
+        int count = Math.min(4, safeContents.size());
+        int left = x + Math.max(1, Math.min(6, (w - 32) / 3));
+        int right = x + w - 16 - Math.max(1, Math.min(6, (w - 32) / 3));
+        int top = y + Math.max(1, Math.min(6, (h - 32) / 3));
+        int bottom = y + h - 16 - Math.max(1, Math.min(6, (h - 32) / 3));
+        int centerX = x + (w - 16) / 2;
+        int centerY = y + (h - 16) / 2;
+        int[][] positions = switch (count) {
+            case 1 -> new int[][]{{centerX, centerY}};
+            case 2 -> new int[][]{{left, centerY}, {right, centerY}};
+            case 3 -> new int[][]{{centerX, top}, {left, bottom}, {right, bottom}};
+            default -> new int[][]{{left, top}, {right, top}, {left, bottom}, {right, bottom}};
+        };
+        for (int i = 0; i < count; i++) {
+            ItemStack stack = safeContents.get(i);
+            graphics.renderItem(stack, positions[i][0], positions[i][1]);
+            graphics.renderItemDecorations(font, stack, positions[i][0], positions[i][1]);
+        }
+        int remaining = safeContents.size() - 4;
+        if (remaining > 0) {
+            graphics.flush();
+            graphics.pose().pushPose();
+            graphics.pose().translate(0.0F, 0.0F, 250.0F);
+            int badgeX = x + w - 18;
+            int badgeY = y + 2;
+            graphics.fill(badgeX, badgeY, badgeX + 18, badgeY + 14, 0xFFFF3333);
+            graphics.fill(badgeX + 1, badgeY + 1, badgeX + 17, badgeY + 13, 0xFF9D1010);
+            graphics.drawCenteredString(font, Component.literal("+" + remaining).withStyle(ChatFormatting.BOLD), badgeX + 9, badgeY + 3, 0xFFFFFFFF);
+            graphics.pose().popPose();
+        }
+    }
+
+    private String selectedBundlePreviewTitle() {
+        String draft = bundleTitleDraft == null ? "" : bundleTitleDraft.trim();
+        return draft.isBlank() ? generatedSelectedBundleTitle() : draft;
+    }
+
+    private String generatedSelectedBundleTitle() {
+        List<ItemStack> stacks = selectedInventoryStacks();
+        if (stacks.isEmpty()) {
+            return "Bundle";
+        }
+        if (stacks.size() == 1) {
+            return stacks.getFirst().getHoverName().getString();
+        }
+        return "Bundle: " + stacks.getFirst().getHoverName().getString() + " + " + (stacks.size() - 1) + " more";
     }
 
     private void renderDatePickerModal(GuiGraphics graphics, int x, int y, int modalW, int modalH) {
         DatePickerLayout layout = datePickerLayout(x, y, modalW, modalH);
 
-        graphics.drawString(font, Component.translatable("Select Date (up to 30 days)").withStyle(ChatFormatting.BOLD), x + 22, y + 52, 0xFFFFFFFF, false);
-        graphics.drawCenteredString(font, Component.literal(calendarMonth.getMonth().getDisplayName(TextStyle.FULL, Locale.ROOT) + " " + calendarMonth.getYear()), x + modalW / 2, layout.monthY() + 7, 0xFFFFFFFF);
+        graphics.drawString(font, Component.translatable("Select Date (up to 30 days)").withStyle(ChatFormatting.BOLD), layout.calendarX(), y + 52, 0xFFFFFFFF, false);
+        graphics.drawCenteredString(font, Component.literal(calendarMonth.getMonth().getDisplayName(TextStyle.FULL, Locale.ROOT) + " " + calendarMonth.getYear()), layout.calendarX() + layout.calendarWidth() / 2, layout.monthY() + 7, 0xFFFFFFFF);
 
         String[] weekdays = {"S", "M", "T", "W", "T", "F", "S"};
         for (int col = 0; col < weekdays.length; col++) {
             graphics.drawCenteredString(font, Component.literal(weekdays[col]), layout.calendarX() + col * layout.cell() + (layout.cell() - 2) / 2, layout.weekdayY(), 0xFFE0E0E0);
         }
 
-        graphics.drawString(font, Component.translatable("Select Hour").withStyle(ChatFormatting.BOLD), x + 22, layout.hourY() - 18, 0xFFFFFFFF, false);
+        graphics.drawString(font, Component.translatable("Select Time").withStyle(ChatFormatting.BOLD), layout.timeX(), layout.timeY(), 0xFFFFFFFF, false);
+        int panelTop = layout.timeY() + 14;
+        int panelBottom = layout.timeY() + 112;
+        graphics.fill(layout.timeX(), panelTop, layout.timeX() + layout.timeWidth(), panelBottom, 0xFF111111);
+        graphics.fill(layout.timeX() + 2, panelTop + 2, layout.timeX() + layout.timeWidth() - 2, panelBottom - 2, 0xFF2F2F2F);
+
+        int controlsW = 164;
+        int controlsX = layout.timeX() + Math.max(0, (layout.timeWidth() - controlsW) / 2);
+        int colonX = controlsX + 52;
+        int valueY = layout.timeY() + 48;
+        graphics.drawCenteredString(font, Component.literal(":"), colonX, valueY + 7, 0xFFFFFFFF);
+        renderPeriodDot(graphics, controlsX + 124, valueY - 6, !selectedEndPm());
+        renderPeriodDot(graphics, controlsX + 124, valueY + 24, selectedEndPm());
+        graphics.drawString(font, Component.literal("AM"), controlsX + 140, valueY - 3, selectedEndPm() ? 0xFFBDBDBD : 0xFFFFFFFF, false);
+        graphics.drawString(font, Component.literal("PM"), controlsX + 140, valueY + 27, selectedEndPm() ? 0xFFFFFFFF : 0xFFBDBDBD, false);
+    }
+
+    private void renderPeriodDot(GuiGraphics graphics, int x, int y, boolean selected) {
+        graphics.fill(x, y, x + 10, y + 10, 0xFFE0E0E0);
+        graphics.fill(x + 1, y + 1, x + 9, y + 9, 0xFF2F2F2F);
+        if (selected) {
+            graphics.fill(x + 3, y + 3, x + 7, y + 7, 0xFF55FF55);
+        }
     }
 
     private void renderScrollBar(GuiGraphics graphics, int x, int top, int bottom, int scroll, int contentHeight, int viewportHeight) {
@@ -1227,15 +2440,39 @@ public class AuctionHouseScreen extends Screen {
     }
 
     private int createContentHeight(int modalW) {
-        return compactCreateModal(modalW) ? 478 : 286;
+        return (compactCreateModal(modalW) ? 478 : 286) + (createSelectionIsBundle() ? 48 : 0);
     }
 
     private int filterContentHeight() {
-        return 318;
+        return 374;
+    }
+
+    private int modContentHeight() {
+        return modOptions().size() * 32 + 4;
     }
 
     private int bidsContentHeight() {
         return acceptedBids(selectedAuction).size() * 50 + 4;
+    }
+
+    private int contentsContentHeight(List<ItemStack> contents, int textWidth) {
+        if (contents == null || contents.isEmpty()) {
+            return 4;
+        }
+        int height = 4;
+        for (ItemStack stack : contents) {
+            height += contentsRowHeight(stack, textWidth);
+        }
+        return height;
+    }
+
+    private int contentsRowHeight(ItemStack stack, int textWidth) {
+        return contentsRowHeight(fullItemMetadataLines(stack, textWidth));
+    }
+
+    private int contentsRowHeight(List<String> metadataLines) {
+        int lineCount = metadataLines == null ? 0 : metadataLines.size();
+        return Math.max(54, 36 + lineCount * 11);
     }
 
     private void clampModalScrolls() {
@@ -1245,6 +2482,11 @@ public class AuctionHouseScreen extends Screen {
         filterScroll = clamp(filterScroll, 0, Math.max(0, filterContentHeight() - viewport));
         int bidsViewport = Math.max(1, modalHeight() - (modalHeight() < 360 ? 206 : 224));
         bidsScroll = clamp(bidsScroll, 0, Math.max(0, bidsContentHeight() - bidsViewport));
+        int modViewport = Math.max(1, modalHeight() - 140);
+        modScroll = clamp(modScroll, 0, Math.max(0, modContentHeight() - modViewport));
+        int contentsViewport = Math.max(1, modalHeight() - 154);
+        List<ItemStack> contents = selectedAuction == null ? List.of() : selectedAuction.contents();
+        contentsScroll = clamp(contentsScroll, 0, Math.max(0, contentsContentHeight(contents, modalWidth() - 116) - contentsViewport));
     }
 
     private void setVisibleInModalBody(AbstractWidget widget, int bodyTop, int bodyBottom) {
@@ -1253,6 +2495,42 @@ public class AuctionHouseScreen extends Screen {
         if (!visible) {
             widget.active = false;
         }
+    }
+
+    private void setVisibleInAuctionList(AbstractWidget widget) {
+        int top = auctionListTop();
+        int bottom = auctionListBottom();
+        boolean visible = widget.getY() >= top && widget.getY() + widget.getHeight() <= bottom;
+        widget.visible = visible;
+        if (!visible) {
+            widget.active = false;
+        }
+    }
+
+    private int auctionListTop() {
+        if (payload.adminMode()) {
+            return contentTop + 30;
+        }
+        return contentTop + 8;
+    }
+
+    private int auctionListBottom() {
+        if (payload.adminMode()) {
+            return adminListBottom();
+        }
+        return contentTop + contentHeight - 8;
+    }
+
+    private int auctionListViewportHeight() {
+        return Math.max(1, auctionListBottom() - auctionListTop());
+    }
+
+    private int auctionListContentHeight() {
+        return visibleEntries().size() * auctionRowHeight();
+    }
+
+    private void clampAuctionScroll() {
+        auctionScroll = clamp(auctionScroll, 0, Math.max(0, auctionListContentHeight() - auctionListViewportHeight()));
     }
 
     private boolean inModalBody(double mouseY) {
@@ -1266,12 +2544,133 @@ public class AuctionHouseScreen extends Screen {
                 || sort != AuctionSort.ENDING_SOON
                 || maxHoursLeft > 0L
                 || !minPriceDraft.isBlank()
-                || !maxPriceDraft.isBlank();
+                || !maxPriceDraft.isBlank()
+                || !selectedModId.isBlank();
+    }
+
+    private AuctionAdminDashboardPayload adminDashboard() {
+        return payload == null || payload.adminDashboard() == null ? AuctionAdminDashboardPayload.EMPTY : payload.adminDashboard();
+    }
+
+    private List<AuctionAdminDashboardPayload.Player> filteredAdminPlayers() {
+        String search = adminSearchDraft == null ? "" : adminSearchDraft.trim().toLowerCase(Locale.ROOT);
+        return adminDashboard().players().stream()
+                .filter(player -> {
+                    if (search.isBlank()) {
+                        return true;
+                    }
+                    String haystack = (player.playerName() + " " + player.playerId()).toLowerCase(Locale.ROOT);
+                    return haystack.contains(search);
+                })
+                .toList();
+    }
+
+    private AuctionAdminDashboardPayload.Player selectedAdminPlayer() {
+        if (selectedAdminPlayerId == null) {
+            return null;
+        }
+        return adminDashboard().players().stream()
+                .filter(player -> selectedAdminPlayerId.equals(player.playerId()))
+                .findFirst()
+                .orElse(null);
+    }
+
+    private void selectAdminPlayer(AuctionAdminDashboardPayload.Player player) {
+        selectedAdminPlayerId = player.playerId();
+        adminBlockCreate = player.blockCreate() || !player.banActive();
+        adminBlockBid = player.blockBid() || !player.banActive();
+        adminBlockBuyout = player.blockBuyout() || !player.banActive();
+        adminBlockWatch = player.blockWatch() || !player.banActive();
+        adminBanReasonDraft = player.banActive() ? player.banReason() : "";
+        adminBanExpiryDraft = player.banActive() && !"Never".equalsIgnoreCase(player.banExpiresAt()) ? player.banExpiresAt() : "";
+        rebuildWidgets();
+    }
+
+    private int adminListBottom() {
+        return contentTop + contentHeight - 8;
+    }
+
+    private int adminPlayerListTop() {
+        return selectedAdminPlayer() == null ? contentTop + 42 : contentTop + 252;
+    }
+
+    private int adminContentHeight() {
+        return switch (adminSection) {
+            case OVERVIEW -> adminStatsGridHeight(true) + 382;
+            case ECONOMY -> adminStatsGridHeight(false) + 232;
+            case PLAYERS -> adminPlayerListTop() - contentTop + filteredAdminPlayers().size() * 44 + 12;
+            case BANNED_ITEMS -> 52 + adminDashboard().bannedEntries().size() * 36;
+            case AUDIT -> adminDashboard().auditLog().size() * 46 + 24;
+            case AUCTIONS, MODERATION -> auctionListContentHeight() + 40;
+        };
+    }
+
+    private void clampAdminScroll() {
+        adminScroll = clamp(adminScroll, 0, Math.max(0, adminContentHeight() - contentHeight));
+    }
+
+    private void setVisibleInAdminList(AbstractWidget widget) {
+        int bottom = adminListBottom();
+        boolean visible = widget.getY() >= contentTop && widget.getY() + widget.getHeight() <= bottom;
+        widget.visible = visible;
+        if (!visible) {
+            widget.active = false;
+        }
+    }
+
+    private String selectedModLabel() {
+        if (selectedModId == null || selectedModId.isBlank()) {
+            return "All Mods";
+        }
+        return modDisplayName(selectedModId);
+    }
+
+    private String modDisplayName(String modId) {
+        if (modId == null || modId.isBlank()) {
+            return "All Mods";
+        }
+        for (AuctionModFilterSummaryPayload summary : modFilterSummaries()) {
+            if (modId.equals(summary.modId())) {
+                return summary.displayName();
+            }
+        }
+        return modId;
+    }
+
+    private List<ModOption> modOptions() {
+        String search = modSearchDraft == null ? "" : modSearchDraft.trim().toLowerCase(Locale.ROOT);
+        List<ModOption> options = new ArrayList<>();
+        options.add(new ModOption("", "All Mods", totalListedModAuctions()));
+        for (AuctionModFilterSummaryPayload summary : modFilterSummaries()) {
+            if (summary == null || summary.modId() == null || summary.modId().isBlank()) {
+                continue;
+            }
+            String haystack = (summary.displayName() + " " + summary.modId()).toLowerCase(Locale.ROOT);
+            if (!search.isBlank() && !haystack.contains(search)) {
+                continue;
+            }
+            options.add(new ModOption(summary.modId(), summary.displayName(), summary.activeAuctionCount()));
+        }
+        return options;
+    }
+
+    private int totalListedModAuctions() {
+        int total = 0;
+        for (AuctionModFilterSummaryPayload summary : modFilterSummaries()) {
+            if (summary != null) {
+                total += Math.max(0, summary.activeAuctionCount());
+            }
+        }
+        return total;
+    }
+
+    private List<AuctionModFilterSummaryPayload> modFilterSummaries() {
+        return payload == null || payload.modFilters() == null ? List.of() : payload.modFilters();
     }
 
     private void applyFilters() {
-        minPriceDraft = value(minPriceBox, minPriceDraft);
-        maxPriceDraft = value(maxPriceBox, maxPriceDraft);
+        minPriceDraft = sanitizeMoneyInput(value(minPriceBox, minPriceDraft));
+        maxPriceDraft = sanitizeMoneyInput(value(maxPriceBox, maxPriceDraft));
         modal = Modal.NONE;
         refreshFromServer();
     }
@@ -1292,9 +2691,13 @@ public class AuctionHouseScreen extends Screen {
             int row = slot / columns;
             int x = inventoryGridLeft + col * 22;
             int y = inventoryGridTop + row * 22;
-            int color = slot == selectedInventorySlot ? 0xFF3EFF47 : 0xFF202020;
+            boolean selected = selectedInventorySlots.contains(slot);
+            int color = selected ? 0xFF3EFF47 : 0xFF202020;
             graphics.fill(x, y, x + 20, y + 20, color);
             graphics.fill(x + 1, y + 1, x + 19, y + 19, 0xFF555555);
+            if (selected) {
+                graphics.fill(x + 2, y + 2, x + 18, y + 4, 0xFFFFFFFF);
+            }
             ItemStack stack = inventory.getItem(slot);
             if (!stack.isEmpty()) {
                 graphics.renderItem(stack, x + 2, y + 2);
@@ -1309,6 +2712,11 @@ public class AuctionHouseScreen extends Screen {
             return super.mouseClicked(mouseX, mouseY, button);
         }
         if (modal == Modal.CREATE && clickInventoryGrid(mouseX, mouseY)) {
+            return true;
+        }
+        if (modal == Modal.MOD_FILTER && modSearchBox != null && modSearchBox.mouseClicked(mouseX, mouseY, button)) {
+            setFocused(modSearchBox);
+            modSearchBox.setFocused(true);
             return true;
         }
 
@@ -1353,19 +2761,54 @@ public class AuctionHouseScreen extends Screen {
     @Override
     public boolean mouseScrolled(double mouseX, double mouseY, double scrollX, double scrollY) {
         if (modal == Modal.NONE) {
+            if (payload.adminMode()) {
+                if ((adminSection == AdminSection.AUCTIONS || adminSection == AdminSection.MODERATION)
+                        && mouseY >= auctionListTop() && mouseY <= auctionListBottom()
+                        && auctionListContentHeight() > auctionListViewportHeight()) {
+                    int rowDelta = (int) Math.signum(scrollY);
+                    if (rowDelta == 0) {
+                        rowDelta = scrollY > 0.0D ? 1 : -1;
+                    }
+                    auctionScroll -= rowDelta * auctionRowHeight();
+                    clampAuctionScroll();
+                    rebuildWidgets();
+                    return true;
+                }
+                if (mouseY >= contentTop && mouseY <= adminListBottom() && adminContentHeight() > contentHeight) {
+                    adminScroll -= (int) Math.round(scrollY * 24.0D);
+                    clampAdminScroll();
+                    rebuildWidgets();
+                    return true;
+                }
+                return super.mouseScrolled(mouseX, mouseY, scrollX, scrollY);
+            }
+            if (mouseY >= auctionListTop() && mouseY <= auctionListBottom() && auctionListContentHeight() > auctionListViewportHeight()) {
+                int rowDelta = (int) Math.signum(scrollY);
+                if (rowDelta == 0) {
+                    rowDelta = scrollY > 0.0D ? 1 : -1;
+                }
+                auctionScroll -= rowDelta * auctionRowHeight();
+                clampAuctionScroll();
+                rebuildWidgets();
+                return true;
+            }
             return super.mouseScrolled(mouseX, mouseY, scrollX, scrollY);
         }
-        if (modal == Modal.CREATE || modal == Modal.FILTER || modal == Modal.BIDS) {
+        if (modal == Modal.CREATE || modal == Modal.FILTER || modal == Modal.BIDS || modal == Modal.MOD_FILTER || modal == Modal.CONTENTS) {
             int delta = (int) Math.round(scrollY * 22.0D);
             if (modal == Modal.CREATE) {
                 createScroll -= delta;
             } else if (modal == Modal.FILTER) {
                 filterScroll -= delta;
+            } else if (modal == Modal.MOD_FILTER) {
+                modScroll -= delta;
+            } else if (modal == Modal.CONTENTS) {
+                contentsScroll -= delta;
             } else {
                 bidsScroll -= delta;
             }
             clampModalScrolls();
-            if (modal == Modal.CREATE || modal == Modal.FILTER) {
+            if (modal == Modal.CREATE || modal == Modal.FILTER || modal == Modal.MOD_FILTER) {
                 rebuildWidgets();
             }
             return true;
@@ -1384,6 +2827,9 @@ public class AuctionHouseScreen extends Screen {
         }
         if (keyCode == 256) {
             closeModal();
+            return true;
+        }
+        if (modal == Modal.MOD_FILTER && modSearchBox != null && modSearchBox.isFocused() && modSearchBox.keyPressed(keyCode, scanCode, modifiers)) {
             return true;
         }
         GuiEventListener focused = getFocused();
@@ -1407,6 +2853,9 @@ public class AuctionHouseScreen extends Screen {
         if (modal == Modal.NONE) {
             return super.charTyped(codePoint, modifiers);
         }
+        if (modal == Modal.MOD_FILTER && modSearchBox != null && modSearchBox.isFocused() && modSearchBox.charTyped(codePoint, modifiers)) {
+            return true;
+        }
         GuiEventListener focused = getFocused();
         if (isModalChild(focused) && focused.charTyped(codePoint, modifiers)) {
             return true;
@@ -1427,7 +2876,20 @@ public class AuctionHouseScreen extends Screen {
                 int x = inventoryGridLeft + col * 22;
                 int y = inventoryGridTop + row * 22;
                 if (mouseX >= x && mouseX <= x + 20 && mouseY >= y && mouseY <= y + 20) {
-                    selectedInventorySlot = slot;
+                    int clickedSlot = slot;
+                    ItemStack stack = minecraft.player.getInventory().getItem(clickedSlot);
+                    if (stack.isEmpty()) {
+                        return true;
+                    }
+                    if (selectedInventorySlots.contains(clickedSlot)) {
+                        selectedInventorySlots = selectedInventorySlots.stream()
+                                .filter(selected -> selected != clickedSlot)
+                                .toList();
+                    } else if (selectedInventorySlots.size() < 18) {
+                        selectedInventorySlots = new ArrayList<>(selectedInventorySlots);
+                        selectedInventorySlots.add(clickedSlot);
+                    }
+                    selectedInventorySlot = selectedInventorySlots.isEmpty() ? -1 : selectedInventorySlots.getFirst();
                     rebuildWidgets();
                     return true;
                 }
@@ -1452,7 +2914,15 @@ public class AuctionHouseScreen extends Screen {
 
     private List<AuctionEntrySummary> visibleEntries() {
         if (payload.adminMode()) {
-            return payload.browseListings();
+            if (adminSection == AdminSection.MODERATION) {
+                List<AuctionEntrySummary> entries = new ArrayList<>();
+                entries.addAll(adminDashboard().failedSettlements());
+                entries.addAll(adminDashboard().restrictedListings().stream()
+                        .filter(entry -> entries.stream().noneMatch(existing -> existing.auctionId().equals(entry.auctionId())))
+                        .toList());
+                return entries;
+            }
+            return adminSection == AdminSection.AUCTIONS ? payload.browseListings() : List.of();
         }
         return switch (activeTab) {
             case BROWSE -> payload.browseListings();
@@ -1470,6 +2940,8 @@ public class AuctionHouseScreen extends Screen {
             case BIDS -> "Auction Bids";
             case DELIVERY -> "Delivery Storage";
             case FILTER -> "Filters";
+            case MOD_FILTER -> "Choose Mod";
+            case CONTENTS -> "Auction Contents";
             case NONE -> "";
         };
     }
@@ -1550,12 +3022,16 @@ public class AuctionHouseScreen extends Screen {
         if (entry == null) {
             return false;
         }
-        String state = entry.state() == null ? "" : entry.state();
+        String state = normalizedState(entry);
         return !"CLAIMED".equals(state) && !"CANCELLED".equals(state);
     }
 
     private boolean isClaimed(AuctionEntrySummary entry) {
-        return entry != null && "CLAIMED".equals(entry.state());
+        return "CLAIMED".equals(normalizedState(entry));
+    }
+
+    private String normalizedState(AuctionEntrySummary entry) {
+        return entry == null || entry.state() == null ? "" : entry.state().trim().toUpperCase(Locale.ROOT);
     }
 
     private List<String> itemMetadataLines(ItemStack stack, int maxWidth, int maxLines) {
@@ -1572,6 +3048,10 @@ public class AuctionHouseScreen extends Screen {
                 .toList();
     }
 
+    private List<String> fullItemMetadataLines(ItemStack stack, int maxWidth) {
+        return itemMetadataLines(stack, maxWidth, Integer.MAX_VALUE);
+    }
+
     private String readableDateTime(String rawTime) {
         if (rawTime == null || rawTime.isBlank()) {
             return "";
@@ -1579,7 +3059,7 @@ public class AuctionHouseScreen extends Screen {
         try {
             LocalDateTime time = LocalDateTime.parse(rawTime);
             String month = time.getMonth().getDisplayName(TextStyle.SHORT, Locale.ROOT);
-            return month + " " + time.getDayOfMonth() + ", " + hourLabel(time.getHour());
+            return month + " " + time.getDayOfMonth() + ", " + timeLabel(time.getHour(), time.getMinute());
         } catch (DateTimeParseException exception) {
             return rawTime;
         }
@@ -1593,10 +3073,14 @@ public class AuctionHouseScreen extends Screen {
             }
             long days = duration.toDays();
             long hours = duration.toHoursPart();
+            long minutes = duration.toMinutesPart();
             if (days > 0) {
                 return days + "d " + hours + "h";
             }
-            return Math.max(1, duration.toHours()) + "h";
+            if (hours > 0) {
+                return hours + "h " + minutes + "m";
+            }
+            return Math.max(1, duration.toMinutes()) + "m";
         } catch (DateTimeParseException exception) {
             return "";
         }
@@ -1729,11 +3213,11 @@ public class AuctionHouseScreen extends Screen {
     }
 
     private String minPriceValue() {
-        return value(minPriceBox, minPriceDraft);
+        return sanitizeMoneyInput(value(minPriceBox, minPriceDraft));
     }
 
     private String maxPriceValue() {
-        return value(maxPriceBox, maxPriceDraft);
+        return sanitizeMoneyInput(value(maxPriceBox, maxPriceDraft));
     }
 
     private String value(EditBox box) {

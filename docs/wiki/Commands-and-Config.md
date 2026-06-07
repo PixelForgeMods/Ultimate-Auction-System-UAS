@@ -14,6 +14,24 @@ List active auctions in chat:
 /ah list
 ```
 
+Bid on an active auction with your UBS primary account:
+
+```text
+/ah bid <auctionId> <amount>
+```
+
+Buy out an active auction that still has a buyout price above the current highest bid:
+
+```text
+/ah buyout <auctionId>
+```
+
+Claim a won item or an expired unsold seller return:
+
+```text
+/ah claim <auctionId>
+```
+
 Create an auction from the item in your main hand:
 
 ```text
@@ -36,6 +54,29 @@ Inspect a specific auction record and full bid history:
 /uas admin inspect <auctionId>
 ```
 
+Retry a failed settlement after reviewing the previous failure and proposed action:
+
+```text
+/uas admin settlement retry <auctionId>
+```
+
+Open the admin dashboard GUI:
+
+```text
+/uas admin
+/uas admin gui
+```
+
+The admin dashboard includes:
+
+- Overview cards for auction, economy, settlement, and moderation health
+- Auction inspection, bid history, force-cancel, and failed-settlement retry tools
+- Player inspection with granular auction-house bans for creating, bidding, buyouts, and notifications
+- Economy windows for 24h, 7d, and all-time auction activity
+- Moderation queues for failed settlements and active auctions that now match banned item rules
+- A live banned auction entries editor
+- An audit log for dashboard admin actions
+
 The inspect command prints:
 
 - Auction id
@@ -51,21 +92,73 @@ The inspect command prints:
 - Notification subscriber count
 - Every bid record, including rejected records when audit config stores them
 - Settlement reference and transaction id when present
+- Every financial event, including UBS reference, amount, transaction id, and result
 
 ## Admin Permission
 
-`/uas status` and `/uas admin inspect` use `Config.adminStatusPermissionLevel`.
+`/uas status`, `/uas admin inspect`, `/uas admin settlement retry`, and the admin dashboard use `Config.adminStatusPermissionLevel`.
 
 ## Important Config Values
 
 - `listingFeeRate`: percentage charged when creating an auction
 - `salesTaxRate`: percentage charged on sale settlement
 - `minimumBidIncrementDollars`: minimum increase over current bid
+- `allowSellerSelfBid`: whether sellers may bid on or buy out their own auctions
 - `maxActiveListingsPerPlayer`: active listing cap per seller
 - `maxAuctionDurationHours`: maximum listing duration
+- `autoSettleExpiredAuctions`: whether UAS scans expired auctions and pays sellers before winner claim
 - `autosaveIntervalTicks`: persistent save cadence
 - `auditRejectedBids`: whether rejected bid attempts are stored in bid history
 - `auditStateTransitions`: whether lifecycle transitions are logged
+- `bannedAuctionEntries`: item, tag, or mod restrictions for future auction listings
+
+## UBS Bidding and Settlement Policy
+
+UAS uses the player's UBS primary account by default.
+
+- Bid placement validates the bidder account, available balance, auction state, self-bid config, and minimum increment server-side.
+- Accepted bids use immediate withdrawal escrow because UBS does not expose a dedicated reserve/hold API.
+- First bids must meet or exceed the starting price. Later bids must exceed the current highest bid by at least `minimumBidIncrementDollars`.
+- When a new highest bid is accepted, UAS refunds the previous highest bidder before committing the new bid. If the refund cannot be completed safely, the new bid is rejected and the auction remains with the previous highest bidder.
+- Buyout remains available while the current highest bid is below the buyout price. A buyout immediately escrows buyer funds, refunds the previous highest bidder when needed, pays the seller net proceeds, and leaves the item claimable by the buyer.
+- `salesTaxRate` is deducted from seller proceeds as a money sink. There is no tax-recipient UBS account in this phase.
+- Failed seller payout or escrow refund states move the auction into `FAILED_SETTLEMENT` where normal claim is blocked until an admin retry succeeds.
+
+## UBS Reference Format
+
+Every UAS-triggered UBS transaction uses a stable reference:
+
+```text
+UAS_<EVENT_TYPE>:<auctionId>
+```
+
+Current event types:
+
+- `LISTING_FEE`
+- `LISTING_FEE_REFUND`
+- `BID_ESCROW`
+- `BID_ESCROW_REFUND`
+- `BUYOUT_ESCROW`
+- `BUYOUT_ESCROW_REFUND`
+- `OUTBID_REFUND`
+- `AUCTION_PAYOUT`
+- `SALES_TAX`
+- `ADMIN_FORCE_CANCEL_REFUND`
+- `CANCELLATION_FEE`
+
+`SALES_TAX` is recorded in UAS financial events even though no UBS transfer is created for it. `/uas admin inspect <auctionId>` shows the UAS auction id, UBS reference, transaction id when UBS returns one, amount, and result for each financial event.
+
+## Banned Auction Entries
+
+Admins can change banned auction entries from the admin dashboard without restarting the server. Dashboard changes apply immediately to new listing attempts and are saved back to `limits.bannedAuctionEntries` in the common config.
+
+Supported entry forms:
+
+- `minecraft:bedrock` for one exact item id
+- `#minecraft:shulker_boxes` for an item tag
+- `@minecraft` for every item from a mod id
+
+Existing active auctions are not auto-cancelled when a new banned entry is added. They are flagged in the dashboard moderation queue so admins can inspect or force-cancel them manually.
 
 ## Currency
 

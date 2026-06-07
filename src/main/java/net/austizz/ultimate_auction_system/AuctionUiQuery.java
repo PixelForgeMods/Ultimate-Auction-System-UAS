@@ -1,6 +1,7 @@
 package net.austizz.ultimate_auction_system;
 
 import java.math.BigDecimal;
+import java.util.Locale;
 
 public record AuctionUiQuery(
         String search,
@@ -8,10 +9,11 @@ public record AuctionUiQuery(
         BigDecimal minimumPrice,
         BigDecimal maximumPrice,
         long maximumHoursLeft,
-        AuctionSort sort
+        AuctionSort sort,
+        String modId
 ) {
     public static AuctionUiQuery defaults() {
-        return new AuctionUiQuery("", AuctionCategory.ALL, BigDecimal.ZERO, BigDecimal.ZERO, 0L, AuctionSort.ENDING_SOON);
+        return new AuctionUiQuery("", AuctionCategory.ALL, BigDecimal.ZERO, BigDecimal.ZERO, 0L, AuctionSort.ENDING_SOON, "");
     }
 
     public AuctionCategory safeCategory() {
@@ -24,5 +26,9 @@ public record AuctionUiQuery(
 
     public String safeSearch() {
         return search == null ? "" : search.trim();
+    }
+
+    public String safeModId() {
+        return modId == null ? "" : modId.trim().toLowerCase(Locale.ROOT);
     }
 }
