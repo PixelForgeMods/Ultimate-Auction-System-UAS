@@ -60,6 +60,8 @@ Bid and raise-bid modals use a two-step confirmation flow. The first click refre
 
 Auction events and chat list rows use clickable shortcuts with hover text. Outbid, won, sold, expired, cancelled, settlement failed/recovered, payout, and refund-related messages include the auction ID plus relevant shortcuts such as `[View]`, `[Bid]`, `[Buyout]`, `[Claim]`, `[Open /ah]`, or `[My Auctions]`. Buyout shortcuts open the preview flow and never spend money on the first click.
 
+The personal Dashboard tab is fetched server-side and capped for large histories. It separates Active, Ending Soon, Claimable, Watching, and History sections, each using the same auction-row actions as the browser where valid.
+
 ## Admin Commands
 
 Show dependency, storage, config, and auction health:

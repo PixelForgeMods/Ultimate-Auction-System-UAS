@@ -71,7 +71,11 @@ public class AuctionHouseScreen extends Screen {
     private record ChartMetric(String label, int color, BigDecimal value, String display) {
     }
 
+    private record DashboardSection(String title, List<AuctionEntrySummary> entries, int color) {
+    }
+
     private enum Tab {
+        DASHBOARD("Dashboard"),
         BROWSE("Browse"),
         MY_BIDS("My Bids"),
         MY_AUCTIONS("My Auctions");
@@ -270,7 +274,7 @@ public class AuctionHouseScreen extends Screen {
         contentTop = panelTop + headerHeight + 12;
         contentWidth = panelWidth - 32;
         contentHeight = Math.max(48, panelHeight - headerHeight - 34);
-        if (activeTab == Tab.MY_AUCTIONS && stackedTabs) {
+        if (activeTab == Tab.MY_AUCTIONS && (stackedTabs || panelWidth < 760)) {
             contentTop = Math.max(contentTop, tabY + 64);
             contentHeight = Math.max(48, panelTop + panelHeight - contentTop - 22);
         }
@@ -321,12 +325,21 @@ public class AuctionHouseScreen extends Screen {
             rebuildWidgets();
         });
         int tabsX = stackedTabs ? tabX : tabX + 82;
-        addTabButton(tabsX, tabY, 86, Tab.BROWSE);
-        addTabButton(tabsX + 92, tabY, 88, Tab.MY_BIDS);
-        addTabButton(tabsX + 186, tabY, 104, Tab.MY_AUCTIONS);
+        if (stackedTabs) {
+            int tabW = Math.max(70, (panelWidth - 48) / 4);
+            addTabButton(tabsX, tabY, tabW, Tab.DASHBOARD);
+            addTabButton(tabsX + tabW + 4, tabY, tabW, Tab.BROWSE);
+            addTabButton(tabsX + (tabW + 4) * 2, tabY, tabW, Tab.MY_BIDS);
+            addTabButton(tabsX + (tabW + 4) * 3, tabY, tabW, Tab.MY_AUCTIONS);
+        } else {
+            addTabButton(tabsX, tabY, 104, Tab.DASHBOARD);
+            addTabButton(tabsX + 110, tabY, 74, Tab.BROWSE);
+            addTabButton(tabsX + 190, tabY, 88, Tab.MY_BIDS);
+            addTabButton(tabsX + 284, tabY, 104, Tab.MY_AUCTIONS);
+        }
 
         if (activeTab == Tab.MY_AUCTIONS && !payload.adminMode()) {
-            int createY = stackedTabs ? tabY + 30 : tabY;
+            int createY = stackedTabs || panelWidth < 760 ? tabY + 30 : tabY;
             addAuctionButton(panelLeft + panelWidth - 170, createY, 154, 24, "Create Auction", AuctionButton.Style.GRAY, button -> {
                 modal = Modal.CREATE;
                 createScroll = 0;
@@ -467,6 +480,10 @@ public class AuctionHouseScreen extends Screen {
     }
 
     private void addContentButtons() {
+        if (activeTab == Tab.DASHBOARD && !payload.adminMode()) {
+            addDashboardActionButtons();
+            return;
+        }
         List<AuctionEntrySummary> entries = visibleEntries();
         int rowHeight = auctionRowHeight();
         int listTop = auctionListTop();
@@ -482,6 +499,27 @@ public class AuctionHouseScreen extends Screen {
                 continue;
             }
             addRowActionButtons(entry, rowTop, rowHeight);
+        }
+    }
+
+    private void addDashboardActionButtons() {
+        int listTop = auctionListTop();
+        int listBottom = auctionListBottom();
+        int y = listTop - auctionScroll;
+        int rowHeight = auctionRowHeight();
+        for (DashboardSection section : dashboardSections()) {
+            y += 26;
+            if (section.entries().isEmpty()) {
+                y += 28;
+                continue;
+            }
+            for (AuctionEntrySummary entry : section.entries()) {
+                if (y + rowHeight >= listTop && y <= listBottom) {
+                    addRowActionButtons(entry, y, rowHeight);
+                }
+                y += rowHeight;
+            }
+            y += 10;
         }
     }
 
@@ -505,12 +543,21 @@ public class AuctionHouseScreen extends Screen {
             actions.add(new RowAction("Contents", AuctionButton.Style.GRAY, button -> openContents(entry)));
         }
 
-        if (activeTab == Tab.BROWSE) {
+        if (activeTab == Tab.BROWSE || activeTab == Tab.DASHBOARD) {
             if (entry.canBid()) {
                 actions.add(new RowAction(entry.viewerHasBid() ? "Raise Bid" : "Place Bid", AuctionButton.Style.GREEN, button -> openBid(entry)));
             }
             if (entry.canBuyout()) {
                 actions.add(new RowAction("Buyout", AuctionButton.Style.GRAY, button -> sendAuctionAction("BUYOUT", entry, "", null)));
+            }
+            if (entry.canCancel()) {
+                actions.add(new RowAction("Cancel", AuctionButton.Style.RED, button -> sendAuctionAction("CANCEL", entry, "", null)));
+            }
+            if (isClaimed(entry)) {
+                actions.add(new RowAction("Claimed", AuctionButton.Style.CLAIMED, button -> {
+                }, false));
+            } else if (entry.canClaim()) {
+                actions.add(new RowAction("Claim", AuctionButton.Style.GREEN, button -> sendAuctionAction("CLAIM", entry, "", null)));
             }
         } else if (activeTab == Tab.MY_BIDS) {
             if (entry.canBid()) {
@@ -1484,6 +1531,10 @@ public class AuctionHouseScreen extends Screen {
             return found;
         }
         found = findAuction(source.myAuctions(), auctionId);
+        if (found != null) {
+            return found;
+        }
+        found = findAuction(source.dashboardListings(), auctionId);
         return found == null ? selectedAuction : found;
     }
 
@@ -2017,6 +2068,10 @@ public class AuctionHouseScreen extends Screen {
             renderAdminContent(graphics, mouseX, mouseY);
             return;
         }
+        if (activeTab == Tab.DASHBOARD) {
+            renderDashboardContent(graphics, mouseX, mouseY);
+            return;
+        }
         List<AuctionEntrySummary> entries = visibleEntries();
         int rowHeight = auctionRowHeight();
         int listTop = auctionListTop();
@@ -2041,6 +2096,66 @@ public class AuctionHouseScreen extends Screen {
         }
         graphics.disableScissor();
         renderScrollBar(graphics, contentLeft + contentWidth - 6, listTop, listBottom, auctionScroll, auctionListContentHeight(), auctionListViewportHeight());
+    }
+
+    private void renderDashboardContent(GuiGraphics graphics, int mouseX, int mouseY) {
+        renderDashboardSummary(graphics);
+        int listTop = auctionListTop();
+        int listBottom = auctionListBottom();
+        int rowHeight = auctionRowHeight();
+        int y = listTop - auctionScroll;
+        List<DashboardSection> sections = dashboardSections();
+        boolean anyRows = sections.stream().anyMatch(section -> !section.entries().isEmpty());
+        if (!anyRows) {
+            graphics.drawCenteredString(font, Component.literal("No dashboard activity yet"), contentLeft + contentWidth / 2, listTop + 42, 0xFFDDDDDD);
+            return;
+        }
+
+        graphics.enableScissor(contentLeft, listTop, contentLeft + contentWidth, listBottom);
+        for (DashboardSection section : sections) {
+            int headerY = y;
+            if (headerY + 22 >= listTop && headerY <= listBottom) {
+                graphics.fill(contentLeft, headerY, contentLeft + contentWidth - 10, headerY + 20, 0xFF1F1F1F);
+                graphics.fill(contentLeft, headerY, contentLeft + 4, headerY + 20, section.color());
+                graphics.drawString(font, Component.literal(section.title() + " (" + section.entries().size() + ")").withStyle(ChatFormatting.BOLD), contentLeft + 10, headerY + 6, section.color(), false);
+            }
+            y += 26;
+            if (section.entries().isEmpty()) {
+                if (y + 20 >= listTop && y <= listBottom) {
+                    graphics.drawString(font, Component.literal("No auctions in this section"), contentLeft + 12, y + 6, 0xFF9E9E9E, false);
+                }
+                y += 28;
+                continue;
+            }
+            for (AuctionEntrySummary entry : section.entries()) {
+                if (y + rowHeight >= listTop && y <= listBottom) {
+                    renderAuctionRow(graphics, entry, contentLeft, y, contentWidth, rowHeight - 8, mouseX, mouseY);
+                }
+                y += rowHeight;
+            }
+            y += 10;
+        }
+        graphics.disableScissor();
+        renderScrollBar(graphics, contentLeft + contentWidth - 6, listTop, listBottom, auctionScroll, auctionListContentHeight(), auctionListViewportHeight());
+    }
+
+    private void renderDashboardSummary(GuiGraphics graphics) {
+        List<DashboardSection> sections = dashboardSections();
+        int cardGap = 6;
+        int cardCount = Math.min(5, sections.size());
+        int cardW = Math.max(64, (contentWidth - cardGap * Math.max(0, cardCount - 1)) / Math.max(1, cardCount));
+        int x = contentLeft;
+        int y = contentTop + 8;
+        for (int i = 0; i < cardCount; i++) {
+            DashboardSection section = sections.get(i);
+            int w = i == cardCount - 1 ? contentLeft + contentWidth - x : cardW;
+            graphics.fill(x, y, x + w, y + 54, 0xFF000000);
+            graphics.fill(x + 2, y + 2, x + w - 2, y + 52, 0xFF191919);
+            graphics.fill(x + 2, y + 2, x + w - 2, y + 4, section.color());
+            graphics.drawString(font, Component.literal(trimToWidth(section.title(), w - 12)), x + 8, y + 12, section.color(), false);
+            graphics.drawString(font, Component.literal(String.valueOf(section.entries().size())).withStyle(ChatFormatting.BOLD), x + 8, y + 30, 0xFFFFFFFF, false);
+            x += w + cardGap;
+        }
     }
 
     private void renderAuctionRow(GuiGraphics graphics, AuctionEntrySummary entry, int x, int y, int w, int h, int mouseX, int mouseY) {
@@ -2113,9 +2228,11 @@ public class AuctionHouseScreen extends Screen {
         }
         int count = 2; // notifications + view bids
         count += entry.bundle() ? 1 : 0;
-        if (activeTab == Tab.BROWSE) {
+        if (activeTab == Tab.BROWSE || activeTab == Tab.DASHBOARD) {
             count += entry.canBid() ? 1 : 0;
             count += entry.canBuyout() ? 1 : 0;
+            count += entry.canCancel() ? 1 : 0;
+            count += entry.canClaim() || isClaimed(entry) ? 1 : 0;
         } else if (activeTab == Tab.MY_BIDS) {
             count += entry.canBid() ? 1 : 0;
             count += entry.canClaim() || isClaimed(entry) ? 1 : 0;
@@ -2687,6 +2804,9 @@ public class AuctionHouseScreen extends Screen {
         if (payload.adminMode()) {
             return contentTop + 30;
         }
+        if (activeTab == Tab.DASHBOARD) {
+            return contentTop + 76;
+        }
         return contentTop + 8;
     }
 
@@ -2702,6 +2822,9 @@ public class AuctionHouseScreen extends Screen {
     }
 
     private int auctionListContentHeight() {
+        if (activeTab == Tab.DASHBOARD && !payload.adminMode()) {
+            return dashboardContentHeight();
+        }
         return visibleEntries().size() * auctionRowHeight();
     }
 
@@ -2739,6 +2862,56 @@ public class AuctionHouseScreen extends Screen {
                     return haystack.contains(search);
                 })
                 .toList();
+    }
+
+    private List<DashboardSection> dashboardSections() {
+        List<AuctionEntrySummary> entries = payload == null || payload.dashboardListings() == null ? List.of() : payload.dashboardListings();
+        List<AuctionEntrySummary> active = entries.stream()
+                .filter(entry -> "ACTIVE".equals(normalizedState(entry)))
+                .filter(entry -> entry.viewerHasBid() || entry.viewerIsSeller() || entry.viewerIsHighestBidder())
+                .toList();
+        List<AuctionEntrySummary> endingSoon = entries.stream()
+                .filter(entry -> "ACTIVE".equals(normalizedState(entry)))
+                .filter(this::entryEndingSoon)
+                .toList();
+        List<AuctionEntrySummary> claimable = entries.stream()
+                .filter(AuctionEntrySummary::canClaim)
+                .toList();
+        List<AuctionEntrySummary> watching = entries.stream()
+                .filter(AuctionEntrySummary::viewerReceivesNotifications)
+                .toList();
+        List<AuctionEntrySummary> history = entries.stream()
+                .filter(entry -> !"ACTIVE".equals(normalizedState(entry)) || isClaimed(entry))
+                .toList();
+        return List.of(
+                new DashboardSection("Active", active, 0xFF55FF55),
+                new DashboardSection("Ending Soon", endingSoon, 0xFFFFD966),
+                new DashboardSection("Claimable", claimable, 0xFF3EFF47),
+                new DashboardSection("Watching", watching, 0xFF66CCFF),
+                new DashboardSection("History", history, 0xFFFFAA00)
+        );
+    }
+
+    private int dashboardContentHeight() {
+        int height = 0;
+        for (DashboardSection section : dashboardSections()) {
+            height += 26;
+            height += section.entries().isEmpty() ? 28 : section.entries().size() * auctionRowHeight();
+            height += 10;
+        }
+        return height;
+    }
+
+    private boolean entryEndingSoon(AuctionEntrySummary entry) {
+        if (entry == null || entry.endsAt() == null || entry.endsAt().isBlank()) {
+            return false;
+        }
+        try {
+            Duration duration = Duration.between(LocalDateTime.now(), LocalDateTime.parse(entry.endsAt()));
+            return !duration.isNegative() && duration.toHours() <= 24L;
+        } catch (DateTimeParseException ignored) {
+            return false;
+        }
     }
 
     private AuctionAdminDashboardPayload.Player selectedAdminPlayer() {
@@ -3101,6 +3274,7 @@ public class AuctionHouseScreen extends Screen {
             return adminSection == AdminSection.AUCTIONS ? payload.browseListings() : List.of();
         }
         return switch (activeTab) {
+            case DASHBOARD -> payload.dashboardListings();
             case BROWSE -> payload.browseListings();
             case MY_BIDS -> payload.myBids();
             case MY_AUCTIONS -> payload.myAuctions();

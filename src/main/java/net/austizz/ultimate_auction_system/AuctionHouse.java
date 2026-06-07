@@ -1236,6 +1236,7 @@ public class AuctionHouse {
                 .filter(summary -> viewerId != null && viewerId.equals(summary.sellerId()))
                 .sorted(comparatorFor(AuctionSort.ENDING_SOON))
                 .toList();
+        List<AuctionListingSummary> dashboardListings = buildPersonalDashboard(all, viewerId);
 
         UasAccountSnapshot primaryAccount = null;
         if (viewerId != null) {
@@ -1252,7 +1253,55 @@ public class AuctionHouse {
         AuctionAdminDashboardSnapshot adminDashboard = resolvedAdminMode
                 ? buildAdminDashboard(all, adminSavedData(viewer))
                 : AuctionAdminDashboardSnapshot.empty();
-        return new AuctionHouseSnapshot(browse, myBids, myAuctions, deliveries, modFilters, primaryAccount, pendingListing, Config.listingFeeRate, message == null ? "" : message, success, resolvedAdminMode, adminDashboard);
+        return new AuctionHouseSnapshot(browse, myBids, myAuctions, dashboardListings, deliveries, modFilters, primaryAccount, pendingListing, Config.listingFeeRate, message == null ? "" : message, success, resolvedAdminMode, adminDashboard);
+    }
+
+    private List<AuctionListingSummary> buildPersonalDashboard(List<AuctionListingSummary> all, UUID viewerId) {
+        if (viewerId == null || all == null || all.isEmpty()) {
+            return List.of();
+        }
+        return all.stream()
+                .filter(summary -> personalDashboardMatch(summary, viewerId))
+                .sorted(personalDashboardComparator(viewerId))
+                .limit(160)
+                .toList();
+    }
+
+    private boolean personalDashboardMatch(AuctionListingSummary summary, UUID viewerId) {
+        if (summary == null || viewerId == null) {
+            return false;
+        }
+        return viewerId.equals(summary.sellerId())
+                || viewerId.equals(summary.highestBidderId())
+                || summary.viewerHasBid()
+                || summary.viewerReceivesNotifications()
+                || summary.canClaim();
+    }
+
+    private Comparator<AuctionListingSummary> personalDashboardComparator(UUID viewerId) {
+        return Comparator
+                .comparingInt((AuctionListingSummary summary) -> dashboardPriority(summary, viewerId))
+                .thenComparing(AuctionListingSummary::endsAt);
+    }
+
+    private int dashboardPriority(AuctionListingSummary summary, UUID viewerId) {
+        if (summary.canClaim()) {
+            return 0;
+        }
+        if (summary.state() == AuctionState.ACTIVE && endingSoon(summary)) {
+            return 1;
+        }
+        if (summary.state() == AuctionState.ACTIVE && (summary.viewerHasBid() || viewerId.equals(summary.sellerId()) || summary.viewerReceivesNotifications())) {
+            return 2;
+        }
+        return 3;
+    }
+
+    private boolean endingSoon(AuctionListingSummary summary) {
+        return summary != null
+                && summary.endsAt() != null
+                && !summary.endsAt().isBefore(LocalDateTime.now())
+                && Duration.between(LocalDateTime.now(), summary.endsAt()).toHours() <= 24L;
     }
 
     private AuctionAdminSavedData adminSavedData(ServerPlayer viewer) {
