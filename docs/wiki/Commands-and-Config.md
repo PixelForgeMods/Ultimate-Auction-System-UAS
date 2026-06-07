@@ -44,6 +44,8 @@ Most creation flows should use the GUI because it supports buyout, expiry select
 
 The browser filters run server-side before listings are sent to the client. Text search matches item display names, item registry IDs such as `minecraft:diamond_sword`, bundled item names/registry IDs, seller names, seller UUIDs, descriptions, and auction IDs. Price filters match either the current bid or a positive buyout price, and the time filter limits results to auctions ending within the selected window.
 
+Bid and raise-bid modals use a two-step confirmation flow. The first click refreshes the player's UBS primary account snapshot and shows the selected account, current balance, bid amount, expected remaining balance, and any unavailable/frozen/insufficient-funds warning. The second click submits to the same server-side bid service used by `/ah bid`.
+
 ## Admin Commands
 
 Show dependency, storage, config, and auction health:

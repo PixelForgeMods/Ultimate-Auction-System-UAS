@@ -128,6 +128,11 @@ public class AuctionHouseScreen extends Screen {
     private String maxPriceDraft = "";
     private String startingBidDraft = "";
     private String buyoutDraft = "";
+    private String bidDraft = "";
+    private UUID bidReviewAuctionId;
+    private String bidReviewAmount = "";
+    private boolean bidReviewFresh = false;
+    private boolean bidReviewPending = false;
     private String bundleTitleDraft = "";
     private String descriptionDraft = "";
     private String selectedModId = "";
@@ -193,7 +198,16 @@ public class AuctionHouseScreen extends Screen {
     }
 
     public void refresh(AuctionSnapshotPayload updated) {
+        bidDraft = sanitizeMoneyInput(value(bidBox, bidDraft));
+        UUID selectedAuctionId = selectedAuction == null ? null : selectedAuction.auctionId();
         this.payload = updated;
+        if (selectedAuctionId != null) {
+            selectedAuction = findAuction(updated, selectedAuctionId);
+        }
+        if (modal == Modal.BID && bidReviewPending && bidReviewMatchesCurrent()) {
+            bidReviewPending = false;
+            bidReviewFresh = true;
+        }
         if (updated.pendingListing().present() && (modal == Modal.NONE || modal == Modal.CREATE || modal == Modal.CONFIRM_CREATE)) {
             modal = Modal.CONFIRM_CREATE;
         } else if (!updated.pendingListing().present() && modal == Modal.CONFIRM_CREATE) {
@@ -228,6 +242,7 @@ public class AuctionHouseScreen extends Screen {
         searchDraft = value(searchBox, searchDraft);
         minPriceDraft = sanitizeMoneyInput(value(minPriceBox, minPriceDraft));
         maxPriceDraft = sanitizeMoneyInput(value(maxPriceBox, maxPriceDraft));
+        bidDraft = sanitizeMoneyInput(value(bidBox, bidDraft));
         startingBidDraft = sanitizeMoneyInput(value(startingBidBox, startingBidDraft));
         buyoutDraft = sanitizeMoneyInput(value(buyoutBox, buyoutDraft));
         bundleTitleDraft = value(bundleTitleBox, bundleTitleDraft);
@@ -609,10 +624,25 @@ public class AuctionHouseScreen extends Screen {
         bidBox = new AuctionEditBox(font, inputX, inputY + 16, modalW - 40 - minW - gap, 24, Component.translatable("Bid Amount"));
         bidBox.setHint(Component.translatable("Bid Amount"));
         bidBox.setFilter(this::moneyInput);
-        bidBox.setValue(nextBidValue(selectedAuction));
+        if (bidDraft.isBlank()) {
+            bidDraft = nextBidValue(selectedAuction);
+        }
+        bidBox.setValue(bidDraft);
+        bidBox.setResponder(value -> {
+            bidDraft = sanitizeMoneyInput(value);
+            if (!bidReviewMatchesCurrent()) {
+                bidReviewFresh = false;
+                bidReviewPending = false;
+            }
+        });
         addRenderableWidget(bidBox);
 
-        addAuctionButton(x + modalW - 20 - minW, inputY + 16, minW, 24, Component.literal("MIN"), AuctionButton.Style.GRAY, button -> bidBox.setValue(nextBidValue(selectedAuction)));
+        addAuctionButton(x + modalW - 20 - minW, inputY + 16, minW, 24, Component.literal("MIN"), AuctionButton.Style.GRAY, button -> {
+            bidDraft = nextBidValue(selectedAuction);
+            bidBox.setValue(bidDraft);
+            bidReviewFresh = false;
+            bidReviewPending = false;
+        });
 
         int quickW = Math.max(52, (modalW - 64) / 4);
         int quickX = x + 20;
@@ -623,7 +653,8 @@ public class AuctionHouseScreen extends Screen {
 
         int actionW = Math.max(110, (modalW - 52) / 2);
         addAuctionButton(x + 20, actionY, actionW, 26, "Cancel", AuctionButton.Style.GRAY, button -> closeModal());
-        addAuctionButton(x + modalW - actionW - 20, actionY, actionW, 26, "Confirm Bid", AuctionButton.Style.GREEN, button -> sendAuctionAction("BID", selectedAuction, sanitizeMoneyInput(bidBox.getValue()), null));
+        AuctionButton submit = addAuctionButton(x + modalW - actionW - 20, actionY, actionW, 26, bidReviewFresh ? "Confirm Bid" : "Review Bid", AuctionButton.Style.GREEN, button -> submitOrReviewBid());
+        submit.active = bidReviewFresh ? bidSubmitAllowed() : moneyDraft(bidDraft).compareTo(BigDecimal.ZERO) > 0;
     }
 
     private void addCreateModalWidgets(int x, int y, int modalW, int modalH) {
@@ -1070,6 +1101,9 @@ public class AuctionHouseScreen extends Screen {
             sendAuctionAction("DISCARD_CREATE", null, "", null);
             return;
         }
+        if (modal == Modal.BID) {
+            resetBidReview();
+        }
         modal = modal == Modal.DATE_PICKER ? Modal.CREATE : modal == Modal.MOD_FILTER ? Modal.FILTER : Modal.NONE;
         rebuildWidgets();
     }
@@ -1300,6 +1334,8 @@ public class AuctionHouseScreen extends Screen {
 
     private void openBid(AuctionEntrySummary entry) {
         selectedAuction = entry;
+        bidDraft = nextBidValue(entry);
+        resetBidReview();
         modal = Modal.BID;
         rebuildWidgets();
     }
@@ -1327,7 +1363,140 @@ public class AuctionHouseScreen extends Screen {
         if (current.compareTo(minimum) < 0) {
             current = minimum;
         }
-        bidBox.setValue(current.add(moneyDraft(rawIncrement)).stripTrailingZeros().toPlainString());
+        bidDraft = current.add(moneyDraft(rawIncrement)).stripTrailingZeros().toPlainString();
+        bidReviewFresh = false;
+        bidReviewPending = false;
+        bidBox.setValue(bidDraft);
+    }
+
+    private void submitOrReviewBid() {
+        bidDraft = sanitizeMoneyInput(value(bidBox, bidDraft));
+        if (bidReviewFresh && bidSubmitAllowed()) {
+            sendAuctionAction("BID", selectedAuction, bidDraft, null);
+            resetBidReview();
+            return;
+        }
+        reviewBid();
+    }
+
+    private void reviewBid() {
+        if (selectedAuction == null || moneyDraft(bidDraft).compareTo(BigDecimal.ZERO) <= 0) {
+            return;
+        }
+        bidReviewAuctionId = selectedAuction.auctionId();
+        bidReviewAmount = sanitizeMoneyInput(bidDraft);
+        bidReviewFresh = false;
+        bidReviewPending = true;
+        refreshFromServer();
+    }
+
+    private void resetBidReview() {
+        bidReviewAuctionId = null;
+        bidReviewAmount = "";
+        bidReviewFresh = false;
+        bidReviewPending = false;
+    }
+
+    private boolean bidReviewMatchesCurrent() {
+        if (selectedAuction == null || bidReviewAuctionId == null) {
+            return false;
+        }
+        String currentAmount = sanitizeMoneyInput(value(bidBox, bidDraft));
+        return bidReviewAuctionId.equals(selectedAuction.auctionId())
+                && !currentAmount.isBlank()
+                && currentAmount.equals(sanitizeMoneyInput(bidReviewAmount));
+    }
+
+    private boolean bidSubmitAllowed() {
+        return bidReviewMatchesCurrent()
+                && payload.account().present()
+                && !payload.account().frozen()
+                && moneyDraft(bidDraft).compareTo(moneyDraft(nextBidValue(selectedAuction))) >= 0
+                && bidRemainingBalance().compareTo(BigDecimal.ZERO) >= 0;
+    }
+
+    private BigDecimal bidRemainingBalance() {
+        return moneyDraft(payload.account().balance()).subtract(moneyDraft(bidDraft));
+    }
+
+    private String bidReviewStatus() {
+        if (selectedAuction == null) {
+            return "";
+        }
+        if (bidReviewPending) {
+            return "Refreshing UBS account snapshot...";
+        }
+        if (!payload.account().present()) {
+            return "UBS account unavailable.";
+        }
+        if (payload.account().frozen()) {
+            return "UBS account is frozen.";
+        }
+        if (moneyDraft(bidDraft).compareTo(moneyDraft(nextBidValue(selectedAuction))) < 0) {
+            return "Bid is below the minimum.";
+        }
+        BigDecimal remaining = bidRemainingBalance();
+        if (remaining.compareTo(BigDecimal.ZERO) < 0) {
+            return "Insufficient funds by " + moneyDisplay(remaining.abs()) + ".";
+        }
+        return bidReviewFresh && bidReviewMatchesCurrent()
+                ? "Account refreshed. Confirm to submit."
+                : "Review refreshes your UBS balance before submitting.";
+    }
+
+    private int bidReviewStatusColor() {
+        if (bidReviewFresh && bidSubmitAllowed()) {
+            return 0xFF55FF55;
+        }
+        if (bidReviewPending) {
+            return 0xFFFFD966;
+        }
+        if (!payload.account().present()
+                || payload.account().frozen()
+                || moneyDraft(bidDraft).compareTo(moneyDraft(nextBidValue(selectedAuction))) < 0
+                || bidRemainingBalance().compareTo(BigDecimal.ZERO) < 0) {
+            return 0xFFFF6666;
+        }
+        return 0xFFBDBDBD;
+    }
+
+    private String bidAccountLabel() {
+        if (!payload.account().present()) {
+            return "No UBS account";
+        }
+        String type = payload.account().accountTypeLabel() == null || payload.account().accountTypeLabel().isBlank()
+                ? "UBS account"
+                : payload.account().accountTypeLabel();
+        UUID accountId = payload.account().accountId();
+        return type + (accountId == null ? "" : " " + accountId.toString().substring(0, 8));
+    }
+
+    private AuctionEntrySummary findAuction(AuctionSnapshotPayload source, UUID auctionId) {
+        if (source == null || auctionId == null) {
+            return selectedAuction;
+        }
+        AuctionEntrySummary found = findAuction(source.browseListings(), auctionId);
+        if (found != null) {
+            return found;
+        }
+        found = findAuction(source.myBids(), auctionId);
+        if (found != null) {
+            return found;
+        }
+        found = findAuction(source.myAuctions(), auctionId);
+        return found == null ? selectedAuction : found;
+    }
+
+    private AuctionEntrySummary findAuction(List<AuctionEntrySummary> entries, UUID auctionId) {
+        if (entries == null || auctionId == null) {
+            return null;
+        }
+        for (AuctionEntrySummary entry : entries) {
+            if (entry != null && auctionId.equals(entry.auctionId())) {
+                return entry;
+            }
+        }
+        return null;
     }
 
     private void sendCreateAction() {
@@ -2005,7 +2174,8 @@ public class AuctionHouseScreen extends Screen {
         int actionY = y + modalH - 38;
         int quickY = actionY - 42;
         int inputY = quickY - 52;
-        int currentY = inputY - 62;
+        int accountPanelH = modalH < 360 ? 56 : 68;
+        int currentY = inputY - accountPanelH - 14;
         int previewSize = modalH < 360 ? 56 : 86;
         int previewX = x + 22;
         int previewY = y + 58;
@@ -2028,13 +2198,19 @@ public class AuctionHouseScreen extends Screen {
         graphics.fill(detailX + 2, previewY + 46, detailX + Math.min(detailW, 128) - 2, previewY + 64, 0xFF191919);
         graphics.drawString(font, Component.literal(timeLeft(selectedAuction.endsAt(), selectedAuction.state()) + " " + Component.translatable("remaining").getString()), detailX + 8, previewY + 52, 0xFFFF6666, false);
 
-        graphics.fill(x + 20, currentY, x + modalW - 20, currentY + 48, 0xFF000000);
-        graphics.fill(x + 22, currentY + 2, x + modalW - 22, currentY + 46, 0xFF191919);
+        graphics.fill(x + 20, currentY, x + modalW - 20, currentY + accountPanelH, 0xFF000000);
+        graphics.fill(x + 22, currentY + 2, x + modalW - 22, currentY + accountPanelH - 2, 0xFF191919);
         graphics.drawString(font, Component.translatable("Current Bid"), x + 34, currentY + 10, 0xFFBDBDBD, false);
         graphics.drawString(font, Component.literal(selectedAuction.currentBid()).withStyle(ChatFormatting.BOLD), x + 34, currentY + 26, 0xFFFFD700, false);
-        if (payload.account().present()) {
-            graphics.drawString(font, Component.literal(payload.account().balance()), x + modalW - 90, currentY + 26, 0xFF55FF55, false);
+        int accountX = x + modalW / 2;
+        int accountW = x + modalW - 34 - accountX;
+        graphics.drawString(font, Component.literal(trimToWidth("Account: " + bidAccountLabel(), accountW)), accountX, currentY + 10, payload.account().present() ? 0xFFBDBDBD : 0xFFFF6666, false);
+        graphics.drawString(font, Component.literal(trimToWidth("Balance: " + payload.account().balance(), accountW)).withStyle(ChatFormatting.BOLD), accountX, currentY + 26, payload.account().frozen() ? 0xFFFF6666 : 0xFF55FF55, false);
+        if (accountPanelH >= 64) {
+            graphics.drawString(font, Component.literal("Bid: " + moneyDisplay(moneyDraft(bidDraft))), x + 34, currentY + 46, 0xFFFFFFFF, false);
+            graphics.drawString(font, Component.literal("After: " + moneyDisplay(bidRemainingBalance())).withStyle(ChatFormatting.BOLD), accountX, currentY + 46, bidRemainingBalance().compareTo(BigDecimal.ZERO) < 0 ? 0xFFFF6666 : 0xFF55FF55, false);
         }
+        graphics.drawString(font, Component.literal(trimToWidth(bidReviewStatus(), modalW - 40)), x + 20, currentY + accountPanelH + 4, bidReviewStatusColor(), false);
 
         graphics.drawString(font, Component.translatable("Your Bid").append(Component.literal(" (" + Component.translatable("Minimum").getString() + ": " + moneyDisplay(moneyDraft(nextBidValue(selectedAuction))) + ")")), x + 20, inputY + 2, 0xFFFFFFFF, false);
     }
