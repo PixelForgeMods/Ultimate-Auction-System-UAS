@@ -36,11 +36,14 @@ import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 
 import static net.austizz.ultimate_auction_system.UltimateAuctionSystem.auctionHouse;
 
 @EventBusSubscriber(modid = UltimateAuctionSystem.MODID, bus = EventBusSubscriber.Bus.GAME)
 public class AUSCommands {
+    private static final long BUYOUT_CONFIRM_WINDOW_MILLIS = 30_000L;
+    private static final ConcurrentHashMap<UUID, PendingBuyout> PENDING_BUYOUTS = new ConcurrentHashMap<>();
     private static final DateTimeFormatter FORMATTER = new DateTimeFormatterBuilder()
             .appendPattern("dd-MM")
             .parseDefaulting(ChronoField.YEAR, 2026) // Vult automatisch het jaar in (bijv. 2026)
@@ -57,6 +60,14 @@ public class AUSCommands {
             UasTranslations.literal("Hold the item you want to auction in your main hand.")
     );
 
+    private record PendingBuyout(UUID auctionId, long expiresAtMillis) {
+        boolean matches(UUID expectedAuctionId) {
+            return auctionId != null
+                    && auctionId.equals(expectedAuctionId)
+                    && expiresAtMillis >= System.currentTimeMillis();
+        }
+    }
+
     @SubscribeEvent
     public static void onRegisterCommands(RegisterCommandsEvent event) {
         event.getDispatcher().register(
@@ -64,6 +75,9 @@ public class AUSCommands {
                         .executes(AUSCommands::openAuctionGui)
                         .then(Commands.literal("list")
                                 .executes(AUSCommands::sendAuctionList))
+                        .then(Commands.literal("view")
+                                .then(Commands.argument("auctionId", StringArgumentType.word())
+                                        .executes(AUSCommands::viewAuction)))
                         .then(Commands.literal("create")
                                 .then(Commands.argument("Starting Price", StringArgumentType.word())
                                         .then(Commands.argument("Duration Hours", IntegerArgumentType.integer(1))
@@ -86,8 +100,11 @@ public class AUSCommands {
                                         .then(Commands.argument("amount", StringArgumentType.word())
                                                 .executes(AUSCommands::bidAuction))))
                         .then(Commands.literal("buyout")
+                                .then(Commands.literal("confirm")
+                                        .then(Commands.argument("auctionId", StringArgumentType.word())
+                                                .executes(AUSCommands::confirmBuyoutAuction)))
                                 .then(Commands.argument("auctionId", StringArgumentType.word())
-                                        .executes(AUSCommands::buyoutAuction)))
+                                        .executes(AUSCommands::previewBuyoutAuction)))
                         .then(Commands.literal("claim")
                                 .then(Commands.argument("auctionId", StringArgumentType.word())
                                         .executes(AUSCommands::claimAuction)))
@@ -257,7 +274,26 @@ public class AUSCommands {
         return result.success() ? Command.SINGLE_SUCCESS : 0;
     }
 
-    private static int buyoutAuction(CommandContext<CommandSourceStack> context) {
+    private static int viewAuction(CommandContext<CommandSourceStack> context) {
+        CommandSourceStack source = context.getSource();
+        if (auctionHouse == null) {
+            source.sendFailure(UasTranslations.literal("Auction house is not initialized."));
+            return 0;
+        }
+        UUID auctionId = parseAuctionId(source, StringArgumentType.getString(context, "auctionId"));
+        if (auctionId == null) {
+            return 0;
+        }
+        AuctionItem item = auctionHouse.getAuctionItem(auctionId);
+        if (item == null) {
+            source.sendFailure(Component.literal("Auction not found."));
+            return 0;
+        }
+        sendAuctionDetail(source, item);
+        return Command.SINGLE_SUCCESS;
+    }
+
+    private static int previewBuyoutAuction(CommandContext<CommandSourceStack> context) {
         ServerPlayer player = context.getSource().getPlayer();
         if (player == null || auctionHouse == null) {
             context.getSource().sendFailure(UasTranslations.literal("Only players can buy out auctions."));
@@ -267,6 +303,44 @@ public class AUSCommands {
         if (auctionId == null) {
             return 0;
         }
+        AuctionItem item = auctionHouse.getAuctionItem(auctionId);
+        if (item == null) {
+            context.getSource().sendFailure(Component.literal("Auction not found."));
+            return 0;
+        }
+        if (!buyoutAvailable(item)) {
+            context.getSource().sendFailure(Component.literal("This auction cannot be bought out right now."));
+            return 0;
+        }
+        PENDING_BUYOUTS.put(player.getUUID(), new PendingBuyout(auctionId, System.currentTimeMillis() + BUYOUT_CONFIRM_WINDOW_MILLIS));
+        context.getSource().sendSystemMessage(Component.literal("Buyout preview: ")
+                .withStyle(ChatFormatting.GOLD)
+                .append(Component.literal(item.getDisplayTitle()).withStyle(ChatFormatting.AQUA))
+                .append(Component.literal(" for ").withStyle(ChatFormatting.GRAY))
+                .append(Component.literal(UasMoneyFormatter.display(item.getBuyoutPrice().orElse(BigDecimal.ZERO))).withStyle(ChatFormatting.GREEN))
+                .append(Component.literal(". Auction " + auctionId + ". ").withStyle(ChatFormatting.GRAY))
+                .append(chatAction("[Confirm Buyout]", "/ah buyout confirm " + auctionId, "Confirm this buyout and spend from your UBS primary account.", ChatFormatting.GREEN, ClickEvent.Action.RUN_COMMAND))
+                .append(Component.literal(" "))
+                .append(chatAction("[Cancel]", "/ah", "Do not buy out; open the Auction House instead.", ChatFormatting.RED, ClickEvent.Action.RUN_COMMAND)));
+        return Command.SINGLE_SUCCESS;
+    }
+
+    private static int confirmBuyoutAuction(CommandContext<CommandSourceStack> context) {
+        ServerPlayer player = context.getSource().getPlayer();
+        if (player == null || auctionHouse == null) {
+            context.getSource().sendFailure(UasTranslations.literal("Only players can buy out auctions."));
+            return 0;
+        }
+        UUID auctionId = parseAuctionId(context.getSource(), StringArgumentType.getString(context, "auctionId"));
+        if (auctionId == null) {
+            return 0;
+        }
+        PendingBuyout pending = PENDING_BUYOUTS.get(player.getUUID());
+        if (pending == null || !pending.matches(auctionId)) {
+            context.getSource().sendFailure(Component.literal("Run /ah buyout " + auctionId + " first to preview and confirm this buyout."));
+            return 0;
+        }
+        PENDING_BUYOUTS.remove(player.getUUID());
         AuctionActionResult result = auctionHouse.buyout(player, auctionId);
         auctionHouse.sendActionAlert(player, result);
         sendResult(context.getSource(), result);
@@ -367,14 +441,18 @@ public class AUSCommands {
                     .append(UasTranslations.literal(" | Bid: ").withStyle(ChatFormatting.GRAY))
                     .append(Component.literal(UasMoneyFormatter.display(item.getHighestBid())).withStyle(ChatFormatting.GOLD))
                     .append(UasTranslations.literal(" | Time left: ").withStyle(ChatFormatting.GRAY))
-                    .append(timeLeft);
+                    .append(timeLeft)
+                    .append(Component.literal(" "))
+                    .append(chatAction("[View]", "/ah view " + item.getAuctionId(), "View auction details for " + item.getAuctionId() + ".", ChatFormatting.AQUA, ClickEvent.Action.RUN_COMMAND))
+                    .append(Component.literal(" "))
+                    .append(chatAction("[Bid]", "/ah bid " + item.getAuctionId() + " ", "Suggest a bid command for this auction.", ChatFormatting.GREEN, ClickEvent.Action.SUGGEST_COMMAND));
+            if (buyoutAvailable(item)) {
+                line.append(Component.literal(" "))
+                        .append(chatAction("[Buyout]", "/ah buyout " + item.getAuctionId(), "Preview buyout confirmation before spending money.", ChatFormatting.YELLOW, ClickEvent.Action.RUN_COMMAND));
+            }
 
             line.withStyle(style -> style.withHoverEvent(
                     new HoverEvent(HoverEvent.Action.SHOW_ITEM, new HoverEvent.ItemStackInfo(itemStack))
-            ));
-
-            line.withStyle(style -> style.withClickEvent(
-                    new ClickEvent(ClickEvent.Action.SUGGEST_COMMAND, "/ah")
             ));
 
             context.getSource().sendSystemMessage(line);
@@ -384,6 +462,39 @@ public class AUSCommands {
         context.getSource().sendSystemMessage(footer);
 
         return Command.SINGLE_SUCCESS;
+    }
+
+    private static void sendAuctionDetail(CommandSourceStack source, AuctionItem item) {
+        ItemStack stack = item.getItem();
+        UUID auctionId = item.getAuctionId();
+        MutableComponent title = Component.literal("=== Auction " + auctionId + " ===").withStyle(ChatFormatting.GOLD);
+        source.sendSystemMessage(title);
+        source.sendSystemMessage(Component.literal(stack.getCount() + "x " + item.getDisplayTitle())
+                .withStyle(style -> style
+                        .withColor(ChatFormatting.AQUA)
+                        .withHoverEvent(new HoverEvent(HoverEvent.Action.SHOW_ITEM, new HoverEvent.ItemStackInfo(stack)))));
+        source.sendSystemMessage(Component.literal("Seller: " + playerName(source, item.getPlayerId())).withStyle(ChatFormatting.GRAY));
+        source.sendSystemMessage(Component.literal("Current bid: " + UasMoneyFormatter.display(item.getHighestBid())).withStyle(ChatFormatting.GOLD));
+        source.sendSystemMessage(Component.literal("Buyout: " + item.getBuyoutPrice().map(UasMoneyFormatter::display).orElse("none")).withStyle(ChatFormatting.GREEN));
+        source.sendSystemMessage(Component.literal("State: " + item.getState() + " | " + timeLeftText(item)).withStyle(ChatFormatting.GRAY));
+        if (item.getDescription() != null && !item.getDescription().isBlank()) {
+            source.sendSystemMessage(Component.literal("Description: " + item.getDescription()).withStyle(ChatFormatting.WHITE));
+        }
+
+        MutableComponent actions = Component.literal("Actions: ").withStyle(ChatFormatting.GRAY)
+                .append(chatAction("[Bid]", "/ah bid " + auctionId + " ", "Suggest a bid command for this auction.", ChatFormatting.GREEN, ClickEvent.Action.SUGGEST_COMMAND));
+        if (buyoutAvailable(item)) {
+            actions.append(Component.literal(" "))
+                    .append(chatAction("[Buyout]", "/ah buyout " + auctionId, "Preview buyout confirmation before spending money.", ChatFormatting.YELLOW, ClickEvent.Action.RUN_COMMAND));
+        }
+        ServerPlayer player = source.getPlayer();
+        if (player != null && canClaimFromChat(player, item)) {
+            actions.append(Component.literal(" "))
+                    .append(chatAction("[Claim]", "/ah claim " + auctionId, "Claim this auction if it is available.", ChatFormatting.GREEN, ClickEvent.Action.RUN_COMMAND));
+        }
+        actions.append(Component.literal(" "))
+                .append(chatAction("[Open /ah]", "/ah", "Open the Auction House GUI.", ChatFormatting.GOLD, ClickEvent.Action.RUN_COMMAND));
+        source.sendSystemMessage(actions);
     }
 
     private static int sendMine(CommandContext<CommandSourceStack> context, AuctionSellerFilter filter, int page) {
@@ -431,18 +542,51 @@ public class AUSCommands {
                 .append(Component.literal(" | " + status).withStyle(ChatFormatting.GRAY));
 
         if (item.getState() == AuctionState.ACTIVE && item.getHighestBidderId() == null && !item.isExpired()) {
-            row.append(Component.literal(" [Cancel]").withStyle(style -> style
-                    .withColor(ChatFormatting.RED)
-                    .withClickEvent(new ClickEvent(ClickEvent.Action.RUN_COMMAND, "/ah cancel " + item.getAuctionId()))));
+            row.append(Component.literal(" "))
+                    .append(chatAction("[Cancel]", "/ah cancel " + item.getAuctionId(), "Cancel this auction if it still has no bids.", ChatFormatting.RED, ClickEvent.Action.RUN_COMMAND));
         }
         if ((item.getState() == AuctionState.ENDED || item.isExpired() || item.getState() == AuctionState.FAILED_SETTLEMENT)
                 && item.getHighestBidderId() == null) {
-            row.append(Component.literal(" [Claim]").withStyle(style -> style
-                    .withColor(ChatFormatting.GREEN)
-                    .withClickEvent(new ClickEvent(ClickEvent.Action.RUN_COMMAND, "/ah claim " + item.getAuctionId()))));
+            row.append(Component.literal(" "))
+                    .append(chatAction("[Claim]", "/ah claim " + item.getAuctionId(), "Claim this unsold auction return.", ChatFormatting.GREEN, ClickEvent.Action.RUN_COMMAND));
         }
+        row.append(Component.literal(" "))
+                .append(chatAction("[View]", "/ah view " + item.getAuctionId(), "View auction details for " + item.getAuctionId() + ".", ChatFormatting.AQUA, ClickEvent.Action.RUN_COMMAND));
         row.withStyle(style -> style.withHoverEvent(new HoverEvent(HoverEvent.Action.SHOW_ITEM, new HoverEvent.ItemStackInfo(stack))));
         source.sendSystemMessage(row);
+    }
+
+    private static MutableComponent chatAction(String label,
+                                               String command,
+                                               String hover,
+                                               ChatFormatting color,
+                                               ClickEvent.Action action) {
+        return Component.literal(label).withStyle(style -> style
+                .withColor(color)
+                .withClickEvent(new ClickEvent(action, command))
+                .withHoverEvent(new HoverEvent(HoverEvent.Action.SHOW_TEXT, Component.literal(hover))));
+    }
+
+    private static boolean buyoutAvailable(AuctionItem item) {
+        return item != null
+                && item.getState() == AuctionState.ACTIVE
+                && !item.isExpired()
+                && item.getBuyoutPrice().isPresent()
+                && (item.getHighestBidderId() == null || item.getHighestBid().compareTo(item.getBuyoutPrice().get()) < 0);
+    }
+
+    private static boolean canClaimFromChat(ServerPlayer player, AuctionItem item) {
+        if (player == null || item == null) {
+            return false;
+        }
+        boolean ended = item.getState() == AuctionState.ENDED || item.isExpired();
+        if (!ended || item.getState() == AuctionState.CLAIMED || item.getState() == AuctionState.CANCELLED) {
+            return false;
+        }
+        UUID winnerId = item.getHighestBidderId();
+        return winnerId == null
+                ? player.getUUID().equals(item.getPlayerId())
+                : player.getUUID().equals(winnerId);
     }
 
     private static String sellerStatusLabel(CommandSourceStack source, AuctionItem item) {

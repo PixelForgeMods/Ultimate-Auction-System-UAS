@@ -14,16 +14,28 @@ List active auctions in chat:
 /ah list
 ```
 
+View one auction in chat with clickable shortcuts:
+
+```text
+/ah view <auctionId>
+```
+
 Bid on an active auction with your UBS primary account:
 
 ```text
 /ah bid <auctionId> <amount>
 ```
 
-Buy out an active auction that still has a buyout price above the current highest bid:
+Preview a buyout for an active auction that still has a buyout price above the current highest bid:
 
 ```text
 /ah buyout <auctionId>
+```
+
+The preview creates a short-lived confirmation. Confirm the spend with:
+
+```text
+/ah buyout confirm <auctionId>
 ```
 
 Claim a won item or an expired unsold seller return:
@@ -46,7 +58,7 @@ The browser filters run server-side before listings are sent to the client. Text
 
 Bid and raise-bid modals use a two-step confirmation flow. The first click refreshes the player's UBS primary account snapshot and shows the selected account, current balance, bid amount, expected remaining balance, and any unavailable/frozen/insufficient-funds warning. The second click submits to the same server-side bid service used by `/ah bid`.
 
-Auction events use the UBS Alerts API and also send clickable chat companions to online players. Outbid, won, sold, expired, cancelled, settlement failed/recovered, payout, and refund-related messages include the auction ID plus relevant shortcuts such as `[Bid]`, `[Claim]`, `[Open /ah]`, or `[My Auctions]`.
+Auction events and chat list rows use clickable shortcuts with hover text. Outbid, won, sold, expired, cancelled, settlement failed/recovered, payout, and refund-related messages include the auction ID plus relevant shortcuts such as `[View]`, `[Bid]`, `[Buyout]`, `[Claim]`, `[Open /ah]`, or `[My Auctions]`. Buyout shortcuts open the preview flow and never spend money on the first click.
 
 ## Admin Commands
 
