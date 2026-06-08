@@ -1937,6 +1937,8 @@ public class AuctionHouseScreen extends Screen {
         hoverText = renderAdminEconomyChart(graphics, contentLeft + 12, y, contentWidth - 24, 176, mouseX, mouseY);
         y += 196;
         renderAdminStatsGrid(graphics, contentLeft + 12, y, contentWidth - 24, false);
+        y += adminStatsGridHeight(false) + 12;
+        renderAdminEconomyReports(graphics, contentLeft + 12, y, contentWidth - 24);
         graphics.disableScissor();
         if (hoverText != null) {
             graphics.renderTooltip(font, Component.literal(hoverText), mouseX, mouseY);
@@ -2055,6 +2057,43 @@ public class AuctionHouseScreen extends Screen {
                 : Component.translatable("{0} auction(s), first: {1}", entries.size(), entries.getFirst().itemName()).getString();
         graphics.drawString(font, Component.literal(trimToWidth(detail, contentWidth - 56)), contentLeft + 22, y + 30, entries.isEmpty() ? 0xFF9E9E9E : 0xFFFFD700, false);
         return y + 66;
+    }
+
+    private void renderAdminEconomyReports(GuiGraphics graphics, int x, int y, int w) {
+        List<AuctionAdminDashboardPayload.EconomyReport> reports = adminDashboard().economyReports();
+        if (reports.isEmpty()) {
+            return;
+        }
+        int columns = w >= 620 ? 3 : 1;
+        int cardW = columns == 1 ? w : (w - 16) / 3;
+        int cardH = 116;
+        for (int i = 0; i < reports.size(); i++) {
+            AuctionAdminDashboardPayload.EconomyReport report = reports.get(i);
+            int col = i % columns;
+            int row = i / columns;
+            int cardX = x + col * (cardW + 8);
+            int cardY = y + row * (cardH + 10);
+            renderAdminCard(graphics, cardX, cardY, cardW, cardH);
+            graphics.drawString(font, Component.translatable("Economy Report: {0}", Component.translatable(report.label())).withStyle(ChatFormatting.BOLD), cardX + 10, cardY + 10, 0xFFFFAA00, false);
+            graphics.drawString(font, Component.translatable("Active {0}  Sold {1}  Failed {2}", report.activeListings(), report.completedSales(), report.failedSettlements()), cardX + 10, cardY + 28, 0xFFE0E0E0, false);
+            graphics.drawString(font, Component.translatable("Gross {0}  Fees {1}", report.grossVolume(), report.fees()), cardX + 10, cardY + 42, 0xFFFFD700, false);
+            graphics.drawString(font, Component.translatable("Taxes {0}", report.taxes()), cardX + 10, cardY + 56, 0xFFFF6666, false);
+            renderTopEconomyRow(graphics, "Top seller: {0}", report.topSellers(), cardX + 10, cardY + 72, cardW - 20);
+            renderTopEconomyRow(graphics, "Top category: {0}", report.topCategories(), cardX + 10, cardY + 86, cardW - 20);
+            renderTopEconomyRow(graphics, "Top item: {0}", report.topItems(), cardX + 10, cardY + 100, cardW - 20);
+        }
+    }
+
+    private void renderTopEconomyRow(GuiGraphics graphics,
+                                     String labelKey,
+                                     List<AuctionAdminDashboardPayload.EconomyRow> rows,
+                                     int x,
+                                     int y,
+                                     int w) {
+        String value = rows.isEmpty()
+                ? Component.translatable("None").getString()
+                : Component.translatable("{0} ({1}, {2})", rows.getFirst().label(), rows.getFirst().count(), rows.getFirst().amount()).getString();
+        graphics.drawString(font, Component.literal(trimToWidth(Component.translatable(labelKey, value).getString(), w)), x, y, 0xFFBDBDBD, false);
     }
 
     private void renderAdminAuctionList(GuiGraphics graphics, int mouseX, int mouseY, String title) {
@@ -3240,7 +3279,7 @@ public class AuctionHouseScreen extends Screen {
     private int adminContentHeight() {
         return switch (adminSection) {
             case OVERVIEW -> adminStatsGridHeight(true) + 382;
-            case ECONOMY -> adminStatsGridHeight(false) + 232;
+            case ECONOMY -> adminStatsGridHeight(false) + adminEconomyReportHeight() + 244;
             case PLAYERS -> adminPlayerListTop() - contentTop + filteredAdminPlayers().size() * 44 + 12;
             case SUSPICION -> 38 + adminDashboard().suspicionSignals().size() * 58;
             case BANNED_ITEMS -> 52 + adminDashboard().bannedEntries().size() * 36;
@@ -3248,6 +3287,16 @@ public class AuctionHouseScreen extends Screen {
             case AUDIT -> adminDashboard().auditLog().size() * 46 + 24;
             case AUCTIONS, MODERATION -> auctionListContentHeight() + 40;
         };
+    }
+
+    private int adminEconomyReportHeight() {
+        int reportCount = adminDashboard().economyReports().size();
+        if (reportCount <= 0) {
+            return 0;
+        }
+        int columns = contentWidth >= 620 ? 3 : 1;
+        int rows = Math.max(1, (int) Math.ceil(reportCount / (double) columns));
+        return rows * 126;
     }
 
     private void clampAdminScroll() {

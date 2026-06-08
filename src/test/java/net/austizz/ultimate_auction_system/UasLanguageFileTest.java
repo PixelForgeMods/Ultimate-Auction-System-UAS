@@ -57,7 +57,14 @@ class UasLanguageFileTest {
             "Force Cancel Auction",
             "Admin Recovery Storage",
             "Recovery",
-            "Auction force-cancelled, bidder refunded, and item moved to admin recovery."
+            "Auction force-cancelled, bidder refunded, and item moved to admin recovery.",
+            "=== UAS Economy Report: {0} ===",
+            "Economy Report: {0}",
+            "Top sellers",
+            "Top categories",
+            "Top items",
+            "Gross volume",
+            "Failed settlements"
     );
     private static final List<String> CRITICAL_TRANSLATED_AWAY_KEYS = List.of(
             "UAS ADMIN DASHBOARD",
@@ -81,7 +88,14 @@ class UasLanguageFileTest {
             "Force Cancel Auction",
             "Admin Recovery Storage",
             "Recovery",
-            "Auction force-cancelled, bidder refunded, and item moved to admin recovery."
+            "Auction force-cancelled, bidder refunded, and item moved to admin recovery.",
+            "=== UAS Economy Report: {0} ===",
+            "Economy Report: {0}",
+            "Top sellers",
+            "Top categories",
+            "Top items",
+            "Gross volume",
+            "Failed settlements"
     );
 
     @Test

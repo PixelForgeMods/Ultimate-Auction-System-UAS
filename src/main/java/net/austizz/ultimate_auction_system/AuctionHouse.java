@@ -70,6 +70,7 @@ public class AuctionHouse {
     private final ConcurrentHashMap<UUID, PendingAuctionListing> pendingListings = new ConcurrentHashMap<>();
     private final UasBankingService bankingService;
     private final AuctionSuspicionAnalyzer suspicionAnalyzer = new AuctionSuspicionAnalyzer();
+    private final AuctionEconomyReporter economyReporter = new AuctionEconomyReporter();
     private final AuctionSavedData savedData;
     private final boolean mutationsBlocked;
     private volatile AuctionStorageHealth storageHealth = AuctionStorageHealth.inMemoryOnly();
@@ -1461,6 +1462,7 @@ public class AuctionHouse {
                 adminStats("7d", safeAll, LocalDateTime.now().minusDays(7)),
                 adminStats("All", safeAll, null)
         );
+        List<AuctionEconomyReport> economyReports = buildEconomyReports();
         List<AuctionPlayerBan> bans = adminData == null ? List.of() : adminData.getBans();
         List<AuctionAdminAuditEntry> audit = adminData == null ? List.of() : adminData.getAuditLog().stream().limit(80).toList();
         List<AuctionRecoveryEntry> recoveryEntries = adminData == null ? List.of() : adminData.getRecoveryEntries().stream().limit(80).toList();
@@ -1479,7 +1481,15 @@ public class AuctionHouse {
                 .sorted(Comparator.comparing(AuctionListingSummary::endsAt).reversed())
                 .limit(80)
                 .toList();
-        return new AuctionAdminDashboardSnapshot(stats, players, bans, audit, bannedEntries, suspicionSignals, recoveryEntries, restrictedListings, failedSettlements, LocalDateTime.now().toString());
+        return new AuctionAdminDashboardSnapshot(stats, economyReports, players, bans, audit, bannedEntries, suspicionSignals, recoveryEntries, restrictedListings, failedSettlements, LocalDateTime.now().toString());
+    }
+
+    public List<AuctionEconomyReport> buildEconomyReports() {
+        return economyReporter.buildReports(new ArrayList<>(AuctionItems.values()), this::playerName);
+    }
+
+    public AuctionEconomyReport buildEconomyReport(String windowToken) {
+        return economyReporter.reportForToken(new ArrayList<>(AuctionItems.values()), this::playerName, windowToken);
     }
 
     private List<AuctionSuspicionSignal> buildSuspicionSignals() {

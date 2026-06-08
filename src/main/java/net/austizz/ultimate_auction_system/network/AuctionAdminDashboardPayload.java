@@ -2,6 +2,7 @@ package net.austizz.ultimate_auction_system.network;
 
 import net.austizz.ultimate_auction_system.AuctionAdminAuditEntry;
 import net.austizz.ultimate_auction_system.AuctionAdminDashboardSnapshot;
+import net.austizz.ultimate_auction_system.AuctionEconomyReport;
 import net.austizz.ultimate_auction_system.AuctionPlayerBan;
 import net.austizz.ultimate_auction_system.AuctionRecoveryEntry;
 import net.austizz.ultimate_auction_system.AuctionSuspicionSignal;
@@ -16,6 +17,7 @@ import java.util.UUID;
 
 public record AuctionAdminDashboardPayload(
         List<Stats> stats,
+        List<EconomyReport> economyReports,
         List<Player> players,
         List<Ban> bans,
         List<Audit> auditLog,
@@ -27,11 +29,12 @@ public record AuctionAdminDashboardPayload(
         String generatedAt
 ) {
     public static final AuctionAdminDashboardPayload EMPTY = new AuctionAdminDashboardPayload(
-            List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), "");
+            List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), "");
 
     public static final StreamCodec<RegistryFriendlyByteBuf, AuctionAdminDashboardPayload> STREAM_CODEC = StreamCodec.of(
             (buf, payload) -> {
                 Stats.STREAM_CODEC.apply(ByteBufCodecs.list(8)).encode(buf, payload.stats());
+                EconomyReport.STREAM_CODEC.apply(ByteBufCodecs.list(8)).encode(buf, payload.economyReports());
                 Player.STREAM_CODEC.apply(ByteBufCodecs.list(128)).encode(buf, payload.players());
                 Ban.STREAM_CODEC.apply(ByteBufCodecs.list(128)).encode(buf, payload.bans());
                 Audit.STREAM_CODEC.apply(ByteBufCodecs.list(256)).encode(buf, payload.auditLog());
@@ -44,6 +47,7 @@ public record AuctionAdminDashboardPayload(
             },
             buf -> new AuctionAdminDashboardPayload(
                     Stats.STREAM_CODEC.apply(ByteBufCodecs.list(8)).decode(buf),
+                    EconomyReport.STREAM_CODEC.apply(ByteBufCodecs.list(8)).decode(buf),
                     Player.STREAM_CODEC.apply(ByteBufCodecs.list(128)).decode(buf),
                     Ban.STREAM_CODEC.apply(ByteBufCodecs.list(128)).decode(buf),
                     Audit.STREAM_CODEC.apply(ByteBufCodecs.list(256)).decode(buf),
@@ -62,6 +66,7 @@ public record AuctionAdminDashboardPayload(
         }
         return new AuctionAdminDashboardPayload(
                 snapshot.stats().stream().map(Stats::fromSnapshot).toList(),
+                snapshot.economyReports().stream().map(EconomyReport::fromReport).toList(),
                 snapshot.players().stream().map(Player::fromSnapshot).toList(),
                 snapshot.bans().stream().map(Ban::fromBan).toList(),
                 snapshot.auditLog().stream().map(Audit::fromEntry).toList(),
@@ -138,6 +143,80 @@ public record AuctionAdminDashboardPayload(
                     stats.estimatedSalesTax(),
                     stats.averageSale()
             );
+        }
+    }
+
+    public record EconomyReport(
+            String label,
+            int activeListings,
+            int completedSales,
+            int failedSettlements,
+            String grossVolume,
+            String fees,
+            String taxes,
+            List<EconomyRow> topSellers,
+            List<EconomyRow> topCategories,
+            List<EconomyRow> topItems
+    ) {
+        public static final StreamCodec<RegistryFriendlyByteBuf, EconomyReport> STREAM_CODEC = StreamCodec.of(
+                (buf, report) -> {
+                    ByteBufCodecs.STRING_UTF8.encode(buf, report.label());
+                    ByteBufCodecs.INT.encode(buf, report.activeListings());
+                    ByteBufCodecs.INT.encode(buf, report.completedSales());
+                    ByteBufCodecs.INT.encode(buf, report.failedSettlements());
+                    ByteBufCodecs.STRING_UTF8.encode(buf, report.grossVolume());
+                    ByteBufCodecs.STRING_UTF8.encode(buf, report.fees());
+                    ByteBufCodecs.STRING_UTF8.encode(buf, report.taxes());
+                    EconomyRow.STREAM_CODEC.apply(ByteBufCodecs.list(8)).encode(buf, report.topSellers());
+                    EconomyRow.STREAM_CODEC.apply(ByteBufCodecs.list(8)).encode(buf, report.topCategories());
+                    EconomyRow.STREAM_CODEC.apply(ByteBufCodecs.list(8)).encode(buf, report.topItems());
+                },
+                buf -> new EconomyReport(
+                        ByteBufCodecs.STRING_UTF8.decode(buf),
+                        ByteBufCodecs.INT.decode(buf),
+                        ByteBufCodecs.INT.decode(buf),
+                        ByteBufCodecs.INT.decode(buf),
+                        ByteBufCodecs.STRING_UTF8.decode(buf),
+                        ByteBufCodecs.STRING_UTF8.decode(buf),
+                        ByteBufCodecs.STRING_UTF8.decode(buf),
+                        EconomyRow.STREAM_CODEC.apply(ByteBufCodecs.list(8)).decode(buf),
+                        EconomyRow.STREAM_CODEC.apply(ByteBufCodecs.list(8)).decode(buf),
+                        EconomyRow.STREAM_CODEC.apply(ByteBufCodecs.list(8)).decode(buf)
+                )
+        );
+
+        static EconomyReport fromReport(AuctionEconomyReport report) {
+            return new EconomyReport(
+                    report.label(),
+                    report.activeListings(),
+                    report.completedSales(),
+                    report.failedSettlements(),
+                    report.grossVolume(),
+                    report.fees(),
+                    report.taxes(),
+                    report.topSellers().stream().map(EconomyRow::fromReport).toList(),
+                    report.topCategories().stream().map(EconomyRow::fromReport).toList(),
+                    report.topItems().stream().map(EconomyRow::fromReport).toList()
+            );
+        }
+    }
+
+    public record EconomyRow(String label, int count, String amount) {
+        public static final StreamCodec<RegistryFriendlyByteBuf, EconomyRow> STREAM_CODEC = StreamCodec.of(
+                (buf, row) -> {
+                    ByteBufCodecs.STRING_UTF8.encode(buf, row.label());
+                    ByteBufCodecs.INT.encode(buf, row.count());
+                    ByteBufCodecs.STRING_UTF8.encode(buf, row.amount());
+                },
+                buf -> new EconomyRow(
+                        ByteBufCodecs.STRING_UTF8.decode(buf),
+                        ByteBufCodecs.INT.decode(buf),
+                        ByteBufCodecs.STRING_UTF8.decode(buf)
+                )
+        );
+
+        static EconomyRow fromReport(AuctionEconomyReport.Row row) {
+            return new EconomyRow(row.label(), row.count(), row.amount());
         }
     }
 

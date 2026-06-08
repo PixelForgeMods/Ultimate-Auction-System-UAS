@@ -134,6 +134,14 @@ public class AUSCommands {
                                 .then(Commands.literal("seller")
                                         .then(Commands.argument("player", StringArgumentType.word())
                                                 .executes(AUSCommands::sendSellerStats)))
+                                .then(Commands.literal("report")
+                                        .executes(context -> sendEconomyReport(context, "all"))
+                                        .then(Commands.literal("day")
+                                                .executes(context -> sendEconomyReport(context, "day")))
+                                        .then(Commands.literal("week")
+                                                .executes(context -> sendEconomyReport(context, "week")))
+                                        .then(Commands.literal("all")
+                                                .executes(context -> sendEconomyReport(context, "all"))))
                                 .then(Commands.literal("inspect")
                                         .then(Commands.argument("auctionId", StringArgumentType.string())
                                                 .executes(AUSCommands::inspectAuction)
@@ -847,6 +855,43 @@ public class AUSCommands {
             }
         }
         return Command.SINGLE_SUCCESS;
+    }
+
+    private static int sendEconomyReport(CommandContext<CommandSourceStack> context, String windowToken) {
+        CommandSourceStack source = context.getSource();
+        AuctionHouse house = auctionHouse;
+        if (house == null) {
+            source.sendFailure(UasTranslations.literal("Auction house is not initialized."));
+            return 0;
+        }
+
+        AuctionEconomyReport report = house.buildEconomyReport(windowToken);
+        source.sendSystemMessage(UasTranslations.tr("=== UAS Economy Report: {0} ===", Component.translatable(report.label())).withStyle(ChatFormatting.GOLD));
+        sendReportLine(source, "Active listings", String.valueOf(report.activeListings()), ChatFormatting.GREEN);
+        sendReportLine(source, "Completed sales", String.valueOf(report.completedSales()), ChatFormatting.GREEN);
+        sendReportLine(source, "Gross volume", report.grossVolume(), ChatFormatting.GOLD);
+        sendReportLine(source, "Fees", report.fees(), ChatFormatting.YELLOW);
+        sendReportLine(source, "Taxes", report.taxes(), ChatFormatting.RED);
+        sendReportLine(source, "Failed settlements", String.valueOf(report.failedSettlements()), report.failedSettlements() > 0 ? ChatFormatting.RED : ChatFormatting.GREEN);
+        sendReportRows(source, "Top sellers", report.topSellers());
+        sendReportRows(source, "Top categories", report.topCategories());
+        sendReportRows(source, "Top items", report.topItems());
+        return Command.SINGLE_SUCCESS;
+    }
+
+    private static void sendReportLine(CommandSourceStack source, String label, String value, ChatFormatting valueColor) {
+        source.sendSystemMessage(UasTranslations.tr("{0}: {1}", UasTranslations.tr(label), value).withStyle(valueColor));
+    }
+
+    private static void sendReportRows(CommandSourceStack source, String title, List<AuctionEconomyReport.Row> rows) {
+        source.sendSystemMessage(UasTranslations.tr(title).withStyle(ChatFormatting.GOLD));
+        if (rows.isEmpty()) {
+            source.sendSystemMessage(UasTranslations.tr("- No data").withStyle(ChatFormatting.GRAY));
+            return;
+        }
+        for (AuctionEconomyReport.Row row : rows) {
+            source.sendSystemMessage(UasTranslations.tr("- {0}: {1} sale(s), {2}", row.label(), row.count(), row.amount()).withStyle(ChatFormatting.GRAY));
+        }
     }
 
     private static void sendResult(CommandSourceStack source, AuctionActionResult result) {

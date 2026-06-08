@@ -76,6 +76,15 @@ Inspect a specific auction record and full bid history:
 /uas admin inspect <auctionId>
 ```
 
+Show a persisted economy report for auction activity:
+
+```text
+/uas admin report
+/uas admin report day
+/uas admin report week
+/uas admin report all
+```
+
 Retry a failed settlement after reviewing the previous failure and proposed action:
 
 ```text
@@ -101,7 +110,7 @@ The admin dashboard includes:
 - Overview cards for auction, economy, settlement, and moderation health
 - Auction inspection, bid history, force-cancel, and failed-settlement retry tools
 - Player inspection with granular auction-house bans for creating, bidding, buyouts, and notifications
-- Economy windows for 24h, 7d, and all-time auction activity
+- Economy windows for 24h, 7d, and all-time auction activity, including gross volume, fees, taxes, failed settlements, and compact top seller/category/item summaries
 - Moderation queues for failed settlements and active auctions that now match banned item rules
 - Suspicion signals for rapid bid escalation, repeated bidder pairs, seller self-bids, and repeated cancellations
 - A live banned auction entries editor
@@ -125,6 +134,8 @@ The inspect command prints:
 - Suspicion signals for rapid bid escalation, repeated bidder pairs, and seller self-bids
 - Settlement reference and transaction id when present
 - Every financial event, including UBS reference, amount, transaction id, and result
+
+The economy report command and dashboard Economy tab read from persisted auction records and persisted financial events. Completed sale volume is based on successful payout records, fees come from successful listing/cancellation fee records, taxes come from successful `SALES_TAX` records, and failed settlement counts come from current failed-settlement auctions. Broad reports show seller/category/item summaries only and do not expose bidder details.
 
 ## Admin Permission
 

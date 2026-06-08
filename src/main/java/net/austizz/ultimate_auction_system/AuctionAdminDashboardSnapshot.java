@@ -5,6 +5,7 @@ import java.util.UUID;
 
 public record AuctionAdminDashboardSnapshot(
         List<Stats> stats,
+        List<AuctionEconomyReport> economyReports,
         List<Player> players,
         List<AuctionPlayerBan> bans,
         List<AuctionAdminAuditEntry> auditLog,
@@ -16,7 +17,7 @@ public record AuctionAdminDashboardSnapshot(
         String generatedAt
 ) {
     public static AuctionAdminDashboardSnapshot empty() {
-        return new AuctionAdminDashboardSnapshot(List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), "");
+        return new AuctionAdminDashboardSnapshot(List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), "");
     }
 
     public record Stats(
