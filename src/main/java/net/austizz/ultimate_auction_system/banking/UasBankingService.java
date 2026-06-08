@@ -52,6 +52,22 @@ public interface UasBankingService {
 
     boolean playerOwnsAccount(UUID playerId, UUID accountId);
 
+    List<Integer> getSupportedCashBillDenominations();
+
+    List<Integer> getSupportedCashCoinDenominations();
+
+    int getCashBillCount(UUID playerId, int denomination);
+
+    int getCashCoinCount(UUID playerId, int denominationCents);
+
+    UasCashResult giveCashBills(UUID playerId, int denomination, int billCount);
+
+    UasCashResult takeCashBills(UUID playerId, int denomination, int billCount);
+
+    UasCashResult giveCashCoins(UUID playerId, int denominationCents, int coinCount);
+
+    UasCashResult takeCashCoins(UUID playerId, int denominationCents, int coinCount);
+
     UasAlertResult sendSuccessAlert(UUID playerId, String title, String message, int durationMs);
 
     UasAlertResult sendErrorAlert(UUID playerId, String title, String message, int durationMs);

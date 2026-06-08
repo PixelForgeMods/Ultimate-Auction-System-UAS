@@ -2,6 +2,7 @@ package net.austizz.ultimate_auction_system.banking;
 
 import net.austizz.ultimatebankingsystem.api.ApiAccountSnapshot;
 import net.austizz.ultimatebankingsystem.api.ApiAlertResult;
+import net.austizz.ultimatebankingsystem.api.ApiCashResult;
 import net.austizz.ultimatebankingsystem.api.ApiResult;
 import net.austizz.ultimatebankingsystem.api.ApiTransactionResult;
 import net.austizz.ultimatebankingsystem.api.UltimateBankingApi;
@@ -171,6 +172,58 @@ public final class UbsBankingService implements UasBankingService {
     }
 
     @Override
+    public List<Integer> getSupportedCashBillDenominations() {
+        return api == null ? List.of() : api.getSupportedBillDenominations();
+    }
+
+    @Override
+    public List<Integer> getSupportedCashCoinDenominations() {
+        return api == null ? List.of() : api.getSupportedCoinDenominations();
+    }
+
+    @Override
+    public int getCashBillCount(UUID playerId, int denomination) {
+        return api == null || playerId == null ? 0 : api.getPlayerBillCount(playerId, denomination);
+    }
+
+    @Override
+    public int getCashCoinCount(UUID playerId, int denominationCents) {
+        return api == null || playerId == null ? 0 : api.getPlayerCoinCount(playerId, denominationCents);
+    }
+
+    @Override
+    public UasCashResult giveCashBills(UUID playerId, int denomination, int billCount) {
+        if (api == null) {
+            return UasCashResult.fail("UBS API is unavailable", UasCashKind.BILL, denomination, billCount);
+        }
+        return fromCashResult(api.giveDollarBills(playerId, denomination, billCount), UasCashKind.BILL);
+    }
+
+    @Override
+    public UasCashResult takeCashBills(UUID playerId, int denomination, int billCount) {
+        if (api == null) {
+            return UasCashResult.fail("UBS API is unavailable", UasCashKind.BILL, denomination, billCount);
+        }
+        return fromCashResult(api.takeDollarBills(playerId, denomination, billCount), UasCashKind.BILL);
+    }
+
+    @Override
+    public UasCashResult giveCashCoins(UUID playerId, int denominationCents, int coinCount) {
+        if (api == null) {
+            return UasCashResult.fail("UBS API is unavailable", UasCashKind.COIN, denominationCents, coinCount);
+        }
+        return fromCashResult(api.giveCoins(playerId, denominationCents, coinCount), UasCashKind.COIN);
+    }
+
+    @Override
+    public UasCashResult takeCashCoins(UUID playerId, int denominationCents, int coinCount) {
+        if (api == null) {
+            return UasCashResult.fail("UBS API is unavailable", UasCashKind.COIN, denominationCents, coinCount);
+        }
+        return fromCashResult(api.takeCoins(playerId, denominationCents, coinCount), UasCashKind.COIN);
+    }
+
+    @Override
     public UasAlertResult sendSuccessAlert(UUID playerId, String title, String message, int durationMs) {
         return sendAlert(playerId, title, message, durationMs, "SUCCESS");
     }
@@ -206,6 +259,15 @@ public final class UbsBankingService implements UasBankingService {
         return result.success()
                 ? UasBankingResult.ok(result.balanceAfter(), result.transactionId(), result.description())
                 : UasBankingResult.fail(result.reason(), result.balanceAfter());
+    }
+
+    private UasCashResult fromCashResult(ApiCashResult result, UasCashKind kind) {
+        if (result == null) {
+            return UasCashResult.fail("UBS returned no cash result", kind, 0, 0);
+        }
+        return result.success()
+                ? UasCashResult.ok(kind, result.denomination(), result.billCount())
+                : UasCashResult.fail(result.reason(), kind, result.denomination(), result.billCount());
     }
 
     private UasAccountSnapshot fromSnapshot(ApiAccountSnapshot snapshot) {

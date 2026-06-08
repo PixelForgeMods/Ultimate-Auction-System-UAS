@@ -47,6 +47,34 @@ UasAuctionResult result = UasAuctionApi.get().cancelListing(serverPlayer, auctio
 
 This uses the same ownership and delivery-storage path as `/ah cancel`. Normal validation failures are returned as result objects instead of being thrown.
 
+## Physical UBS Cash Settlement
+
+UAS includes a disabled-by-default service for future command/API paths that want to settle a specific listing fee or buyout with exact UBS bills and coins instead of account balance:
+
+```java
+UasPhysicalCashSettlementService cash = new UasPhysicalCashSettlementService();
+UasCashBreakdown breakdown = new UasCashBreakdown(
+        Map.of(10, 1),
+        Map.of(25, 2)
+);
+
+UasCashSettlementResult result = cash.takeExactCash(
+        playerId,
+        new BigDecimal("10.50"),
+        breakdown,
+        UasCashSettlementUse.BUYOUT
+);
+```
+
+The service validates the requested denominations/counts against the UBS supported bill and coin denominations, verifies the player's matching inventory counts server-side, and only accepts a breakdown whose total exactly matches the expected dollars-and-cents amount. Cash movement uses the UBS bill/coin APIs; UAS does not create custom currency items.
+
+Cash settlement is gated by config:
+
+- `settlement.physicalCashListingFees`
+- `settlement.physicalCashBuyouts`
+
+Both are `false` by default. Existing GUI, command, and API listing/bid/buyout flows continue to use UBS accounts unless a future path explicitly calls the cash settlement service.
+
 ## Result Codes
 
 All mutating API calls return `UasAuctionResult`:

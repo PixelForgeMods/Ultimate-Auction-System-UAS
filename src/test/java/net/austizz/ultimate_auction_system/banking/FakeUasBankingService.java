@@ -15,13 +15,22 @@ public final class FakeUasBankingService implements UasBankingService {
     public record Transaction(UUID accountId, BigDecimal amount, String reference, String type, boolean success) {
     }
 
+    public record CashMutation(UUID playerId, UasCashKind kind, int denomination, int count, String type, boolean success) {
+    }
+
     private final Map<UUID, UUID> primaryAccounts = new HashMap<>();
     private final Map<UUID, UasAccountSnapshot> accounts = new HashMap<>();
+    private final Map<UUID, Map<Integer, Integer>> cashBills = new HashMap<>();
+    private final Map<UUID, Map<Integer, Integer>> cashCoins = new HashMap<>();
     private final List<Alert> alerts = new ArrayList<>();
     private final List<Transaction> transactions = new ArrayList<>();
+    private final List<CashMutation> cashMutations = new ArrayList<>();
     private String nextFailureReason;
     private String nextDepositFailureReason;
     private String nextWithdrawFailureReason;
+    private String nextCashTakeFailureReason;
+    private String nextCashCoinTakeFailureReason;
+    private String nextCashGiveFailureReason;
 
     public UUID createPrimaryAccount(UUID playerId, BigDecimal balance) {
         UUID accountId = UUID.randomUUID();
@@ -68,12 +77,36 @@ public final class FakeUasBankingService implements UasBankingService {
         this.nextWithdrawFailureReason = reason == null || reason.isBlank() ? "Forced withdrawal failure" : reason;
     }
 
+    public void failNextCashTake(String reason) {
+        this.nextCashTakeFailureReason = reason == null || reason.isBlank() ? "Forced cash take failure" : reason;
+    }
+
+    public void failNextCashCoinTake(String reason) {
+        this.nextCashCoinTakeFailureReason = reason == null || reason.isBlank() ? "Forced cash coin take failure" : reason;
+    }
+
+    public void failNextCashGive(String reason) {
+        this.nextCashGiveFailureReason = reason == null || reason.isBlank() ? "Forced cash give failure" : reason;
+    }
+
+    public void setCashBills(UUID playerId, int denomination, int count) {
+        setCash(cashBills, playerId, denomination, count);
+    }
+
+    public void setCashCoins(UUID playerId, int denominationCents, int count) {
+        setCash(cashCoins, playerId, denominationCents, count);
+    }
+
     public List<Alert> alerts() {
         return List.copyOf(alerts);
     }
 
     public List<Transaction> transactions() {
         return List.copyOf(transactions);
+    }
+
+    public List<CashMutation> cashMutations() {
+        return List.copyOf(cashMutations);
     }
 
     @Override
@@ -223,6 +256,46 @@ public final class FakeUasBankingService implements UasBankingService {
     }
 
     @Override
+    public List<Integer> getSupportedCashBillDenominations() {
+        return List.of(100, 50, 20, 10, 5, 1);
+    }
+
+    @Override
+    public List<Integer> getSupportedCashCoinDenominations() {
+        return List.of(100, 50, 25, 10, 5, 1);
+    }
+
+    @Override
+    public int getCashBillCount(UUID playerId, int denomination) {
+        return getCash(cashBills, playerId, denomination);
+    }
+
+    @Override
+    public int getCashCoinCount(UUID playerId, int denominationCents) {
+        return getCash(cashCoins, playerId, denominationCents);
+    }
+
+    @Override
+    public UasCashResult giveCashBills(UUID playerId, int denomination, int billCount) {
+        return adjustCash(cashBills, playerId, UasCashKind.BILL, denomination, billCount, "GIVE", true);
+    }
+
+    @Override
+    public UasCashResult takeCashBills(UUID playerId, int denomination, int billCount) {
+        return adjustCash(cashBills, playerId, UasCashKind.BILL, denomination, billCount, "TAKE", false);
+    }
+
+    @Override
+    public UasCashResult giveCashCoins(UUID playerId, int denominationCents, int coinCount) {
+        return adjustCash(cashCoins, playerId, UasCashKind.COIN, denominationCents, coinCount, "GIVE", true);
+    }
+
+    @Override
+    public UasCashResult takeCashCoins(UUID playerId, int denominationCents, int coinCount) {
+        return adjustCash(cashCoins, playerId, UasCashKind.COIN, denominationCents, coinCount, "TAKE", false);
+    }
+
+    @Override
     public UasAlertResult sendSuccessAlert(UUID playerId, String title, String message, int durationMs) {
         return recordAlert(playerId, title, message, "SUCCESS", durationMs);
     }
@@ -294,6 +367,64 @@ public final class FakeUasBankingService implements UasBankingService {
         }
         alerts.add(new Alert(playerId, title, message, tone, durationMs));
         return UasAlertResult.ok(playerId);
+    }
+
+    private UasCashResult adjustCash(Map<UUID, Map<Integer, Integer>> storage,
+                                     UUID playerId,
+                                     UasCashKind kind,
+                                     int denomination,
+                                     int count,
+                                     String type,
+                                     boolean give) {
+        if (playerId == null || denomination <= 0 || count <= 0) {
+            cashMutations.add(new CashMutation(playerId, kind, denomination, count, type, false));
+            return UasCashResult.fail("Invalid cash request", kind, denomination, count);
+        }
+
+        String forcedFailure = give ? nextCashGiveFailureReason : nextCashTakeFailureReason;
+        if (!give && forcedFailure == null && kind == UasCashKind.COIN) {
+            forcedFailure = nextCashCoinTakeFailureReason;
+        }
+        if (forcedFailure != null) {
+            if (give) {
+                nextCashGiveFailureReason = null;
+            } else if (kind == UasCashKind.COIN && forcedFailure.equals(nextCashCoinTakeFailureReason)) {
+                nextCashCoinTakeFailureReason = null;
+            } else {
+                nextCashTakeFailureReason = null;
+            }
+            cashMutations.add(new CashMutation(playerId, kind, denomination, count, type, false));
+            return UasCashResult.fail(forcedFailure, kind, denomination, count);
+        }
+
+        int available = getCash(storage, playerId, denomination);
+        if (!give && available < count) {
+            cashMutations.add(new CashMutation(playerId, kind, denomination, count, type, false));
+            return UasCashResult.fail("Not enough matching cash", kind, denomination, count);
+        }
+
+        setCash(storage, playerId, denomination, give ? available + count : available - count);
+        cashMutations.add(new CashMutation(playerId, kind, denomination, count, type, true));
+        return UasCashResult.ok(kind, denomination, count);
+    }
+
+    private void setCash(Map<UUID, Map<Integer, Integer>> storage, UUID playerId, int denomination, int count) {
+        if (playerId == null || denomination <= 0) {
+            return;
+        }
+        Map<Integer, Integer> cash = storage.computeIfAbsent(playerId, ignored -> new HashMap<>());
+        if (count <= 0) {
+            cash.remove(denomination);
+        } else {
+            cash.put(denomination, count);
+        }
+    }
+
+    private int getCash(Map<UUID, Map<Integer, Integer>> storage, UUID playerId, int denomination) {
+        if (playerId == null || denomination <= 0) {
+            return 0;
+        }
+        return storage.getOrDefault(playerId, Map.of()).getOrDefault(denomination, 0);
     }
 
     private BigDecimal safeAmount(BigDecimal amount) {

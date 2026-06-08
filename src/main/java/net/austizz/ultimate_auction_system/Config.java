@@ -1,5 +1,6 @@
 package net.austizz.ultimate_auction_system;
 
+import net.austizz.ultimate_auction_system.banking.UasCashSettlementUse;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.common.EventBusSubscriber;
 import net.neoforged.fml.event.config.ModConfigEvent;
@@ -34,6 +35,8 @@ public class Config {
     public static final int DEFAULT_SEARCH_COOLDOWN_SECONDS = 1;
     public static final boolean DEFAULT_REQUIRE_UBS_FOR_LISTING = true;
     public static final boolean DEFAULT_AUTO_SETTLE_EXPIRED_AUCTIONS = true;
+    public static final boolean DEFAULT_PHYSICAL_CASH_LISTING_FEES = false;
+    public static final boolean DEFAULT_PHYSICAL_CASH_BUYOUTS = false;
     public static final boolean DEFAULT_AUDIT_REJECTED_BIDS = true;
     public static final boolean DEFAULT_AUDIT_STATE_TRANSITIONS = true;
     public static final boolean DEFAULT_AUDIT_SUSPICIOUS_BID_PATTERNS = true;
@@ -201,6 +204,20 @@ public class Config {
             )
             .define("settlement.autoSettleExpiredAuctions", DEFAULT_AUTO_SETTLE_EXPIRED_AUCTIONS);
 
+    private static final ModConfigSpec.BooleanValue PHYSICAL_CASH_LISTING_FEES = BUILDER
+            .comment(
+                    "When true, future command/API paths may pay listing fees with exact UBS bills/coins instead of account balance.",
+                    "Default false keeps normal account settlement unchanged. GUI and existing /ah commands still use UBS accounts."
+            )
+            .define("settlement.physicalCashListingFees", DEFAULT_PHYSICAL_CASH_LISTING_FEES);
+
+    private static final ModConfigSpec.BooleanValue PHYSICAL_CASH_BUYOUTS = BUILDER
+            .comment(
+                    "When true, future command/API paths may pay buyouts with exact UBS bills/coins instead of account balance.",
+                    "Default false keeps normal account settlement unchanged. GUI and existing /ah commands still use UBS accounts."
+            )
+            .define("settlement.physicalCashBuyouts", DEFAULT_PHYSICAL_CASH_BUYOUTS);
+
     private static final ModConfigSpec.BooleanValue AUDIT_REJECTED_BIDS = BUILDER
             .comment(
                     "When true, rejected bid attempts are persisted with reason codes for admin audit flows.",
@@ -320,6 +337,8 @@ public class Config {
     public static int searchCooldownSeconds = DEFAULT_SEARCH_COOLDOWN_SECONDS;
     public static boolean requireUbsForListing;
     public static boolean autoSettleExpiredAuctions;
+    public static boolean physicalCashListingFees = DEFAULT_PHYSICAL_CASH_LISTING_FEES;
+    public static boolean physicalCashBuyouts = DEFAULT_PHYSICAL_CASH_BUYOUTS;
     public static boolean auditRejectedBids;
     public static boolean auditStateTransitions;
     public static boolean auditSuspiciousBidPatterns = DEFAULT_AUDIT_SUSPICIOUS_BID_PATTERNS;
@@ -361,6 +380,8 @@ public class Config {
         searchCooldownSeconds = readInt("rateLimits.searchCooldownSeconds", SEARCH_COOLDOWN_SECONDS, DEFAULT_SEARCH_COOLDOWN_SECONDS, 0, MAX_RATE_LIMIT_SECONDS);
         requireUbsForListing = readBoolean("settlement.requireUbsForListing", REQUIRE_UBS_FOR_LISTING, DEFAULT_REQUIRE_UBS_FOR_LISTING);
         autoSettleExpiredAuctions = readBoolean("settlement.autoSettleExpiredAuctions", AUTO_SETTLE_EXPIRED_AUCTIONS, DEFAULT_AUTO_SETTLE_EXPIRED_AUCTIONS);
+        physicalCashListingFees = readBoolean("settlement.physicalCashListingFees", PHYSICAL_CASH_LISTING_FEES, DEFAULT_PHYSICAL_CASH_LISTING_FEES);
+        physicalCashBuyouts = readBoolean("settlement.physicalCashBuyouts", PHYSICAL_CASH_BUYOUTS, DEFAULT_PHYSICAL_CASH_BUYOUTS);
         auditRejectedBids = readBoolean("audit.rejectedBids", AUDIT_REJECTED_BIDS, DEFAULT_AUDIT_REJECTED_BIDS);
         auditStateTransitions = readBoolean("audit.stateTransitions", AUDIT_STATE_TRANSITIONS, DEFAULT_AUDIT_STATE_TRANSITIONS);
         auditSuspiciousBidPatterns = readBoolean("audit.suspiciousBidPatterns", AUDIT_SUSPICIOUS_BID_PATTERNS, DEFAULT_AUDIT_SUSPICIOUS_BID_PATTERNS);
@@ -426,6 +447,16 @@ public class Config {
         } catch (IllegalArgumentException ignored) {
             return Optional.empty();
         }
+    }
+
+    public static boolean isPhysicalCashSettlementEnabled(UasCashSettlementUse use) {
+        if (use == null) {
+            return false;
+        }
+        return switch (use) {
+            case BUYOUT -> physicalCashBuyouts;
+            case LISTING_FEE -> physicalCashListingFees;
+        };
     }
 
     public static String getAdminReloadFlow() {

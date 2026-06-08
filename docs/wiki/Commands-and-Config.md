@@ -202,6 +202,8 @@ Settlement:
 
 - `settlement.requireUbsForListing`: require a usable UBS primary account before creating listings, default `true`
 - `settlement.autoSettleExpiredAuctions`: settle expired auctions automatically, default `true`
+- `settlement.physicalCashListingFees`: allow future command/API paths to pay listing fees with exact UBS bills/coins, default `false`
+- `settlement.physicalCashBuyouts`: allow future command/API paths to pay buyouts with exact UBS bills/coins, default `false`
 - `settlement.retryAttempts`: automatic settlement retry attempts, default `3`
 - `settlement.retryDelaySeconds`: delay between automatic retry attempts, default `60`
 
@@ -282,6 +284,8 @@ Current event types:
 ## Currency
 
 UAS displays money in dollars. UBS remains the source of truth for account balances and settlement.
+
+Optional physical cash settlement support is available for future command/API paths, but it is disabled by default. When enabled for listing fees or buyouts, UAS validates exact UBS bill and coin denominations/counts server-side and calls UBS cash APIs instead of introducing UAS currency items. The normal `/ah` GUI and existing account-based settlement remain the required MVP path.
 
 ## Developer API
 
