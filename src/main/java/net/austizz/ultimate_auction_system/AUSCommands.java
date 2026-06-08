@@ -22,11 +22,13 @@ import net.minecraft.network.chat.HoverEvent;
 import net.minecraft.network.chat.MutableComponent;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.level.storage.LevelResource;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.common.EventBusSubscriber;
 import net.neoforged.neoforge.event.RegisterCommandsEvent;
 
 import java.math.BigDecimal;
+import java.nio.file.Path;
 import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
@@ -39,6 +41,7 @@ import java.util.Locale;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 
 import static net.austizz.ultimate_auction_system.UltimateAuctionSystem.auctionHouse;
@@ -144,6 +147,11 @@ public class AUSCommands {
                                                 .executes(context -> sendEconomyReport(context, "week")))
                                         .then(Commands.literal("all")
                                                 .executes(context -> sendEconomyReport(context, "all"))))
+                                .then(Commands.literal("export")
+                                        .then(Commands.argument("format", StringArgumentType.word())
+                                                .executes(context -> exportAuctions(context, false))
+                                                .then(Commands.argument("filename", StringArgumentType.greedyString())
+                                                        .executes(context -> exportAuctions(context, true)))))
                                 .then(Commands.literal("inspect")
                                         .then(Commands.argument("auctionId", StringArgumentType.string())
                                                 .executes(AUSCommands::inspectAuction)
@@ -919,6 +927,86 @@ public class AUSCommands {
         sendReportRows(source, "Top categories", report.topCategories());
         sendReportRows(source, "Top items", report.topItems());
         return Command.SINGLE_SUCCESS;
+    }
+
+    private static int exportAuctions(CommandContext<CommandSourceStack> context, boolean hasFilename) {
+        CommandSourceStack source = context.getSource();
+        AuctionHouse house = auctionHouse;
+        if (house == null) {
+            source.sendFailure(UasTranslations.literal("Auction house is not initialized."));
+            return 0;
+        }
+
+        Optional<AuctionDataExporter.Format> format = AuctionDataExporter.Format.fromToken(StringArgumentType.getString(context, "format"));
+        if (format.isEmpty()) {
+            source.sendFailure(UasTranslations.tr("Export format must be csv or json."));
+            return 0;
+        }
+
+        String filename = hasFilename ? StringArgumentType.getString(context, "filename") : "";
+        Path serverRoot = source.getServer().getWorldPath(LevelResource.ROOT);
+        List<AuctionItem> auctionSnapshot = List.copyOf(house.getAuctionItems().values());
+        source.sendSystemMessage(UasTranslations.tr("Auction export started for {0} auction(s).", auctionSnapshot.size()).withStyle(ChatFormatting.YELLOW));
+        CompletableFuture
+                .supplyAsync(() -> AuctionDataExporter.export(serverRoot, auctionSnapshot, format.get(), filename))
+                .whenComplete((result, throwable) -> source.getServer().execute(() -> finishAuctionExport(source, format.get(), result, throwable)));
+        return Command.SINGLE_SUCCESS;
+    }
+
+    private static void finishAuctionExport(CommandSourceStack source,
+                                            AuctionDataExporter.Format format,
+                                            AuctionDataExporter.ExportResult result,
+                                            Throwable throwable) {
+        AuctionDataExporter.ExportResult safeResult = throwable == null
+                ? result
+                : AuctionDataExporter.ExportResult.fail(exportFailureMessage(throwable));
+        auditExport(source, format, safeResult);
+        if (safeResult == null || !safeResult.success()) {
+            String message = safeResult == null ? "Auction export returned no result." : safeResult.message();
+            source.sendFailure(UasTranslations.tr("Auction export failed: {0}", message));
+            return;
+        }
+
+        source.sendSystemMessage(UasTranslations.tr(
+                "Auction export completed: {0} auction(s) written to {1}",
+                safeResult.auctionCount(),
+                safeResult.path().toString()
+        ).withStyle(ChatFormatting.GREEN));
+    }
+
+    private static String exportFailureMessage(Throwable throwable) {
+        Throwable current = throwable;
+        while (current.getCause() != null) {
+            current = current.getCause();
+        }
+        String message = current.getMessage();
+        return message == null || message.isBlank() ? current.getClass().getSimpleName() : message;
+    }
+
+    private static void auditExport(CommandSourceStack source,
+                                    AuctionDataExporter.Format format,
+                                    AuctionDataExporter.ExportResult result) {
+        try {
+            ServerPlayer admin = source.getEntity() instanceof ServerPlayer player ? player : null;
+            UUID adminId = admin == null ? null : admin.getUUID();
+            String adminName = admin == null ? source.getTextName() : admin.getGameProfile().getName();
+            String target = result != null && result.path() != null ? result.path().toString() : "uas_exports";
+            String message = result == null ? "Auction export returned no result." : result.message();
+            if (result != null && result.success()) {
+                message = message + " Exported " + result.auctionCount() + " auction(s).";
+            }
+            AuctionAdminSavedData.get(source.getServer()).addAudit(
+                    "AUCTION_EXPORT",
+                    adminId,
+                    adminName,
+                    target,
+                    "format=" + (format == null ? "unknown" : format.extension()),
+                    result != null && result.success(),
+                    message
+            );
+        } catch (RuntimeException exception) {
+            UltimateAuctionSystem.LOGGER.warn("[UAS] Could not audit auction export: {}", exception.getMessage());
+        }
     }
 
     private static void sendReportLine(CommandSourceStack source, String label, String value, ChatFormatting valueColor) {

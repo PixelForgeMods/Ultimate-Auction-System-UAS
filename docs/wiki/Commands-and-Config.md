@@ -132,6 +132,14 @@ Show a persisted economy report:
 /uas admin report all
 ```
 
+Export auction history to a server-side CSV or JSON file:
+
+```text
+/uas admin export csv
+/uas admin export json
+/uas admin export csv custom-name.csv
+```
+
 Inspect a specific auction record and full bid history:
 
 ```text
@@ -168,9 +176,11 @@ The dashboard includes:
 - Recovery storage for force-cancelled auctions held for admin review
 - Audit log for dashboard admin actions
 
+Auction exports are written asynchronously under the server/world `uas_exports/` directory. UAS sanitizes custom file names so exports stay inside that directory, includes item ids/names, prices, states, timestamps, seller/winner UUIDs, bid counts, and settlement references, and records each export in the admin audit log.
+
 ## Admin Permission
 
-`/uas status`, `/uas admin`, `/uas admin gui`, `/uas admin seller`, `/uas admin report`, `/uas admin inspect`, `/uas admin settlement retry`, and `/uas admin forcecancel` use:
+`/uas status`, `/uas admin`, `/uas admin gui`, `/uas admin seller`, `/uas admin report`, `/uas admin export`, `/uas admin inspect`, `/uas admin settlement retry`, and `/uas admin forcecancel` use:
 
 ```text
 admin.statusPermissionLevel
