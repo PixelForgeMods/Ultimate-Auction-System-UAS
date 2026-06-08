@@ -14,6 +14,8 @@ Run:
 /ah
 ```
 
+Some servers also place `ultimate_auction_system:auction_terminal` blocks in hubs or marketplaces. Use the terminal to open the same Auction House GUI. Servers can disable or permission-gate terminal access without disabling `/ah`.
+
 The auction house GUI has these main tabs:
 
 - Dashboard: your active auctions, ending-soon items, claimable items, watched listings, and history

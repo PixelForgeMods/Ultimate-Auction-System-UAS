@@ -8,6 +8,7 @@ public enum UasPermissionAction {
     BUYOUT("permissions.buyoutPermissionLevel", "You do not have permission to buy out auctions."),
     CANCEL_OWN("permissions.cancelOwnPermissionLevel", "You do not have permission to cancel your own auctions."),
     CLAIM("permissions.claimPermissionLevel", "You do not have permission to claim auction items."),
+    TERMINAL("permissions.terminalAccessPermissionLevel", "You do not have permission to use auction terminals."),
     ADMIN("admin.statusPermissionLevel", "You do not have permission to use auction admin tools.");
 
     private final String configKey;
@@ -33,6 +34,7 @@ public enum UasPermissionAction {
             case BUYOUT -> Config.buyoutPermissionLevel;
             case CANCEL_OWN -> Config.cancelOwnPermissionLevel;
             case CLAIM -> Config.claimPermissionLevel;
+            case TERMINAL -> Config.terminalAccessPermissionLevel;
             case ADMIN -> Config.adminStatusPermissionLevel;
         };
     }

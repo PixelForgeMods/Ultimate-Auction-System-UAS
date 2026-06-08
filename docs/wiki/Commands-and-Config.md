@@ -86,6 +86,8 @@ Claim a won item or an expired unsold seller return:
 
 The GUI is preferred for most player workflows because it includes inventory slot selection, bundle creation, optional buyout, date/time picking, account selection, listing-fee preview, bid review, delivery storage, relisting expired unsold auctions, and validation before submission.
 
+Server owners can place `ultimate_auction_system:auction_terminal` blocks in hubs or marketplaces. Interacting with a terminal opens the same Auction House GUI as `/ah`; disabling terminal access does not disable `/ah`.
+
 ## Auction House GUI
 
 Player tabs:
@@ -215,6 +217,7 @@ Player actions use separate Minecraft permission-level checks:
 - `permissions.buyoutPermissionLevel`: buy out auctions, default `0`
 - `permissions.cancelOwnPermissionLevel`: cancel your own no-bid auction, default `0`
 - `permissions.claimPermissionLevel`: claim won or unsold auction items, default `0`
+- `permissions.terminalAccessPermissionLevel`: open the Auction House through an auction terminal block, default `0`
 
 `0` keeps the current everyone-can-use behavior. Higher values use standard Minecraft permission levels. Commands, GUI payloads, and public API player methods all call the same server-side checks. Admin and automation code paths that do not have a player must pass an explicit permitted/bypass flag.
 
@@ -245,6 +248,7 @@ Marketplace:
 
 - `marketplace.maxSavedSearchesPerPlayer`: named Browse filter presets each player can save, default `12`
 - `marketplace.enableLeaderboards`: expose `/ah leaderboard` top seller/buyer rankings, default `false`
+- `marketplace.enableAuctionTerminal`: allow `ultimate_auction_system:auction_terminal` block interactions to open the Auction House GUI, default `true`
 
 Settlement:
 
@@ -293,6 +297,7 @@ Permissions:
 - `permissions.buyoutPermissionLevel`: permission level required to buy out auctions, default `0`
 - `permissions.cancelOwnPermissionLevel`: permission level required to cancel own no-bid auctions, default `0`
 - `permissions.claimPermissionLevel`: permission level required to claim auction items, default `0`
+- `permissions.terminalAccessPermissionLevel`: permission level required to open `/ah` through an auction terminal block, default `0`
 - `admin.statusPermissionLevel`: permission level required for admin commands and dashboard tools, default `2`
 
 Storage:

@@ -37,6 +37,7 @@ public class Config {
     public static final int DEFAULT_WATCH_ENDING_SOON_THRESHOLD_MINUTES = 60;
     public static final int DEFAULT_MAX_SAVED_SEARCHES_PER_PLAYER = 12;
     public static final boolean DEFAULT_MARKETPLACE_LEADERBOARDS_ENABLED = false;
+    public static final boolean DEFAULT_AUCTION_TERMINAL_ENABLED = true;
     public static final boolean DEFAULT_REQUIRE_UBS_FOR_LISTING = true;
     public static final boolean DEFAULT_AUTO_SETTLE_EXPIRED_AUCTIONS = true;
     public static final boolean DEFAULT_PHYSICAL_CASH_LISTING_FEES = false;
@@ -60,6 +61,7 @@ public class Config {
     public static final int DEFAULT_BUYOUT_PERMISSION_LEVEL = 0;
     public static final int DEFAULT_CANCEL_OWN_PERMISSION_LEVEL = 0;
     public static final int DEFAULT_CLAIM_PERMISSION_LEVEL = 0;
+    public static final int DEFAULT_TERMINAL_ACCESS_PERMISSION_LEVEL = 0;
     public static final int DEFAULT_ADMIN_STATUS_PERMISSION_LEVEL = 2;
     public static final int DEFAULT_AUTOSAVE_INTERVAL_TICKS = 6000;
     public static final int DEFAULT_PENDING_LISTING_CONFIRMATION_SECONDS = 60;
@@ -233,6 +235,13 @@ public class Config {
             )
             .define("marketplace.enableLeaderboards", DEFAULT_MARKETPLACE_LEADERBOARDS_ENABLED);
 
+    private static final ModConfigSpec.BooleanValue AUCTION_TERMINAL_ENABLED = BUILDER
+            .comment(
+                    "When true, the auction_terminal block opens the Auction House GUI when used.",
+                    "Commands remain available even when terminal block access is disabled."
+            )
+            .define("marketplace.enableAuctionTerminal", DEFAULT_AUCTION_TERMINAL_ENABLED);
+
     private static final ModConfigSpec.BooleanValue REQUIRE_UBS_FOR_LISTING = BUILDER
             .comment(
                     "When true, sellers must have a usable UBS primary account before creating listings.",
@@ -391,6 +400,11 @@ public class Config {
             "Minecraft permission level required to claim won or unsold auction items. 0 allows everyone."
     );
 
+    private static final ModConfigSpec.IntValue TERMINAL_ACCESS_PERMISSION_LEVEL = permissionLevel(
+            "permissions.terminalAccessPermissionLevel",
+            "Minecraft permission level required to open /ah from an auction_terminal block. 0 allows everyone."
+    );
+
     private static final ModConfigSpec.IntValue ADMIN_STATUS_PERMISSION_LEVEL = BUILDER
             .comment(
                     "Minecraft permission level required to run UAS admin commands and admin dashboard tools.",
@@ -451,6 +465,7 @@ public class Config {
     public static int watchEndingSoonThresholdMinutes = DEFAULT_WATCH_ENDING_SOON_THRESHOLD_MINUTES;
     public static int maxSavedSearchesPerPlayer = DEFAULT_MAX_SAVED_SEARCHES_PER_PLAYER;
     public static boolean marketplaceLeaderboardsEnabled = DEFAULT_MARKETPLACE_LEADERBOARDS_ENABLED;
+    public static boolean auctionTerminalEnabled = DEFAULT_AUCTION_TERMINAL_ENABLED;
     public static boolean requireUbsForListing;
     public static boolean autoSettleExpiredAuctions;
     public static boolean physicalCashListingFees = DEFAULT_PHYSICAL_CASH_LISTING_FEES;
@@ -476,6 +491,7 @@ public class Config {
     public static int buyoutPermissionLevel = DEFAULT_BUYOUT_PERMISSION_LEVEL;
     public static int cancelOwnPermissionLevel = DEFAULT_CANCEL_OWN_PERMISSION_LEVEL;
     public static int claimPermissionLevel = DEFAULT_CLAIM_PERMISSION_LEVEL;
+    public static int terminalAccessPermissionLevel = DEFAULT_TERMINAL_ACCESS_PERMISSION_LEVEL;
     public static int adminStatusPermissionLevel = DEFAULT_ADMIN_STATUS_PERMISSION_LEVEL;
     public static int autosaveIntervalTicks;
     public static int pendingListingConfirmationSeconds = DEFAULT_PENDING_LISTING_CONFIRMATION_SECONDS;
@@ -508,6 +524,7 @@ public class Config {
         watchEndingSoonThresholdMinutes = readInt("notifications.endingSoonThresholdMinutes", WATCH_ENDING_SOON_THRESHOLD_MINUTES, DEFAULT_WATCH_ENDING_SOON_THRESHOLD_MINUTES, 0, MAX_WATCH_ENDING_SOON_THRESHOLD_MINUTES);
         maxSavedSearchesPerPlayer = readInt("marketplace.maxSavedSearchesPerPlayer", MAX_SAVED_SEARCHES, DEFAULT_MAX_SAVED_SEARCHES_PER_PLAYER, 1, MAX_SAVED_SEARCHES_PER_PLAYER);
         marketplaceLeaderboardsEnabled = readBoolean("marketplace.enableLeaderboards", MARKETPLACE_LEADERBOARDS_ENABLED, DEFAULT_MARKETPLACE_LEADERBOARDS_ENABLED);
+        auctionTerminalEnabled = readBoolean("marketplace.enableAuctionTerminal", AUCTION_TERMINAL_ENABLED, DEFAULT_AUCTION_TERMINAL_ENABLED);
         requireUbsForListing = readBoolean("settlement.requireUbsForListing", REQUIRE_UBS_FOR_LISTING, DEFAULT_REQUIRE_UBS_FOR_LISTING);
         autoSettleExpiredAuctions = readBoolean("settlement.autoSettleExpiredAuctions", AUTO_SETTLE_EXPIRED_AUCTIONS, DEFAULT_AUTO_SETTLE_EXPIRED_AUCTIONS);
         physicalCashListingFees = readBoolean("settlement.physicalCashListingFees", PHYSICAL_CASH_LISTING_FEES, DEFAULT_PHYSICAL_CASH_LISTING_FEES);
@@ -533,6 +550,7 @@ public class Config {
         buyoutPermissionLevel = readInt("permissions.buyoutPermissionLevel", BUYOUT_PERMISSION_LEVEL, DEFAULT_BUYOUT_PERMISSION_LEVEL, 0, MAX_PERMISSION_LEVEL);
         cancelOwnPermissionLevel = readInt("permissions.cancelOwnPermissionLevel", CANCEL_OWN_PERMISSION_LEVEL, DEFAULT_CANCEL_OWN_PERMISSION_LEVEL, 0, MAX_PERMISSION_LEVEL);
         claimPermissionLevel = readInt("permissions.claimPermissionLevel", CLAIM_PERMISSION_LEVEL, DEFAULT_CLAIM_PERMISSION_LEVEL, 0, MAX_PERMISSION_LEVEL);
+        terminalAccessPermissionLevel = readInt("permissions.terminalAccessPermissionLevel", TERMINAL_ACCESS_PERMISSION_LEVEL, DEFAULT_TERMINAL_ACCESS_PERMISSION_LEVEL, 0, MAX_PERMISSION_LEVEL);
         adminStatusPermissionLevel = readInt("admin.statusPermissionLevel", ADMIN_STATUS_PERMISSION_LEVEL, DEFAULT_ADMIN_STATUS_PERMISSION_LEVEL, 0, MAX_PERMISSION_LEVEL);
         autosaveIntervalTicks = readInt("storage.autosaveIntervalTicks", AUTOSAVE_INTERVAL_TICKS, DEFAULT_AUTOSAVE_INTERVAL_TICKS, MIN_AUTOSAVE_INTERVAL_TICKS, MAX_AUTOSAVE_INTERVAL_TICKS);
         pendingListingConfirmationSeconds = readInt("limits.pendingListingConfirmationSeconds", PENDING_LISTING_CONFIRMATION_SECONDS, DEFAULT_PENDING_LISTING_CONFIRMATION_SECONDS, MIN_PENDING_CONFIRMATION_SECONDS, MAX_PENDING_CONFIRMATION_SECONDS);

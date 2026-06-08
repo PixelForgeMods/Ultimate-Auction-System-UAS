@@ -1,6 +1,7 @@
 package net.austizz.ultimate_auction_system;
 
 import com.mojang.logging.LogUtils;
+import net.austizz.ultimate_auction_system.registry.UasBlocks;
 import net.neoforged.bus.api.IEventBus;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.ModContainer;
@@ -24,6 +25,7 @@ public class UltimateAuctionSystem {
 
     public UltimateAuctionSystem(IEventBus modEventBus, ModContainer modContainer) {
         modEventBus.addListener(this::commonSetup);
+        UasBlocks.register(modEventBus);
 
         NeoForge.EVENT_BUS.register(this);
 

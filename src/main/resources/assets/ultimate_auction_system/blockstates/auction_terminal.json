@@ -1,0 +1,7 @@
+{
+  "variants": {
+    "": {
+      "model": "ultimate_auction_system:block/auction_terminal"
+    }
+  }
+}
