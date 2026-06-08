@@ -1113,6 +1113,111 @@ public class AuctionHouse {
         }
     }
 
+    public AuctionActionResult relistAuction(ServerPlayer seller,
+                                             UUID sourceAuctionId,
+                                             String title,
+                                             BigDecimal startingBidPrice,
+                                             BigDecimal buyoutPrice,
+                                             LocalDateTime end,
+                                             String description,
+                                             UUID sellerAccountId) {
+        if (seller == null) {
+            return AuctionActionResult.fail("Only players can relist auctions.");
+        }
+        AuctionActionResult permission = UasPermissions.check(seller, UasPermissionAction.LIST);
+        if (!permission.success()) {
+            return permission;
+        }
+        AuctionItem source = getAuctionItem(sourceAuctionId);
+        if (source == null) {
+            return AuctionActionResult.fail("Auction not found.");
+        }
+        synchronized (source) {
+            if (!seller.getUUID().equals(source.getPlayerId())) {
+                return AuctionActionResult.fail("Only the original seller can relist this auction.");
+            }
+            if (source.getHighestBidderId() != null) {
+                return AuctionActionResult.fail("Only unsold auctions can be relisted.");
+            }
+            if (source.getState() == AuctionState.CLAIMED || source.getState() == AuctionState.CANCELLED) {
+                return AuctionActionResult.fail("Auction has already been claimed or cancelled.");
+            }
+            if (source.getState() == AuctionState.FAILED_SETTLEMENT) {
+                return AuctionActionResult.fail("Auction settlement is pending admin recovery.");
+            }
+            if (source.getState() == AuctionState.ACTIVE && !source.isExpired()) {
+                return AuctionActionResult.fail("Only expired unsold auctions can be relisted.");
+            }
+            if (source.getState() == AuctionState.ACTIVE && !source.transitionTo(AuctionState.ENDED, "auction expired before relist")) {
+                return AuctionActionResult.fail("Auction could not be prepared for relisting.");
+            }
+            if (source.getState() != AuctionState.ENDED) {
+                return AuctionActionResult.fail("Only expired unsold auctions can be relisted.");
+            }
+            if (!source.isEscrowed()) {
+                return AuctionActionResult.fail("Auction item is not available to relist.");
+            }
+
+            List<ItemStack> relistContents = source.getContents();
+            BigDecimal relistStartingBid = safeMoney(startingBidPrice);
+            BigDecimal relistBuyout = buyoutPrice == null ? BigDecimal.ZERO : buyoutPrice;
+            UUID accountId = sellerAccountId == null ? source.getSellerAccountId() : sellerAccountId;
+            AuctionActionResult validation = validateListingRequest(seller, relistContents, relistStartingBid, relistBuyout, end, accountId);
+            if (!validation.success()) {
+                return validation;
+            }
+            AccountSelection sellerAccount = validateSellerAccount(seller.getUUID(), accountId, relistStartingBid);
+            if (!sellerAccount.success()) {
+                return AuctionActionResult.fail(sellerAccount.message());
+            }
+
+            UUID relistedAuctionId = UUID.randomUUID();
+            while (AuctionItems.containsKey(relistedAuctionId)) {
+                relistedAuctionId = UUID.randomUUID();
+            }
+            String listingFeeReference = auctionReference(EVENT_LISTING_FEE, relistedAuctionId);
+            UasBankingResult feeResult = chargeListingFee(sellerAccount.accountId(), relistStartingBid, listingFeeReference);
+            if (!feeResult.success()) {
+                return AuctionActionResult.fail(feeFailureMessage("listing fee", Config.calculateListingFee(relistStartingBid), feeResult));
+            }
+
+            String relistTitle = title == null || title.isBlank() ? source.getTitle() : title.trim();
+            String relistDescription = description == null ? source.getDescription() : description;
+            AuctionItem relisted = new AuctionItem(
+                    relistedAuctionId,
+                    relistContents,
+                    relistTitle,
+                    relistDescription,
+                    end,
+                    LocalDateTime.now(),
+                    relistStartingBid,
+                    seller.getUUID(),
+                    sellerAccount.accountId(),
+                    relistBuyout
+            );
+            relisted.markEscrowed("RELISTED_FROM_" + source.getAuctionId());
+            Optional<String> activationError = relisted.validateForActivation();
+            if (activationError.isPresent()) {
+                refundListingFee(sellerAccount.accountId(), relistStartingBid, auctionReference(EVENT_LISTING_FEE_REFUND, relistedAuctionId));
+                return AuctionActionResult.fail("Auction escrow failed validation: " + activationError.get() + ".");
+            }
+            if (!source.transitionTo(AuctionState.CLAIMED, "seller relisted unsold auction as " + relistedAuctionId)) {
+                refundListingFee(sellerAccount.accountId(), relistStartingBid, auctionReference(EVENT_LISTING_FEE_REFUND, relistedAuctionId));
+                return AuctionActionResult.fail("Auction could not be relisted.");
+            }
+
+            attachMutationTracking(relisted);
+            AuctionItems.put(relisted.getAuctionId(), relisted);
+            if (Config.calculateListingFee(relistStartingBid).compareTo(BigDecimal.ZERO) > 0) {
+                relisted.recordFinancialEvent(AuctionFinancialEvent.fromBanking(relistedAuctionId, EVENT_LISTING_FEE, Config.calculateListingFee(relistStartingBid), listingFeeReference, feeResult));
+            }
+            markChanged("Auction storage marked dirty after auction relist.");
+            postAuctionEvent(new UasAuctionEvents.ListingCreated(eventSnapshot(relisted), seller.getUUID()));
+            sendAuctionCreatedMessage(seller, relisted);
+            return AuctionActionResult.ok("Auction relisted: " + relistedAuctionId, relistedAuctionId);
+        }
+    }
+
     public AuctionActionResult withdrawDelivery(ServerPlayer player, UUID deliveryId, AuctionDeliverySavedData deliveryData) {
         if (player == null) {
             return AuctionActionResult.fail("Only players can withdraw delivery items.");

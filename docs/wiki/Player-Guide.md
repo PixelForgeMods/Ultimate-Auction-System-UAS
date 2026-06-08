@@ -32,7 +32,7 @@ The Browse tab is server-filtered, so results stay consistent with the server st
 - Time left: any time, under 1 hour, under 24 hours, or under 7 days
 - Sort: newest, ending soon, highest bid, lowest price, or buyout price
 
-Rows include valid actions for the current state, such as Bid, Raise Bid, Buyout, Notify, View Bids, Claim, or Cancel.
+Rows include valid actions for the current state, such as Bid, Raise Bid, Buyout, Notify, View Bids, Claim, Relist, or Cancel.
 
 ## Saved Searches
 
@@ -119,6 +119,12 @@ You can claim:
 - Items returned after eligible cancellations
 
 If your inventory is full, or an admin releases a recovered item later, UAS can place the item into delivery storage. Open the Delivery Storage modal from `/ah` and press Withdraw when you have space.
+
+## Relist Expired Unsold Auctions
+
+Expired auctions with no accepted bids show a Relist action for the original seller in `/ah`. Relist opens a themed edit modal with the old item contents already selected and the previous starting bid, buyout, and description filled in. You can adjust those fields and choose a new end date before submitting.
+
+Relisting charges the normal configured listing fee again and creates a new active auction. The original expired auction remains in history as an audited record and cannot be claimed separately after the relist succeeds. Relist still respects current banned-item rules, account checks, listing limits, and rate limits.
 
 ## Refunds And Failed Settlement
 

@@ -112,6 +112,7 @@ public class AuctionHouseScreen extends Screen {
         NONE,
         BID,
         CREATE,
+        RELIST,
         CONFIRM_CREATE,
         DATE_PICKER,
         BIDS,
@@ -142,6 +143,7 @@ public class AuctionHouseScreen extends Screen {
     private String bidDraft = "";
     private UUID selectedAccountId;
     private Modal accountSelectorReturnModal = Modal.NONE;
+    private Modal datePickerReturnModal = Modal.CREATE;
     private UUID bidReviewAuctionId;
     private String bidReviewAmount = "";
     private boolean bidReviewFresh = false;
@@ -574,6 +576,9 @@ public class AuctionHouseScreen extends Screen {
             if (entry.canCancel()) {
                 actions.add(new RowAction("Cancel", AuctionButton.Style.RED, button -> sendAuctionAction("CANCEL", entry, "", null)));
             }
+            if (canRelist(entry)) {
+                actions.add(new RowAction("Relist", AuctionButton.Style.GREEN, button -> openRelist(entry)));
+            }
             if (isClaimed(entry)) {
                 actions.add(new RowAction("Claimed", AuctionButton.Style.CLAIMED, button -> {
                 }, false));
@@ -593,7 +598,11 @@ public class AuctionHouseScreen extends Screen {
         } else {
             if (entry.canCancel()) {
                 actions.add(new RowAction("Cancel", AuctionButton.Style.RED, button -> sendAuctionAction("CANCEL", entry, "", null)));
-            } else if (isClaimed(entry)) {
+            }
+            if (canRelist(entry)) {
+                actions.add(new RowAction("Relist", AuctionButton.Style.GREEN, button -> openRelist(entry)));
+            }
+            if (isClaimed(entry)) {
                 actions.add(new RowAction("Claimed", AuctionButton.Style.CLAIMED, button -> {
                 }, false));
             } else if (entry.canClaim()) {
@@ -645,6 +654,8 @@ public class AuctionHouseScreen extends Screen {
             addBidModalWidgets(x, y, modalW, modalH);
         } else if (modal == Modal.CREATE) {
             addCreateModalWidgets(x, y, modalW, modalH);
+        } else if (modal == Modal.RELIST) {
+            addRelistModalWidgets(x, y, modalW, modalH);
         } else if (modal == Modal.CONFIRM_CREATE) {
             addConfirmCreateModalWidgets(x, y, modalW, modalH);
         } else if (modal == Modal.DATE_PICKER) {
@@ -804,6 +815,7 @@ public class AuctionHouseScreen extends Screen {
         addRenderableWidget(buyoutBox);
 
         AuctionButton endDateButton = addAuctionButton(compact ? x + 20 : x + 310, endY, compact ? modalW - 40 : Math.max(90, modalW - 330), 22, Component.literal(endDateDisplay()), AuctionButton.Style.DARK, button -> {
+            datePickerReturnModal = Modal.CREATE;
             modal = Modal.DATE_PICKER;
             calendarMonth = YearMonth.from(selectedEndDate);
             rebuildWidgets();
@@ -831,6 +843,61 @@ public class AuctionHouseScreen extends Screen {
         addAuctionButton(x + 20, actionY, cancelW, 26, "Cancel", AuctionButton.Style.GRAY, button -> closeModal());
         AuctionButton createButton = addAuctionButton(x + modalW - createW - 20, actionY, createW, 26, "Create Auction", AuctionButton.Style.GREEN, button -> sendCreateAction());
         createButton.active = !selectedInventoryStacks().isEmpty();
+    }
+
+    private void addRelistModalWidgets(int x, int y, int modalW, int modalH) {
+        boolean compact = compactCreateModal(modalW);
+        int scroll = createScroll;
+        int bodyTop = modalBodyTop(y);
+        int bodyBottom = modalBodyBottom(y, modalH);
+        int startingY = y + (compact ? 190 : 166) - scroll;
+        int buyoutY = y + (compact ? 238 : 166) - scroll;
+        int endY = y + (compact ? 286 : 166) - scroll;
+        int descriptionY = y + (compact ? 334 : 214) - scroll;
+        int fieldW = compact ? modalW - 40 : 138;
+
+        startingBidBox = new AuctionEditBox(font, x + 20, startingY, fieldW, 22, Component.translatable("Starting Bid"));
+        startingBidBox.setHint(Component.translatable("Enter starting bid"));
+        startingBidBox.setFilter(this::moneyInput);
+        startingBidBox.setValue(startingBidDraft);
+        startingBidBox.setResponder(value -> startingBidDraft = value);
+        setVisibleInModalBody(startingBidBox, bodyTop, bodyBottom);
+        addRenderableWidget(startingBidBox);
+
+        buyoutBox = new AuctionEditBox(font, compact ? x + 20 : x + 170, buyoutY, compact ? modalW - 40 : 128, 22, Component.translatable("Buyout"));
+        buyoutBox.setHint(Component.translatable("Optional buyout"));
+        buyoutBox.setFilter(this::moneyInput);
+        buyoutBox.setValue(buyoutDraft);
+        buyoutBox.setResponder(value -> buyoutDraft = value);
+        setVisibleInModalBody(buyoutBox, bodyTop, bodyBottom);
+        addRenderableWidget(buyoutBox);
+
+        AuctionButton endDateButton = addAuctionButton(compact ? x + 20 : x + 310, endY, compact ? modalW - 40 : Math.max(90, modalW - 330), 22, Component.literal(endDateDisplay()), AuctionButton.Style.DARK, button -> {
+            datePickerReturnModal = Modal.RELIST;
+            modal = Modal.DATE_PICKER;
+            calendarMonth = YearMonth.from(selectedEndDate);
+            rebuildWidgets();
+        });
+        setVisibleInModalBody(endDateButton, bodyTop, bodyBottom);
+
+        descriptionBox = new AuctionEditBox(font, x + 20, descriptionY, modalW - 40, 22, Component.translatable("Description"));
+        descriptionBox.setHint(Component.translatable("Describe the auction"));
+        descriptionBox.setValue(descriptionDraft);
+        descriptionBox.setResponder(value -> descriptionDraft = value);
+        setVisibleInModalBody(descriptionBox, bodyTop, bodyBottom);
+        addRenderableWidget(descriptionBox);
+
+        int feeY = y + (compact ? 382 : 250) - scroll;
+        AuctionButton accountButton = addAuctionButton(x + modalW - 128, feeY + 16, 104, 22, "Change", AuctionButton.Style.GRAY, button -> openAccountSelector());
+        accountButton.active = !accountOptions().isEmpty();
+        setVisibleInModalBody(accountButton, bodyTop, bodyBottom);
+
+        int actionY = y + modalH - 36;
+        int cancelW = modalW < 360 ? 112 : 150;
+        int relistW = modalW < 360 ? 142 : 160;
+        addAuctionButton(x + 20, actionY, cancelW, 26, "Cancel", AuctionButton.Style.GRAY, button -> closeModal());
+        AuctionButton relistButton = addAuctionButton(x + modalW - relistW - 20, actionY, relistW, 26, "Relist Auction", AuctionButton.Style.GREEN, button -> sendRelistAction());
+        relistButton.active = selectedAuction != null;
     }
 
     private void addFilterModalWidgets(int x, int y, int modalW, int modalH) {
@@ -1153,12 +1220,14 @@ public class AuctionHouseScreen extends Screen {
         addTimePickerWidgets(layout);
 
         addAuctionButton(x + 22, layout.actionY(), 120, 26, "Cancel", AuctionButton.Style.GRAY, button -> {
-            modal = Modal.CREATE;
+            modal = datePickerReturnModal == Modal.NONE ? Modal.CREATE : datePickerReturnModal;
+            datePickerReturnModal = Modal.CREATE;
             rebuildWidgets();
         });
         AuctionButton confirm = addAuctionButton(x + modalW - 142, layout.actionY(), 120, 26, "Confirm", AuctionButton.Style.GREEN, button -> {
             normalizeTimeInputs();
-            modal = Modal.CREATE;
+            modal = datePickerReturnModal == Modal.NONE ? Modal.CREATE : datePickerReturnModal;
+            datePickerReturnModal = Modal.CREATE;
             rebuildWidgets();
         });
         confirm.active = selectedAuctionDuration().compareTo(MIN_CLIENT_AUCTION_DURATION) >= 0;
@@ -1239,7 +1308,7 @@ public class AuctionHouseScreen extends Screen {
             int available = panelWidth - 44;
             return available >= 560 ? Math.min(580, available) : Math.min(390, available);
         }
-        if (modal == Modal.BID || modal == Modal.BIDS || modal == Modal.CONFIRM_CREATE || modal == Modal.ADMIN_FORCE_CANCEL) {
+        if (modal == Modal.BID || modal == Modal.BIDS || modal == Modal.RELIST || modal == Modal.CONFIRM_CREATE || modal == Modal.ADMIN_FORCE_CANCEL) {
             return Math.min(560, panelWidth - 44);
         }
         if (modal == Modal.CONTENTS) {
@@ -1255,7 +1324,7 @@ public class AuctionHouseScreen extends Screen {
         if (modal == Modal.FILTER) {
             return Math.max(220, panelHeight - 34);
         }
-        if (modal == Modal.CREATE || modal == Modal.CONFIRM_CREATE || modal == Modal.DATE_PICKER || modal == Modal.BID || modal == Modal.BIDS || modal == Modal.MOD_FILTER || modal == Modal.CONTENTS || modal == Modal.ACCOUNT_SELECTOR) {
+        if (modal == Modal.CREATE || modal == Modal.RELIST || modal == Modal.CONFIRM_CREATE || modal == Modal.DATE_PICKER || modal == Modal.BID || modal == Modal.BIDS || modal == Modal.MOD_FILTER || modal == Modal.CONTENTS || modal == Modal.ACCOUNT_SELECTOR) {
             return Math.min(430, panelHeight - 48);
         }
         if (modal == Modal.ADMIN_FORCE_CANCEL) {
@@ -1288,9 +1357,13 @@ public class AuctionHouseScreen extends Screen {
         if (modal == Modal.BID) {
             resetBidReview();
         }
-        modal = modal == Modal.DATE_PICKER
-                ? Modal.CREATE
-                : modal == Modal.MOD_FILTER
+        if (modal == Modal.DATE_PICKER) {
+            modal = datePickerReturnModal == Modal.NONE ? Modal.CREATE : datePickerReturnModal;
+            datePickerReturnModal = Modal.CREATE;
+            rebuildWidgets();
+            return;
+        }
+        modal = modal == Modal.MOD_FILTER
                 ? Modal.FILTER
                 : modal == Modal.ACCOUNT_SELECTOR
                 ? (accountSelectorReturnModal == Modal.NONE ? Modal.NONE : accountSelectorReturnModal)
@@ -1525,6 +1598,15 @@ public class AuctionHouseScreen extends Screen {
         return selectedInventorySlots.size() > 1;
     }
 
+    private boolean canRelist(AuctionEntrySummary entry) {
+        return entry != null
+                && entry.viewerIsSeller()
+                && entry.bidCount() == 0
+                && entry.canClaim()
+                && !"CLAIMED".equals(normalizedState(entry))
+                && !"CANCELLED".equals(normalizedState(entry));
+    }
+
     private void openBid(AuctionEntrySummary entry) {
         selectedAuction = entry;
         bidDraft = nextBidValue(entry);
@@ -1544,6 +1626,27 @@ public class AuctionHouseScreen extends Screen {
         selectedAuction = entry;
         modal = Modal.CONTENTS;
         contentsScroll = 0;
+        rebuildWidgets();
+    }
+
+    private void openRelist(AuctionEntrySummary entry) {
+        selectedAuction = entry;
+        selectedInventorySlot = -1;
+        selectedInventorySlots = new ArrayList<>();
+        BigDecimal startingBid = moneyDraft(entry == null ? "" : entry.startingBid());
+        BigDecimal buyout = moneyDraft(entry == null ? "" : entry.buyoutPrice());
+        startingBidDraft = startingBid.compareTo(BigDecimal.ZERO) <= 0 ? "0" : startingBid.stripTrailingZeros().toPlainString();
+        buyoutDraft = buyout.compareTo(BigDecimal.ZERO) <= 0 ? "" : buyout.stripTrailingZeros().toPlainString();
+        bundleTitleDraft = entry != null && entry.bundle() ? entry.itemName() : "";
+        descriptionDraft = entry == null ? "" : entry.description();
+        LocalDateTime defaultEnd = LocalDateTime.now().plusDays(1);
+        selectedEndDate = defaultEnd.toLocalDate();
+        selectedEndHour = defaultEnd.getHour();
+        selectedEndMinute = defaultEnd.getMinute();
+        calendarMonth = YearMonth.from(selectedEndDate);
+        createScroll = 0;
+        datePickerReturnModal = Modal.RELIST;
+        modal = Modal.RELIST;
         rebuildWidgets();
     }
 
@@ -1816,6 +1919,40 @@ public class AuctionHouseScreen extends Screen {
                 selectedInventorySlot,
                 selectedInventorySlots,
                 createSelectionIsBundle() ? bundleTitleDraft : "",
+                "",
+                startingBidDraft,
+                buyoutDraft,
+                Math.max(1, (int) Duration.between(LocalDateTime.now(), selectedEndDateTime()).toHours()),
+                selectedEndDateTime().toString(),
+                descriptionDraft,
+                searchValue(),
+                category.name(),
+                sort.name(),
+                minPriceValue(),
+                maxPriceValue(),
+                maxHoursLeft,
+                selectedModId,
+                selectedAccountIdForAction(),
+                payload.adminMode()
+        ));
+        modal = Modal.NONE;
+    }
+
+    private void sendRelistAction() {
+        if (selectedAuction == null) {
+            closeModal();
+            return;
+        }
+        startingBidDraft = sanitizeMoneyInput(value(startingBidBox, startingBidDraft));
+        buyoutDraft = sanitizeMoneyInput(value(buyoutBox, buyoutDraft));
+        descriptionDraft = value(descriptionBox, descriptionDraft);
+        PacketDistributor.sendToServer(new AuctionActionPayload(
+                "RELIST",
+                selectedAuction.auctionId(),
+                null,
+                -1,
+                List.of(),
+                selectedAuction.bundle() ? selectedAuction.itemName() : "",
                 "",
                 startingBidDraft,
                 buyoutDraft,
@@ -2751,6 +2888,8 @@ public class AuctionHouseScreen extends Screen {
             renderBidModal(graphics, x, y, modalW, modalH);
         } else if (modal == Modal.CREATE) {
             renderCreateModal(graphics, x, y, modalW, mouseX, mouseY);
+        } else if (modal == Modal.RELIST && selectedAuction != null) {
+            renderRelistModal(graphics, x, y, modalW);
         } else if (modal == Modal.CONFIRM_CREATE) {
             renderConfirmCreateModal(graphics, x, y, modalW, modalH, mouseX, mouseY);
         } else if (modal == Modal.DATE_PICKER) {
@@ -3027,6 +3166,66 @@ public class AuctionHouseScreen extends Screen {
     private void drawCreateLabel(GuiGraphics graphics, String key, int x, int y, int maxWidth) {
         String label = trimToWidth(Component.translatable(key).getString(), Math.max(24, maxWidth));
         graphics.drawString(font, Component.literal(label).withStyle(ChatFormatting.BOLD), x, y, 0xFFFFFFFF, false);
+    }
+
+    private void renderRelistModal(GuiGraphics graphics, int x, int y, int modalW) {
+        int modalH = modalHeight();
+        int bodyTop = modalBodyTop(y);
+        int bodyBottom = modalBodyBottom(y, modalH);
+        boolean compact = compactCreateModal(modalW);
+        int scroll = createScroll;
+
+        graphics.enableScissor(x + 6, bodyTop, x + modalW - 6, bodyBottom);
+        renderRelistItemPreview(graphics, x + 20, y + 58 - scroll, modalW - 40, 82);
+        if (compact) {
+            drawCreateLabel(graphics, "Starting Bid (dollars)", x + 20, y + 178 - scroll, modalW - 40);
+            drawCreateLabel(graphics, "Buyout (dollars)", x + 20, y + 226 - scroll, modalW - 40);
+            drawCreateLabel(graphics, "Auction End Date & Time", x + 20, y + 274 - scroll, modalW - 40);
+            drawCreateLabel(graphics, "Description", x + 20, y + 322 - scroll, modalW - 40);
+        } else {
+            drawCreateLabel(graphics, "Starting Bid (dollars)", x + 20, y + 154 - scroll, 138);
+            drawCreateLabel(graphics, "Buyout (dollars)", x + 170, y + 154 - scroll, 128);
+            drawCreateLabel(graphics, "Auction End Date & Time", x + 310, y + 154 - scroll, Math.max(90, modalW - 330));
+            drawCreateLabel(graphics, "Description", x + 20, y + 202 - scroll, modalW - 40);
+        }
+
+        int feeY = y + (compact ? 382 : 250) - scroll;
+        graphics.fill(x + 20, feeY, x + modalW - 20, feeY + 52, 0xFF000000);
+        graphics.fill(x + 22, feeY + 2, x + modalW - 22, feeY + 50, 0xFF191919);
+        graphics.drawString(font, Component.translatable("Listing Fee").append(Component.literal(" (" + listingFeeRateLabel() + "%)")), x + 34, feeY + 12, 0xFFE0E0E0, false);
+        graphics.drawString(font, Component.literal(moneyDisplay(listingFeePreview())).withStyle(ChatFormatting.BOLD), x + 34, feeY + 30, 0xFFFFD700, false);
+        int accountTextW = Math.max(80, modalW - 190);
+        graphics.drawString(font, Component.literal(trimToWidth(accountSelectorButtonLabel(), accountTextW)), x + 34, feeY + 42, selectedAccount().frozen() ? 0xFFFF6666 : 0xFFBDBDBD, false);
+        graphics.disableScissor();
+        renderScrollBar(graphics, x + modalW - 12, bodyTop, bodyBottom, createScroll, createContentHeight(modalW), bodyBottom - bodyTop);
+    }
+
+    private void renderRelistItemPreview(GuiGraphics graphics, int x, int y, int w, int h) {
+        graphics.fill(x, y, x + w, y + h, 0xFF000000);
+        graphics.fill(x + 2, y + 2, x + w - 2, y + h - 2, 0xFF191919);
+        if (selectedAuction == null) {
+            graphics.drawString(font, Component.translatable("Auction not found."), x + 18, y + 28, 0xFFFF6666, false);
+            return;
+        }
+
+        int previewSize = Math.min(58, h - 16);
+        int previewX = x + 16;
+        int previewY = y + (h - previewSize) / 2;
+        int rarityColor = rarityColor(selectedAuction.rarity());
+        graphics.fill(previewX, previewY, previewX + previewSize, previewY + previewSize, 0xFF050505);
+        graphics.fill(previewX + 2, previewY + 2, previewX + previewSize - 2, previewY + previewSize - 2, 0x33000000 | (rarityColor & 0x00FFFFFF));
+        renderBundlePreview(graphics, selectedAuction.contents(), previewX + 4, previewY + 4, previewSize - 8, previewSize - 8);
+
+        int textX = previewX + previewSize + 16;
+        int textW = Math.max(80, x + w - 18 - textX);
+        graphics.drawString(font, Component.literal(trimToWidth(selectedAuction.itemName(), textW)).withStyle(ChatFormatting.BOLD), textX, y + 14, rarityColor, false);
+        String sourceLine = Component.translatable("Previous auction: {0}", selectedAuction.auctionId()).getString();
+        graphics.drawString(font, Component.literal(trimToWidth(sourceLine, textW)), textX, y + 30, 0xFFBDBDBD, false);
+        if (selectedAuction.bundle()) {
+            graphics.drawString(font, Component.translatable("Bundle - {0} stacks / {1} items", selectedAuction.contents().size(), selectedAuction.totalItemCount()), textX, y + 46, 0xFF55FF55, false);
+        } else {
+            graphics.drawString(font, Component.translatable("Reuses the expired unsold item."), textX, y + 46, 0xFF55FF55, false);
+        }
     }
 
     private void renderConfirmCreateModal(GuiGraphics graphics, int x, int y, int modalW, int modalH, int mouseX, int mouseY) {
@@ -3307,6 +3506,9 @@ public class AuctionHouseScreen extends Screen {
     }
 
     private int createContentHeight(int modalW) {
+        if (modal == Modal.RELIST) {
+            return compactCreateModal(modalW) ? 434 : 306;
+        }
         return (compactCreateModal(modalW) ? 478 : 286) + (createSelectionIsBundle() ? 48 : 0);
     }
 
@@ -3837,9 +4039,9 @@ public class AuctionHouseScreen extends Screen {
             }
             return super.mouseScrolled(mouseX, mouseY, scrollX, scrollY);
         }
-        if (modal == Modal.CREATE || modal == Modal.FILTER || modal == Modal.BIDS || modal == Modal.MOD_FILTER || modal == Modal.CONTENTS || modal == Modal.ACCOUNT_SELECTOR) {
+        if (modal == Modal.CREATE || modal == Modal.RELIST || modal == Modal.FILTER || modal == Modal.BIDS || modal == Modal.MOD_FILTER || modal == Modal.CONTENTS || modal == Modal.ACCOUNT_SELECTOR) {
             int delta = (int) Math.round(scrollY * 22.0D);
-            if (modal == Modal.CREATE) {
+            if (modal == Modal.CREATE || modal == Modal.RELIST) {
                 createScroll -= delta;
             } else if (modal == Modal.FILTER) {
                 filterScroll -= delta;
@@ -3853,7 +4055,7 @@ public class AuctionHouseScreen extends Screen {
                 bidsScroll -= delta;
             }
             clampModalScrolls();
-            if (modal == Modal.CREATE || modal == Modal.FILTER || modal == Modal.MOD_FILTER) {
+            if (modal == Modal.CREATE || modal == Modal.RELIST || modal == Modal.FILTER || modal == Modal.MOD_FILTER) {
                 rebuildWidgets();
             }
             return true;
@@ -3981,6 +4183,7 @@ public class AuctionHouseScreen extends Screen {
         return switch (modal) {
             case BID -> selectedAuction != null && selectedAuction.viewerHasBid() ? "Raise Bid" : "Place Bid";
             case CREATE -> "Create Auction";
+            case RELIST -> "Relist Auction";
             case CONFIRM_CREATE -> "Confirm Auction";
             case DATE_PICKER -> "Select End Date & Time";
             case BIDS -> "Auction Bids";

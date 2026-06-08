@@ -72,7 +72,7 @@ Claim a won item or an expired unsold seller return:
 /ah claim <auctionId>
 ```
 
-The GUI is preferred for most player workflows because it includes inventory slot selection, bundle creation, optional buyout, date/time picking, account selection, listing-fee preview, bid review, delivery storage, and validation before submission.
+The GUI is preferred for most player workflows because it includes inventory slot selection, bundle creation, optional buyout, date/time picking, account selection, listing-fee preview, bid review, delivery storage, relisting expired unsold auctions, and validation before submission.
 
 ## Auction House GUI
 
@@ -98,7 +98,9 @@ Bid and raise-bid modals use a two-step flow. The first action refreshes the UBS
 
 Create-auction supports one inventory slot or a bundle of up to 18 stacks. Bundle auctions show a bundle title and a contents preview. UAS validates the selected item contents again on confirm before escrow.
 
-The GUI account selector lists the player's UBS accounts with account type, bank UUID prefix, balance, primary flag, and frozen status. A selected account UUID is sent with create, bid, and buyout actions, then UAS re-checks ownership and fetches a fresh UBS snapshot before taking listing fees, bid escrow, or buyout escrow. If UBS cannot return the selected account snapshot, the action fails with a clear message instead of falling back silently.
+Relist appears on expired unsold auctions owned by the current player. It reuses the old escrowed item contents and previous pricing fields, lets the seller edit the new price/date/description, charges the configured listing fee again, creates a fresh active auction, and keeps the original expired auction as an audited history entry.
+
+The GUI account selector lists the player's UBS accounts with account type, bank UUID prefix, balance, primary flag, and frozen status. A selected account UUID is sent with create, relist, bid, and buyout actions, then UAS re-checks ownership and fetches a fresh UBS snapshot before taking listing fees, bid escrow, or buyout escrow. If UBS cannot return the selected account snapshot, the action fails with a clear message instead of falling back silently.
 
 Delivery Storage appears when an item cannot be placed directly into a player's inventory or when an admin releases a recovered item. Players can withdraw delivery items after making inventory space.
 
@@ -194,7 +196,7 @@ Default: `2`.
 
 Player actions use separate Minecraft permission-level checks:
 
-- `permissions.listPermissionLevel`: create/confirm auction listings, default `0`
+- `permissions.listPermissionLevel`: create/confirm/relist auction listings, default `0`
 - `permissions.bidPermissionLevel`: place bids, default `0`
 - `permissions.buyoutPermissionLevel`: buy out auctions, default `0`
 - `permissions.cancelOwnPermissionLevel`: cancel your own no-bid auction, default `0`
@@ -271,7 +273,7 @@ Audit and moderation:
 
 Permissions:
 
-- `permissions.listPermissionLevel`: permission level required to create listings, default `0`
+- `permissions.listPermissionLevel`: permission level required to create or relist listings, default `0`
 - `permissions.bidPermissionLevel`: permission level required to bid, default `0`
 - `permissions.buyoutPermissionLevel`: permission level required to buy out auctions, default `0`
 - `permissions.cancelOwnPermissionLevel`: permission level required to cancel own no-bid auctions, default `0`

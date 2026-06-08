@@ -98,6 +98,16 @@ public final class UasPayloads {
                         ? AuctionActionResult.fail("Use the admin dashboard force-cancel action with a reason.")
                         : AuctionActionResult.fail("You do not have permission to force-cancel auctions.");
                 case "CLAIM" -> house.claimAuction(player, payload.auctionId(), deliveryData);
+                case "RELIST" -> house.relistAuction(
+                        player,
+                        payload.auctionId(),
+                        payload.title(),
+                        money(payload.startingBid()),
+                        money(payload.buyoutPrice()),
+                        endDateTime(payload),
+                        payload.description(),
+                        payload.accountId()
+                );
                 case "TOGGLE_NOTIFICATIONS" -> house.toggleNotifications(player, payload.auctionId());
                 case "WITHDRAW_DELIVERY" -> house.withdrawDelivery(player, payload.deliveryId(), deliveryData);
                 case "SAVE_SEARCH" -> AuctionSavedSearchSavedData.get(player.getServer()).saveSearch(player.getUUID(), payload.title(), query);
@@ -326,6 +336,7 @@ public final class UasPayloads {
         }
         net.austizz.ultimate_auction_system.AuctionRateLimiter.Action limitAction = switch (action) {
             case "PREPARE_CREATE" -> net.austizz.ultimate_auction_system.AuctionRateLimiter.Action.CREATE;
+            case "RELIST" -> net.austizz.ultimate_auction_system.AuctionRateLimiter.Action.CREATE;
             case "BID" -> net.austizz.ultimate_auction_system.AuctionRateLimiter.Action.BID;
             case "BUYOUT" -> net.austizz.ultimate_auction_system.AuctionRateLimiter.Action.BUYOUT;
             case "CANCEL" -> net.austizz.ultimate_auction_system.AuctionRateLimiter.Action.CANCEL;
@@ -339,7 +350,7 @@ public final class UasPayloads {
 
     private static AuctionActionResult permissionForAction(ServerPlayer player, String action) {
         UasPermissionAction permissionAction = switch (action) {
-            case "PREPARE_CREATE", "CONFIRM_CREATE" -> UasPermissionAction.LIST;
+            case "PREPARE_CREATE", "CONFIRM_CREATE", "RELIST" -> UasPermissionAction.LIST;
             case "BID" -> UasPermissionAction.BID;
             case "BUYOUT" -> UasPermissionAction.BUYOUT;
             case "CANCEL" -> UasPermissionAction.CANCEL_OWN;
