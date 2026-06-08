@@ -225,3 +225,7 @@ Existing active auctions are not auto-cancelled when a new banned entry is added
 ## Currency
 
 UAS displays money with dollars. UBS still owns account balances and payment settlement.
+
+## Developer API
+
+Other mods should use `UasAuctionApi` instead of reading auction storage directly. The API supports version checks, active-auction queries, immutable auction snapshots, listing creation, seller cancellation, status inspection, and stable `UasAuctionResultCode` values. See [Developer API](Developer-API.md).

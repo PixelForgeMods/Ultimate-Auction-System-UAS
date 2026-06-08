@@ -16,6 +16,7 @@ UAS declares UBS as a required mod dependency and also performs a startup diagno
 - [Installation and UBS Dependency](Installation-and-UBS-Dependency.md)
 - [Local Development Setup](Local-Development-Setup.md)
 - [Commands and Config](Commands-and-Config.md)
+- [Developer API](Developer-API.md)
 - [UBS Troubleshooting](UBS-Troubleshooting.md)
 
 ## Admin Health Check

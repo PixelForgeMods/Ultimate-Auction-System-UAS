@@ -2175,7 +2175,7 @@ public class AuctionHouse {
         AuctionItems.put(item.getAuctionId(), item);
         markChanged("Auction storage marked dirty after listing creation.");
         sendAuctionCreatedMessage(player, item);
-        return AuctionActionResult.ok("Auction created: " + item.getAuctionId());
+        return AuctionActionResult.ok("Auction created: " + item.getAuctionId(), item.getAuctionId());
     }
 
     private AuctionActionResult validateListingRequest(ServerPlayer player,
