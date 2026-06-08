@@ -94,6 +94,7 @@ public class AuctionHouseScreen extends Screen {
         ECONOMY("Economy"),
         MODERATION("Moderation"),
         BANNED_ITEMS("Banned Items"),
+        RECOVERY("Recovery"),
         AUDIT("Audit");
 
         private final String label;
@@ -113,7 +114,8 @@ public class AuctionHouseScreen extends Screen {
         DELIVERY,
         FILTER,
         MOD_FILTER,
-        CONTENTS
+        CONTENTS,
+        ADMIN_FORCE_CANCEL
     }
 
     private AuctionSnapshotPayload payload;
@@ -146,6 +148,7 @@ public class AuctionHouseScreen extends Screen {
     private String adminBannedEntryDraft = "";
     private String adminBanReasonDraft = "";
     private String adminBanExpiryDraft = "";
+    private String adminForceCancelReasonDraft = "";
     private UUID selectedAdminPlayerId;
     private boolean adminBlockCreate = true;
     private boolean adminBlockBid = true;
@@ -171,6 +174,7 @@ public class AuctionHouseScreen extends Screen {
     private EditBox adminBannedEntryBox;
     private EditBox adminBanReasonBox;
     private EditBox adminBanExpiryBox;
+    private EditBox adminForceCancelReasonBox;
 
     private int panelLeft;
     private int panelTop;
@@ -401,6 +405,8 @@ public class AuctionHouseScreen extends Screen {
             addAdminPlayerWidgets();
         } else if (adminSection == AdminSection.BANNED_ITEMS) {
             addAdminBannedEntryWidgets();
+        } else if (adminSection == AdminSection.RECOVERY) {
+            addAdminRecoveryWidgets();
         }
 
         modalRenderableStart = renderables.size();
@@ -531,7 +537,7 @@ public class AuctionHouseScreen extends Screen {
                 actions.add(new RowAction("Retry Pay", AuctionButton.Style.GREEN, button -> sendAdminAuctionAction("ADMIN_RETRY_SETTLEMENT", entry)));
             }
             if (adminCanForceCancel(entry)) {
-                actions.add(new RowAction("Force Cancel", AuctionButton.Style.RED, button -> sendAdminAuctionAction("ADMIN_FORCE_CANCEL", entry)));
+                actions.add(new RowAction("Force Cancel", AuctionButton.Style.RED, button -> openAdminForceCancel(entry)));
             }
             addRowButtons(actions, rowTop);
             return;
@@ -649,7 +655,24 @@ public class AuctionHouseScreen extends Screen {
             addModFilterModalWidgets(x, y, modalW, modalH);
         } else if (modal == Modal.CONTENTS) {
             addAuctionButton(x + modalW - 100, closeY, 80, 24, "Close", AuctionButton.Style.GRAY, button -> closeModal());
+        } else if (modal == Modal.ADMIN_FORCE_CANCEL) {
+            addAdminForceCancelModalWidgets(x, y, modalW, modalH);
         }
+    }
+
+    private void addAdminForceCancelModalWidgets(int x, int y, int modalW, int modalH) {
+        int reasonY = y + 112;
+        adminForceCancelReasonBox = new AuctionEditBox(font, x + 20, reasonY, modalW - 40, 24, Component.translatable("Force-Cancel Reason"));
+        adminForceCancelReasonBox.setHint(Component.translatable("Required admin reason"));
+        adminForceCancelReasonBox.setValue(adminForceCancelReasonDraft);
+        adminForceCancelReasonBox.setResponder(value -> adminForceCancelReasonDraft = value);
+        addRenderableWidget(adminForceCancelReasonBox);
+
+        int actionY = y + modalH - 38;
+        int actionW = Math.max(104, (modalW - 64) / 3);
+        addAuctionButton(x + 20, actionY, actionW, 26, "Cancel", AuctionButton.Style.GRAY, button -> closeModal());
+        addAuctionButton(x + 28 + actionW, actionY, actionW, 26, "Return to Seller", AuctionButton.Style.GREEN, button -> sendAdminForceCancelAction(false));
+        addAuctionButton(x + modalW - actionW - 20, actionY, actionW, 26, "Move to Recovery", AuctionButton.Style.RED, button -> sendAdminForceCancelAction(true));
     }
 
     private void addConfirmCreateModalWidgets(int x, int y, int modalW, int modalH) {
@@ -980,6 +1003,25 @@ public class AuctionHouseScreen extends Screen {
         }
     }
 
+    private void addAdminRecoveryWidgets() {
+        int listTop = contentTop + 30;
+        int rowH = 62;
+        List<AuctionAdminDashboardPayload.Recovery> entries = adminDashboard().recoveryEntries();
+        int start = Math.max(0, adminScroll / rowH);
+        int rows = Math.max(1, (adminListBottom() - listTop) / rowH);
+        int end = Math.min(entries.size(), start + rows + 1);
+        for (int i = start; i < end; i++) {
+            AuctionAdminDashboardPayload.Recovery entry = entries.get(i);
+            int rowY = listTop + i * rowH - adminScroll;
+            if (rowY + rowH < listTop || rowY > adminListBottom()) {
+                continue;
+            }
+            AuctionButton release = addAuctionButton(contentLeft + contentWidth - 108, rowY + 20, 92, 22, entry.active() ? "Release" : "Released", entry.active() ? AuctionButton.Style.GREEN : AuctionButton.Style.CLAIMED, button -> sendAdminRecoveryAction(entry));
+            release.active = entry.active();
+            setVisibleInAdminList(release);
+        }
+    }
+
     private void addDatePickerWidgets(int x, int y, int modalW, int modalH) {
         DatePickerLayout layout = datePickerLayout(x, y, modalW, modalH);
         YearMonth firstAllowed = YearMonth.from(LocalDate.now());
@@ -1108,7 +1150,7 @@ public class AuctionHouseScreen extends Screen {
             int available = panelWidth - 44;
             return available >= 560 ? Math.min(580, available) : Math.min(390, available);
         }
-        if (modal == Modal.BID || modal == Modal.BIDS || modal == Modal.CONFIRM_CREATE) {
+        if (modal == Modal.BID || modal == Modal.BIDS || modal == Modal.CONFIRM_CREATE || modal == Modal.ADMIN_FORCE_CANCEL) {
             return Math.min(560, panelWidth - 44);
         }
         if (modal == Modal.CONTENTS) {
@@ -1123,6 +1165,9 @@ public class AuctionHouseScreen extends Screen {
         }
         if (modal == Modal.CREATE || modal == Modal.CONFIRM_CREATE || modal == Modal.DATE_PICKER || modal == Modal.BID || modal == Modal.BIDS || modal == Modal.MOD_FILTER || modal == Modal.CONTENTS) {
             return Math.min(430, panelHeight - 48);
+        }
+        if (modal == Modal.ADMIN_FORCE_CANCEL) {
+            return Math.min(250, panelHeight - 48);
         }
         return Math.min(300, panelHeight - 48);
     }
@@ -1401,6 +1446,13 @@ public class AuctionHouseScreen extends Screen {
         rebuildWidgets();
     }
 
+    private void openAdminForceCancel(AuctionEntrySummary entry) {
+        selectedAuction = entry;
+        adminForceCancelReasonDraft = "";
+        modal = Modal.ADMIN_FORCE_CANCEL;
+        rebuildWidgets();
+    }
+
     private void addBidIncrement(String rawIncrement) {
         if (bidBox == null) {
             return;
@@ -1623,6 +1675,46 @@ public class AuctionHouseScreen extends Screen {
         modal = Modal.NONE;
     }
 
+    private void sendAdminForceCancelAction(boolean recoverItems) {
+        if (selectedAuction == null) {
+            return;
+        }
+        String reason = value(adminForceCancelReasonBox, adminForceCancelReasonDraft).trim();
+        PacketDistributor.sendToServer(new AuctionAdminActionPayload(
+                "ADMIN_FORCE_CANCEL",
+                selectedAuction.auctionId(),
+                null,
+                "",
+                false,
+                false,
+                false,
+                false,
+                reason,
+                "",
+                recoverItems ? "recover" : "return"
+        ));
+        modal = Modal.NONE;
+    }
+
+    private void sendAdminRecoveryAction(AuctionAdminDashboardPayload.Recovery recovery) {
+        if (recovery == null || recovery.recoveryId() == null || !recovery.active()) {
+            return;
+        }
+        PacketDistributor.sendToServer(new AuctionAdminActionPayload(
+                "ADMIN_RELEASE_RECOVERY",
+                recovery.recoveryId(),
+                null,
+                "",
+                false,
+                false,
+                false,
+                false,
+                "Admin recovery release",
+                "",
+                ""
+        ));
+    }
+
     private void sendAdminBanAction(String action, AuctionAdminDashboardPayload.Player player) {
         if (player == null) {
             return;
@@ -1787,6 +1879,7 @@ public class AuctionHouseScreen extends Screen {
             case ECONOMY -> renderAdminEconomy(graphics, mouseX, mouseY);
             case MODERATION -> renderAdminModeration(graphics, mouseX, mouseY);
             case BANNED_ITEMS -> renderAdminBannedItems(graphics);
+            case RECOVERY -> renderAdminRecovery(graphics);
             case AUDIT -> renderAdminAudit(graphics);
         }
     }
@@ -2039,6 +2132,44 @@ public class AuctionHouseScreen extends Screen {
         renderScrollBar(graphics, contentLeft + contentWidth - 6, listTop, adminListBottom(), adminScroll, adminContentHeight(), Math.max(1, adminListBottom() - listTop));
     }
 
+    private void renderAdminRecovery(GuiGraphics graphics) {
+        int listTop = contentTop + 30;
+        int rowH = 62;
+        List<AuctionAdminDashboardPayload.Recovery> entries = adminDashboard().recoveryEntries();
+        graphics.drawString(font, Component.translatable("Admin Recovery Storage").withStyle(ChatFormatting.BOLD), contentLeft + 10, contentTop + 8, 0xFFFFFFFF, false);
+        if (entries.isEmpty()) {
+            graphics.drawString(font, Component.translatable("No recovered items in storage."), contentLeft + 10, listTop + 16, 0xFFBDBDBD, false);
+            return;
+        }
+
+        int start = Math.max(0, adminScroll / rowH);
+        int rows = Math.max(1, (adminListBottom() - listTop) / rowH);
+        int end = Math.min(entries.size(), start + rows + 1);
+        graphics.enableScissor(contentLeft, listTop, contentLeft + contentWidth, adminListBottom());
+        for (int i = start; i < end; i++) {
+            AuctionAdminDashboardPayload.Recovery entry = entries.get(i);
+            int rowY = listTop + i * rowH - adminScroll;
+            if (rowY + rowH < listTop || rowY > adminListBottom()) {
+                continue;
+            }
+            int fill = entry.active() ? 0xFF242424 : 0xFF1D301F;
+            graphics.fill(contentLeft, rowY, contentLeft + contentWidth - 10, rowY + rowH - 4, 0xFF000000);
+            graphics.fill(contentLeft + 2, rowY + 2, contentLeft + contentWidth - 12, rowY + rowH - 6, fill);
+            int textW = Math.max(80, contentWidth - 150);
+            graphics.drawString(font, Component.literal(trimToWidth(entry.itemName(), textW)).withStyle(ChatFormatting.BOLD), contentLeft + 10, rowY + 8, 0xFFFFAA00, false);
+            graphics.drawString(font, Component.translatable("Seller: {0}", entry.sellerName()), contentLeft + 10, rowY + 22, 0xFFBDBDBD, false);
+            graphics.drawString(font, Component.translatable("Recovered by {0}", entry.adminName()), contentLeft + 10, rowY + 36, 0xFFE0E0E0, false);
+            String reason = Component.translatable("Reason: {0}", entry.reason()).getString();
+            graphics.drawString(font, Component.literal(trimToWidth(reason, textW)), contentLeft + Math.min(260, contentWidth / 2), rowY + 22, 0xFFBDBDBD, false);
+            String status = entry.active()
+                    ? Component.translatable("Active recovery item").getString()
+                    : Component.translatable("Released by {0}", entry.releasedByName()).getString();
+            graphics.drawString(font, Component.literal(trimToWidth(status, Math.max(80, textW / 2))), contentLeft + Math.min(260, contentWidth / 2), rowY + 36, entry.active() ? 0xFFFFD700 : 0xFF55FF55, false);
+        }
+        graphics.disableScissor();
+        renderScrollBar(graphics, contentLeft + contentWidth - 6, listTop, adminListBottom(), adminScroll, adminContentHeight(), Math.max(1, adminListBottom() - listTop));
+    }
+
     private void renderAdminAudit(GuiGraphics graphics) {
         int y = contentTop + 12;
         int rowH = 46;
@@ -2073,6 +2204,7 @@ public class AuctionHouseScreen extends Screen {
             case "PLAYER_UNBAN" -> Component.translatable("Player unbanned");
             case "ADMIN_FORCE_CANCEL" -> Component.translatable("Admin force-cancelled auction");
             case "ADMIN_RETRY_SETTLEMENT" -> Component.translatable("Admin retried settlement");
+            case "ADMIN_RELEASE_RECOVERY" -> Component.translatable("Admin released recovery item");
             case "BANNED_ENTRY_ADD" -> Component.translatable("Banned item added");
             case "BANNED_ENTRY_REMOVE" -> Component.translatable("Banned item removed");
             default -> Component.literal(action == null || action.isBlank() ? "-" : action);
@@ -2306,7 +2438,21 @@ public class AuctionHouseScreen extends Screen {
             renderModFilterModal(graphics, x, y, modalW, modalH);
         } else if (modal == Modal.CONTENTS && selectedAuction != null) {
             renderContentsModal(graphics, x, y, modalW, modalH, selectedAuction.contents());
+        } else if (modal == Modal.ADMIN_FORCE_CANCEL && selectedAuction != null) {
+            renderAdminForceCancelModal(graphics, x, y, modalW);
         }
+    }
+
+    private void renderAdminForceCancelModal(GuiGraphics graphics, int x, int y, int modalW) {
+        int rarityColor = rarityColor(selectedAuction.rarity());
+        graphics.fill(x + 20, y + 54, x + modalW - 20, y + 98, 0xFF000000);
+        graphics.fill(x + 22, y + 56, x + modalW - 22, y + 96, 0xFF191919);
+        graphics.drawString(font, Component.literal(trimToWidth(selectedAuction.itemName(), modalW - 56)).withStyle(ChatFormatting.BOLD), x + 32, y + 64, rarityColor, false);
+        graphics.drawString(font, Component.translatable("Seller: {0}", selectedAuction.sellerName()), x + 32, y + 80, 0xFFBDBDBD, false);
+        String refundLine = Component.translatable("Force-cancel refunds the current highest bidder before changing auction state.").getString();
+        String recoveryLine = Component.translatable("Return sends contents back to the seller; recovery stores them for admin release.").getString();
+        graphics.drawString(font, Component.literal(trimToWidth(refundLine, modalW - 40)), x + 20, y + 146, 0xFFFFD700, false);
+        graphics.drawString(font, Component.literal(trimToWidth(recoveryLine, modalW - 40)), x + 20, y + 162, 0xFFE0E0E0, false);
     }
 
     private void renderBidModal(GuiGraphics graphics, int x, int y, int modalW, int modalH) {
@@ -2979,6 +3125,7 @@ public class AuctionHouseScreen extends Screen {
             case ECONOMY -> adminStatsGridHeight(false) + 232;
             case PLAYERS -> adminPlayerListTop() - contentTop + filteredAdminPlayers().size() * 44 + 12;
             case BANNED_ITEMS -> 52 + adminDashboard().bannedEntries().size() * 36;
+            case RECOVERY -> 38 + adminDashboard().recoveryEntries().size() * 62;
             case AUDIT -> adminDashboard().auditLog().size() * 46 + 24;
             case AUCTIONS, MODERATION -> auctionListContentHeight() + 40;
         };
@@ -3322,6 +3469,7 @@ public class AuctionHouseScreen extends Screen {
             case FILTER -> "Filters";
             case MOD_FILTER -> "Choose Mod";
             case CONTENTS -> "Auction Contents";
+            case ADMIN_FORCE_CANCEL -> "Force Cancel Auction";
             case NONE -> "";
         };
     }

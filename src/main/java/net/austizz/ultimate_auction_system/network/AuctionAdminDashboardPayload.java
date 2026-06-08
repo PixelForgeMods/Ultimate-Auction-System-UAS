@@ -3,6 +3,7 @@ package net.austizz.ultimate_auction_system.network;
 import net.austizz.ultimate_auction_system.AuctionAdminAuditEntry;
 import net.austizz.ultimate_auction_system.AuctionAdminDashboardSnapshot;
 import net.austizz.ultimate_auction_system.AuctionPlayerBan;
+import net.austizz.ultimate_auction_system.AuctionRecoveryEntry;
 import net.minecraft.network.RegistryFriendlyByteBuf;
 import net.minecraft.network.codec.ByteBufCodecs;
 import net.minecraft.network.codec.StreamCodec;
@@ -17,12 +18,13 @@ public record AuctionAdminDashboardPayload(
         List<Ban> bans,
         List<Audit> auditLog,
         List<BannedEntry> bannedEntries,
+        List<Recovery> recoveryEntries,
         List<AuctionEntrySummary> restrictedListings,
         List<AuctionEntrySummary> failedSettlements,
         String generatedAt
 ) {
     public static final AuctionAdminDashboardPayload EMPTY = new AuctionAdminDashboardPayload(
-            List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), "");
+            List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), "");
 
     public static final StreamCodec<RegistryFriendlyByteBuf, AuctionAdminDashboardPayload> STREAM_CODEC = StreamCodec.of(
             (buf, payload) -> {
@@ -31,6 +33,7 @@ public record AuctionAdminDashboardPayload(
                 Ban.STREAM_CODEC.apply(ByteBufCodecs.list(128)).encode(buf, payload.bans());
                 Audit.STREAM_CODEC.apply(ByteBufCodecs.list(256)).encode(buf, payload.auditLog());
                 BannedEntry.STREAM_CODEC.apply(ByteBufCodecs.list(256)).encode(buf, payload.bannedEntries());
+                Recovery.STREAM_CODEC.apply(ByteBufCodecs.list(128)).encode(buf, payload.recoveryEntries());
                 AuctionEntrySummary.STREAM_CODEC.apply(ByteBufCodecs.list(128)).encode(buf, payload.restrictedListings());
                 AuctionEntrySummary.STREAM_CODEC.apply(ByteBufCodecs.list(128)).encode(buf, payload.failedSettlements());
                 ByteBufCodecs.STRING_UTF8.encode(buf, payload.generatedAt());
@@ -41,6 +44,7 @@ public record AuctionAdminDashboardPayload(
                     Ban.STREAM_CODEC.apply(ByteBufCodecs.list(128)).decode(buf),
                     Audit.STREAM_CODEC.apply(ByteBufCodecs.list(256)).decode(buf),
                     BannedEntry.STREAM_CODEC.apply(ByteBufCodecs.list(256)).decode(buf),
+                    Recovery.STREAM_CODEC.apply(ByteBufCodecs.list(128)).decode(buf),
                     AuctionEntrySummary.STREAM_CODEC.apply(ByteBufCodecs.list(128)).decode(buf),
                     AuctionEntrySummary.STREAM_CODEC.apply(ByteBufCodecs.list(128)).decode(buf),
                     ByteBufCodecs.STRING_UTF8.decode(buf)
@@ -57,6 +61,7 @@ public record AuctionAdminDashboardPayload(
                 snapshot.bans().stream().map(Ban::fromBan).toList(),
                 snapshot.auditLog().stream().map(Audit::fromEntry).toList(),
                 snapshot.bannedEntries().stream().map(BannedEntry::fromSnapshot).toList(),
+                snapshot.recoveryEntries().stream().map(Recovery::fromEntry).toList(),
                 snapshot.restrictedListings().stream().map(AuctionEntrySummary::fromListing).toList(),
                 snapshot.failedSettlements().stream().map(AuctionEntrySummary::fromListing).toList(),
                 snapshot.generatedAt()
@@ -346,6 +351,69 @@ public record AuctionAdminDashboardPayload(
 
         static BannedEntry fromSnapshot(AuctionAdminDashboardSnapshot.BannedEntry entry) {
             return new BannedEntry(entry.entry(), entry.type(), entry.label(), entry.matchingActiveAuctions());
+        }
+    }
+
+    public record Recovery(
+            UUID recoveryId,
+            UUID auctionId,
+            UUID sellerId,
+            String sellerName,
+            String itemName,
+            int totalItemCount,
+            String adminName,
+            String reason,
+            String recoveredAt,
+            boolean active,
+            String releasedByName,
+            String releasedAt
+    ) {
+        public static final StreamCodec<RegistryFriendlyByteBuf, Recovery> STREAM_CODEC = StreamCodec.of(
+                (buf, recovery) -> {
+                    UasNetworkCodecs.UUID_CODEC.encode(buf, recovery.recoveryId());
+                    UasNetworkCodecs.OPTIONAL_UUID_CODEC.encode(buf, recovery.auctionId());
+                    UasNetworkCodecs.OPTIONAL_UUID_CODEC.encode(buf, recovery.sellerId());
+                    ByteBufCodecs.STRING_UTF8.encode(buf, recovery.sellerName());
+                    ByteBufCodecs.STRING_UTF8.encode(buf, recovery.itemName());
+                    ByteBufCodecs.INT.encode(buf, recovery.totalItemCount());
+                    ByteBufCodecs.STRING_UTF8.encode(buf, recovery.adminName());
+                    ByteBufCodecs.STRING_UTF8.encode(buf, recovery.reason());
+                    ByteBufCodecs.STRING_UTF8.encode(buf, recovery.recoveredAt());
+                    ByteBufCodecs.BOOL.encode(buf, recovery.active());
+                    ByteBufCodecs.STRING_UTF8.encode(buf, recovery.releasedByName());
+                    ByteBufCodecs.STRING_UTF8.encode(buf, recovery.releasedAt());
+                },
+                buf -> new Recovery(
+                        UasNetworkCodecs.UUID_CODEC.decode(buf),
+                        UasNetworkCodecs.OPTIONAL_UUID_CODEC.decode(buf),
+                        UasNetworkCodecs.OPTIONAL_UUID_CODEC.decode(buf),
+                        ByteBufCodecs.STRING_UTF8.decode(buf),
+                        ByteBufCodecs.STRING_UTF8.decode(buf),
+                        ByteBufCodecs.INT.decode(buf),
+                        ByteBufCodecs.STRING_UTF8.decode(buf),
+                        ByteBufCodecs.STRING_UTF8.decode(buf),
+                        ByteBufCodecs.STRING_UTF8.decode(buf),
+                        ByteBufCodecs.BOOL.decode(buf),
+                        ByteBufCodecs.STRING_UTF8.decode(buf),
+                        ByteBufCodecs.STRING_UTF8.decode(buf)
+                )
+        );
+
+        static Recovery fromEntry(AuctionRecoveryEntry entry) {
+            return new Recovery(
+                    entry.recoveryId(),
+                    entry.auctionId(),
+                    entry.sellerId(),
+                    entry.sellerName(),
+                    entry.itemName(),
+                    entry.totalItemCount(),
+                    entry.adminName(),
+                    entry.reason(),
+                    time(entry.recoveredAt()),
+                    entry.active(),
+                    entry.releasedByName(),
+                    entry.releasedAt().map(AuctionAdminDashboardPayload::time).orElse("")
+            );
         }
     }
 

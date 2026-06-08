@@ -53,7 +53,11 @@ class UasLanguageFileTest {
             "Rate limited. Try again in ",
             " seconds.",
             "Auction {0}: {1} payout: gross {2}, tax {3}, fees {4}, net {5}.",
-            "Auction {0} sales tax transfer failed: {1}"
+            "Auction {0} sales tax transfer failed: {1}",
+            "Force Cancel Auction",
+            "Admin Recovery Storage",
+            "Recovery",
+            "Auction force-cancelled, bidder refunded, and item moved to admin recovery."
     );
     private static final List<String> CRITICAL_TRANSLATED_AWAY_KEYS = List.of(
             "UAS ADMIN DASHBOARD",
@@ -73,7 +77,11 @@ class UasLanguageFileTest {
             "Rate limited. Try again in ",
             " seconds.",
             "Auction {0}: {1} payout: gross {2}, tax {3}, fees {4}, net {5}.",
-            "Auction {0} sales tax transfer failed: {1}"
+            "Auction {0} sales tax transfer failed: {1}",
+            "Force Cancel Auction",
+            "Admin Recovery Storage",
+            "Recovery",
+            "Auction force-cancelled, bidder refunded, and item moved to admin recovery."
     );
 
     @Test

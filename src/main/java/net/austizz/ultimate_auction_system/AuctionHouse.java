@@ -725,9 +725,34 @@ public class AuctionHouse {
         if (admin == null) {
             return AuctionActionResult.fail("Only admins can force-cancel auctions.");
         }
-        if (!admin.hasPermissions(Config.adminStatusPermissionLevel)) {
+        return adminForceCancel(
+                admin.getUUID(),
+                admin.getGameProfile().getName(),
+                admin.hasPermissions(Config.adminStatusPermissionLevel),
+                auctionId,
+                deliveryData,
+                admin.getServer() == null ? null : AuctionAdminSavedData.get(admin.getServer()),
+                false,
+                "Admin force cancel"
+        );
+    }
+
+    public AuctionActionResult adminForceCancel(UUID adminId,
+                                                String adminName,
+                                                boolean permitted,
+                                                UUID auctionId,
+                                                AuctionDeliverySavedData deliveryData,
+                                                AuctionAdminSavedData adminData,
+                                                boolean recoverItems,
+                                                String reason) {
+        if (!permitted) {
             return AuctionActionResult.fail("You do not have permission to force-cancel auctions.");
         }
+        String safeReason = reason == null ? "" : reason.trim();
+        if (safeReason.isBlank()) {
+            return AuctionActionResult.fail("Force-cancel reason is required.");
+        }
+        String safeAdminName = adminName == null || adminName.isBlank() ? "Console" : adminName;
         AuctionItem item = getAuctionItem(auctionId);
         if (item == null) {
             return AuctionActionResult.fail("Auction not found.");
@@ -735,6 +760,9 @@ public class AuctionHouse {
         synchronized (item) {
             if (item.getState() == AuctionState.CLAIMED || item.getState() == AuctionState.CANCELLED) {
                 return AuctionActionResult.fail("Auction has already been claimed or cancelled.");
+            }
+            if (recoverItems && adminData == null) {
+                return AuctionActionResult.fail("Admin recovery storage is unavailable.");
             }
 
             UUID winnerAccountId = item.getWinningBidRecord()
@@ -750,22 +778,93 @@ public class AuctionHouse {
                 }
             }
 
-            if (!item.transitionTo(AuctionState.CANCELLED, "admin force-cancelled by " + admin.getGameProfile().getName())) {
+            if (!item.transitionTo(AuctionState.CANCELLED, "admin force-cancelled by " + safeAdminName + ": " + safeReason)) {
                 return AuctionActionResult.fail("Auction could not be force-cancelled.");
             }
-            giveOrDeliver(item.getPlayerId(), item.getContents(), deliveryData, auctionId, "Admin force-cancel return");
-            markChanged("Auction storage marked dirty after admin force-cancel.");
-            Object[] sellerArgs = {item.getAuctionId(), itemName(item)};
-            sendAuctionAlert(item.getPlayerId(), "Auction Force-Cancelled", "Auction {0}: {1} was force-cancelled by an admin and returned.", "WARNING", sellerArgs);
-            sendAuctionChatMessage(item.getPlayerId(), "Auction {0}: {1} was force-cancelled by an admin and returned.", ChatFormatting.YELLOW, sellerArgs, openAhAction(), myAuctionsAction());
-            if (winnerId != null) {
-                Object[] winnerArgs = {item.getAuctionId(), itemName(item)};
-                sendAuctionAlert(winnerId, "Auction Force-Cancelled", "Auction {0}: Your bid on {1} was refunded after an admin force-cancel.", "WARNING", winnerArgs);
-                sendAuctionChatMessage(winnerId, "Auction {0}: Your bid on {1} was refunded after an admin force-cancel.", ChatFormatting.YELLOW, winnerArgs, openAhAction());
+            if (recoverItems) {
+                AuctionRecoveryEntry recoveryEntry = AuctionRecoveryEntry.create(
+                        item.getAuctionId(),
+                        item.getPlayerId(),
+                        playerName(item.getPlayerId()),
+                        adminId,
+                        safeAdminName,
+                        safeReason,
+                        item.getContents()
+                );
+                adminData.addRecovery(recoveryEntry);
+            } else {
+                giveOrDeliver(item.getPlayerId(), item.getContents(), deliveryData, auctionId, "Admin force-cancel return: " + safeReason);
             }
-            alertSubscribers(item, exclusions(item.getPlayerId(), winnerId), "Auction Force-Cancelled", "Auction {0}: {1} was force-cancelled by an admin.", "WARNING", item.getAuctionId(), itemName(item));
-            return AuctionActionResult.ok("Auction force-cancelled and item returned.");
+            markChanged("Auction storage marked dirty after admin force-cancel.");
+            Object[] sellerArgs = {item.getAuctionId(), itemName(item), safeAdminName, safeReason};
+            if (recoverItems) {
+                sendAuctionAlert(item.getPlayerId(), "Auction Force-Cancelled", "Auction {0}: {1} was force-cancelled by admin {2}. Reason: {3}. Item moved to admin recovery.", "WARNING", sellerArgs);
+                sendAuctionChatMessage(item.getPlayerId(), "Auction {0}: {1} was force-cancelled by admin {2}. Reason: {3}. Item moved to admin recovery.", ChatFormatting.YELLOW, sellerArgs, openAhAction(), myAuctionsAction());
+            } else {
+                sendAuctionAlert(item.getPlayerId(), "Auction Force-Cancelled", "Auction {0}: {1} was force-cancelled by admin {2}. Reason: {3}. Item returned.", "WARNING", sellerArgs);
+                sendAuctionChatMessage(item.getPlayerId(), "Auction {0}: {1} was force-cancelled by admin {2}. Reason: {3}. Item returned.", ChatFormatting.YELLOW, sellerArgs, openAhAction(), myAuctionsAction());
+            }
+            if (winnerId != null) {
+                Object[] winnerArgs = {item.getAuctionId(), itemName(item), safeReason};
+                sendAuctionAlert(winnerId, "Auction Force-Cancelled", "Auction {0}: Your bid on {1} was refunded after an admin force-cancel. Reason: {2}", "WARNING", winnerArgs);
+                sendAuctionChatMessage(winnerId, "Auction {0}: Your bid on {1} was refunded after an admin force-cancel. Reason: {2}", ChatFormatting.YELLOW, winnerArgs, openAhAction());
+            }
+            alertSubscribers(item, exclusions(item.getPlayerId(), winnerId), "Auction Force-Cancelled", "Auction {0}: {1} was force-cancelled by admin {2}. Reason: {3}", "WARNING", item.getAuctionId(), itemName(item), safeAdminName, safeReason);
+            return AuctionActionResult.ok(recoverItems
+                    ? "Auction force-cancelled, bidder refunded, and item moved to admin recovery."
+                    : "Auction force-cancelled, bidder refunded, and item returned.");
         }
+    }
+
+    public AuctionActionResult adminReleaseRecovery(ServerPlayer admin,
+                                                    UUID recoveryId,
+                                                    AuctionDeliverySavedData deliveryData,
+                                                    AuctionAdminSavedData adminData,
+                                                    String reason) {
+        if (admin == null) {
+            return AuctionActionResult.fail("Only admins can release recovery items.");
+        }
+        return adminReleaseRecovery(
+                admin.getUUID(),
+                admin.getGameProfile().getName(),
+                admin.hasPermissions(Config.adminStatusPermissionLevel),
+                recoveryId,
+                deliveryData,
+                adminData,
+                reason
+        );
+    }
+
+    public AuctionActionResult adminReleaseRecovery(UUID adminId,
+                                                    String adminName,
+                                                    boolean permitted,
+                                                    UUID recoveryId,
+                                                    AuctionDeliverySavedData deliveryData,
+                                                    AuctionAdminSavedData adminData,
+                                                    String reason) {
+        if (!permitted) {
+            return AuctionActionResult.fail("You do not have permission to release recovery items.");
+        }
+        if (adminData == null) {
+            return AuctionActionResult.fail("Admin recovery storage is unavailable.");
+        }
+        AuctionRecoveryEntry entry = adminData.getRecoveryEntry(recoveryId).orElse(null);
+        if (entry == null) {
+            return AuctionActionResult.fail("Recovery entry not found.");
+        }
+        if (!entry.active()) {
+            return AuctionActionResult.fail("Recovery entry has already been released.");
+        }
+        String safeReason = reason == null || reason.isBlank() ? "Admin recovery release" : reason.trim();
+        boolean released = adminData.releaseRecovery(recoveryId, adminId, adminName, safeReason);
+        if (!released) {
+            return AuctionActionResult.fail("Recovery entry has already been released.");
+        }
+        giveOrDeliver(entry.sellerId(), entry.contents(), deliveryData, entry.auctionId(), "Admin recovery release: " + safeReason);
+        Object[] sellerArgs = {entry.auctionId(), entry.itemName(), safeReason};
+        sendAuctionAlert(entry.sellerId(), "Auction Recovery Released", "Auction {0}: {1} was released from admin recovery. Reason: {2}", "INFO", sellerArgs);
+        sendAuctionChatMessage(entry.sellerId(), "Auction {0}: {1} was released from admin recovery. Reason: {2}", ChatFormatting.GREEN, sellerArgs, openAhAction(), deliveryAction());
+        return AuctionActionResult.ok("Recovery item released to seller delivery storage.");
     }
 
     public AuctionActionResult adminRetrySettlement(ServerPlayer admin, UUID auctionId, AuctionDeliverySavedData deliveryData) {
@@ -1076,6 +1175,10 @@ public class AuctionHouse {
         return new AuctionChatAction("[My Auctions]", "/ah mine active", "Show your auction listings in chat.", ChatFormatting.GOLD, ClickEvent.Action.RUN_COMMAND);
     }
 
+    private AuctionChatAction deliveryAction() {
+        return new AuctionChatAction("[Deliveries]", "/ah", "Open the Auction House delivery storage.", ChatFormatting.GREEN, ClickEvent.Action.RUN_COMMAND);
+    }
+
     private AuctionChatAction claimAction(AuctionItem item) {
         return new AuctionChatAction("[Claim]", "/ah claim " + item.getAuctionId(), "Claim this auction if it is available.", ChatFormatting.GREEN, ClickEvent.Action.RUN_COMMAND);
     }
@@ -1335,6 +1438,7 @@ public class AuctionHouse {
         );
         List<AuctionPlayerBan> bans = adminData == null ? List.of() : adminData.getBans();
         List<AuctionAdminAuditEntry> audit = adminData == null ? List.of() : adminData.getAuditLog().stream().limit(80).toList();
+        List<AuctionRecoveryEntry> recoveryEntries = adminData == null ? List.of() : adminData.getRecoveryEntries().stream().limit(80).toList();
         List<AuctionAdminDashboardSnapshot.Player> players = adminPlayers(safeAll, adminData, bans);
         List<AuctionAdminDashboardSnapshot.BannedEntry> bannedEntries = adminBannedEntries(safeAll);
         List<AuctionListingSummary> restrictedListings = safeAll.stream()
@@ -1349,7 +1453,7 @@ public class AuctionHouse {
                 .sorted(Comparator.comparing(AuctionListingSummary::endsAt).reversed())
                 .limit(80)
                 .toList();
-        return new AuctionAdminDashboardSnapshot(stats, players, bans, audit, bannedEntries, restrictedListings, failedSettlements, LocalDateTime.now().toString());
+        return new AuctionAdminDashboardSnapshot(stats, players, bans, audit, bannedEntries, recoveryEntries, restrictedListings, failedSettlements, LocalDateTime.now().toString());
     }
 
     private AuctionAdminDashboardSnapshot.Stats adminStats(String label,

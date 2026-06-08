@@ -82,6 +82,13 @@ Retry a failed settlement after reviewing the previous failure and proposed acti
 /uas admin settlement retry <auctionId>
 ```
 
+Force-cancel any non-final auction with a required audit reason. `return` sends the escrowed item back to the seller through inventory or delivery storage. `recover` refunds the bidder but moves the escrowed item into admin recovery storage for later release:
+
+```text
+/uas admin forcecancel <auctionId> return <reason...>
+/uas admin forcecancel <auctionId> recover <reason...>
+```
+
 Open the admin dashboard GUI:
 
 ```text
@@ -97,6 +104,7 @@ The admin dashboard includes:
 - Economy windows for 24h, 7d, and all-time auction activity
 - Moderation queues for failed settlements and active auctions that now match banned item rules
 - A live banned auction entries editor
+- Recovery storage for force-cancelled auctions whose items were confiscated for admin review
 - An audit log for dashboard admin actions
 
 The inspect command prints:

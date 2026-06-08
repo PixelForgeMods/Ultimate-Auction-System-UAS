@@ -145,6 +145,20 @@ public class AUSCommands {
                                                 )
                                         )
                                 )
+                                .then(Commands.literal("forcecancel")
+                                        .then(Commands.argument("auctionId", StringArgumentType.string())
+                                                .then(Commands.literal("return")
+                                                        .then(Commands.argument("reason", StringArgumentType.greedyString())
+                                                                .executes(context -> forceCancelAuction(context, false))
+                                                        )
+                                                )
+                                                .then(Commands.literal("recover")
+                                                        .then(Commands.argument("reason", StringArgumentType.greedyString())
+                                                                .executes(context -> forceCancelAuction(context, true))
+                                                        )
+                                                )
+                                        )
+                                )
                         )
         );
     }
@@ -414,6 +428,45 @@ public class AUSCommands {
                 adminName,
                 String.valueOf(auctionId),
                 preview.message(),
+                result.success(),
+                result.message()
+        );
+        sendResult(source, result);
+        return result.success() ? Command.SINGLE_SUCCESS : 0;
+    }
+
+    private static int forceCancelAuction(CommandContext<CommandSourceStack> context, boolean recoverItems) {
+        CommandSourceStack source = context.getSource();
+        AuctionHouse house = auctionHouse;
+        if (house == null) {
+            source.sendFailure(UasTranslations.literal("Auction house is not initialized."));
+            return 0;
+        }
+        UUID auctionId = parseAuctionId(source, StringArgumentType.getString(context, "auctionId"));
+        if (auctionId == null) {
+            return 0;
+        }
+        String reason = StringArgumentType.getString(context, "reason");
+        ServerPlayer admin = source.getPlayer();
+        UUID adminId = admin == null ? null : admin.getUUID();
+        String adminName = admin == null ? "Console" : admin.getGameProfile().getName();
+        AuctionAdminSavedData adminData = AuctionAdminSavedData.get(source.getServer());
+        AuctionActionResult result = house.adminForceCancel(
+                adminId,
+                adminName,
+                source.hasPermission(Config.adminStatusPermissionLevel),
+                auctionId,
+                AuctionDeliverySavedData.get(source.getServer()),
+                adminData,
+                recoverItems,
+                reason
+        );
+        adminData.addAudit(
+                "ADMIN_FORCE_CANCEL",
+                adminId,
+                adminName,
+                String.valueOf(auctionId),
+                reason,
                 result.success(),
                 result.message()
         );

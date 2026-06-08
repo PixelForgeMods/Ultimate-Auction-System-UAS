@@ -84,7 +84,7 @@ public final class UasPayloads {
                 case "BUYOUT" -> house.buyout(player, payload.auctionId());
                 case "CANCEL" -> house.cancelOwnAuction(player, payload.auctionId(), deliveryData);
                 case "ADMIN_FORCE_CANCEL" -> adminMode
-                        ? house.adminForceCancel(player, payload.auctionId(), deliveryData)
+                        ? AuctionActionResult.fail("Use the admin dashboard force-cancel action with a reason.")
                         : AuctionActionResult.fail("You do not have permission to force-cancel auctions.");
                 case "CLAIM" -> house.claimAuction(player, payload.auctionId(), deliveryData);
                 case "TOGGLE_NOTIFICATIONS" -> house.toggleNotifications(player, payload.auctionId());
@@ -93,11 +93,11 @@ public final class UasPayloads {
             };
             if (adminMode && "ADMIN_FORCE_CANCEL".equals(safe(payload.action()))) {
                 AuctionAdminSavedData.get(player.getServer()).addAudit(
-                        "FORCE_CANCEL",
+                        "ADMIN_FORCE_CANCEL",
                         player.getUUID(),
                         player.getGameProfile().getName(),
                         String.valueOf(payload.auctionId()),
-                        "Admin dashboard force cancel",
+                        "Missing required admin reason",
                         result.success(),
                         result.message()
                 );
@@ -141,10 +141,27 @@ public final class UasPayloads {
             case "ADMIN_FORCE_CANCEL" -> auditedAdminAuctionAction(
                     adminData,
                     admin,
-                    "FORCE_CANCEL",
+                    "ADMIN_FORCE_CANCEL",
                     String.valueOf(payload.auctionId()),
-                    "Admin dashboard force cancel",
-                    house.adminForceCancel(admin, payload.auctionId(), deliveryData)
+                    payload.reason(),
+                    house.adminForceCancel(
+                            admin.getUUID(),
+                            admin.getGameProfile().getName(),
+                            true,
+                            payload.auctionId(),
+                            deliveryData,
+                            adminData,
+                            "recover".equalsIgnoreCase(safe(payload.bannedEntry())),
+                            payload.reason()
+                    )
+            );
+            case "ADMIN_RELEASE_RECOVERY" -> auditedAdminAuctionAction(
+                    adminData,
+                    admin,
+                    "ADMIN_RELEASE_RECOVERY",
+                    String.valueOf(payload.auctionId()),
+                    payload.reason(),
+                    house.adminReleaseRecovery(admin, payload.auctionId(), deliveryData, adminData, payload.reason())
             );
             case "ADMIN_RETRY_SETTLEMENT" -> auditedAdminAuctionAction(
                     adminData,

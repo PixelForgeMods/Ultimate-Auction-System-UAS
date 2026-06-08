@@ -21,18 +21,22 @@ public final class AuctionAdminSavedData extends SavedData {
     private static final String DATA_NAME = "ultimate_auction_system_admin";
     private static final String BANS_TAG = "playerBans";
     private static final String AUDIT_TAG = "auditLog";
+    private static final String RECOVERY_TAG = "recoveryEntries";
     private static final int AUDIT_LIMIT = 500;
 
     private final ConcurrentHashMap<UUID, AuctionPlayerBan> playerBans;
+    private final ConcurrentHashMap<UUID, AuctionRecoveryEntry> recoveryEntries;
     private final List<AuctionAdminAuditEntry> auditLog;
 
     public AuctionAdminSavedData() {
-        this(new ConcurrentHashMap<>(), new ArrayList<>());
+        this(new ConcurrentHashMap<>(), new ConcurrentHashMap<>(), new ArrayList<>());
     }
 
     private AuctionAdminSavedData(ConcurrentHashMap<UUID, AuctionPlayerBan> playerBans,
+                                  ConcurrentHashMap<UUID, AuctionRecoveryEntry> recoveryEntries,
                                   List<AuctionAdminAuditEntry> auditLog) {
         this.playerBans = playerBans;
+        this.recoveryEntries = recoveryEntries;
         this.auditLog = auditLog;
     }
 
@@ -86,6 +90,38 @@ public final class AuctionAdminSavedData extends SavedData {
         return auditLog.stream()
                 .sorted(Comparator.comparing(AuctionAdminAuditEntry::createdAt).reversed())
                 .toList();
+    }
+
+    public synchronized List<AuctionRecoveryEntry> getRecoveryEntries() {
+        return recoveryEntries.values().stream()
+                .sorted(Comparator.<AuctionRecoveryEntry>comparingInt(entry -> entry.active() ? 0 : 1)
+                        .thenComparing(AuctionRecoveryEntry::recoveredAt, Comparator.reverseOrder()))
+                .toList();
+    }
+
+    public synchronized Optional<AuctionRecoveryEntry> getRecoveryEntry(UUID recoveryId) {
+        return Optional.ofNullable(recoveryEntries.get(recoveryId));
+    }
+
+    public synchronized AuctionRecoveryEntry addRecovery(AuctionRecoveryEntry entry) {
+        if (entry == null || entry.recoveryId() == null) {
+            return entry;
+        }
+        recoveryEntries.put(entry.recoveryId(), entry);
+        setDirty();
+        return entry;
+    }
+
+    public synchronized boolean releaseRecovery(UUID recoveryId, UUID adminId, String adminName, String reason) {
+        AuctionRecoveryEntry entry = recoveryEntries.get(recoveryId);
+        if (entry == null) {
+            return false;
+        }
+        boolean released = entry.release(adminId, adminName, reason);
+        if (released) {
+            setDirty();
+        }
+        return released;
     }
 
     public synchronized AuctionPlayerBan applyBan(UUID playerId,
@@ -157,14 +193,23 @@ public final class AuctionAdminSavedData extends SavedData {
             }
         }
         tag.put(AUDIT_TAG, auditTags);
+
+        ListTag recoveryTags = new ListTag();
+        for (AuctionRecoveryEntry entry : recoveryEntries.values()) {
+            if (entry != null && entry.recoveryId() != null) {
+                recoveryTags.add(entry.save(registries));
+            }
+        }
+        tag.put(RECOVERY_TAG, recoveryTags);
         return tag;
     }
 
     private static AuctionAdminSavedData load(CompoundTag tag, HolderLookup.Provider registries) {
         ConcurrentHashMap<UUID, AuctionPlayerBan> bans = new ConcurrentHashMap<>();
+        ConcurrentHashMap<UUID, AuctionRecoveryEntry> recoveryEntries = new ConcurrentHashMap<>();
         List<AuctionAdminAuditEntry> audit = new ArrayList<>();
         if (tag == null) {
-            return new AuctionAdminSavedData(bans, audit);
+            return new AuctionAdminSavedData(bans, recoveryEntries, audit);
         }
 
         ListTag banTags = tag.getList(BANS_TAG, Tag.TAG_COMPOUND);
@@ -180,10 +225,17 @@ public final class AuctionAdminSavedData extends SavedData {
                 AuctionAdminAuditEntry.load(auditTag).ifPresent(audit::add);
             }
         }
+        ListTag recoveryTags = tag.getList(RECOVERY_TAG, Tag.TAG_COMPOUND);
+        for (Tag raw : recoveryTags) {
+            if (raw instanceof CompoundTag recoveryTag) {
+                AuctionRecoveryEntry.load(recoveryTag, registries)
+                        .ifPresent(entry -> recoveryEntries.put(entry.recoveryId(), entry));
+            }
+        }
         audit.sort(Comparator.comparing(AuctionAdminAuditEntry::createdAt).reversed());
         while (audit.size() > AUDIT_LIMIT) {
             audit.remove(audit.size() - 1);
         }
-        return new AuctionAdminSavedData(bans, audit);
+        return new AuctionAdminSavedData(bans, recoveryEntries, audit);
     }
 }
