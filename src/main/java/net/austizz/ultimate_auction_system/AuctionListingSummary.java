@@ -21,6 +21,10 @@ public record AuctionListingSummary(
         BigDecimal startingBid,
         BigDecimal currentBid,
         BigDecimal buyoutPrice,
+        BigDecimal reservePrice,
+        boolean reserveActive,
+        boolean reservePriceVisible,
+        boolean reserveMet,
         int bidCount,
         UUID highestBidderId,
         LocalDateTime createdAt,
@@ -41,6 +45,7 @@ public record AuctionListingSummary(
         int totalItemCount
 ) {
     public AuctionListingSummary {
+        reservePrice = reservePrice == null ? BigDecimal.ZERO : reservePrice;
         contents = contents == null || contents.isEmpty()
                 ? List.of(item == null ? ItemStack.EMPTY : item.copy())
                 : contents.stream()

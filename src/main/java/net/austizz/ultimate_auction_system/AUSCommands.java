@@ -931,6 +931,8 @@ public class AUSCommands {
         sendInspectLine(source, "Starting price", UasMoneyFormatter.display(auction.getStartingBidPrice()), ChatFormatting.GOLD);
         sendInspectLine(source, "Current price", UasMoneyFormatter.display(auction.getCurrentPrice()), ChatFormatting.GOLD);
         sendInspectLine(source, "Buyout price", auction.getBuyoutPrice().map(UasMoneyFormatter::display).orElse("(none)"), ChatFormatting.GOLD);
+        sendInspectLine(source, "Reserve price", auction.getReservePrice().map(UasMoneyFormatter::display).orElse("(none)"), ChatFormatting.GOLD);
+        sendInspectLine(source, "Reserve met", auction.hasReservePrice() ? (auction.isReserveMet() ? "yes" : "no") : "(none)", auction.isReserveMet() ? ChatFormatting.GREEN : ChatFormatting.YELLOW);
         sendInspectLine(source, "Highest bidder", Optional.ofNullable(auction.getHighestBidderId()).map(UUID::toString).orElse("(none)"), ChatFormatting.GRAY);
         sendInspectLine(source, "Start", formatDate(auction.getDateOfStart()), ChatFormatting.GRAY);
         sendInspectLine(source, "End", formatDate(auction.getDateOfEnd()), ChatFormatting.GRAY);

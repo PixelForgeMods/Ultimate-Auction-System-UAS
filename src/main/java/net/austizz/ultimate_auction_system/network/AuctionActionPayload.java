@@ -20,6 +20,7 @@ public record AuctionActionPayload(
         String amount,
         String startingBid,
         String buyoutPrice,
+        String reservePrice,
         int durationHours,
         String endDateTime,
         String description,
@@ -47,6 +48,7 @@ public record AuctionActionPayload(
                 ByteBufCodecs.STRING_UTF8.encode(buf, payload.amount());
                 ByteBufCodecs.STRING_UTF8.encode(buf, payload.startingBid());
                 ByteBufCodecs.STRING_UTF8.encode(buf, payload.buyoutPrice());
+                ByteBufCodecs.STRING_UTF8.encode(buf, payload.reservePrice());
                 ByteBufCodecs.INT.encode(buf, payload.durationHours());
                 ByteBufCodecs.STRING_UTF8.encode(buf, payload.endDateTime());
                 ByteBufCodecs.STRING_UTF8.encode(buf, payload.description());
@@ -70,6 +72,7 @@ public record AuctionActionPayload(
                     ByteBufCodecs.STRING_UTF8.decode(buf),
                     ByteBufCodecs.STRING_UTF8.decode(buf),
                     ByteBufCodecs.STRING_UTF8.decode(buf),
+                    ByteBufCodecs.STRING_UTF8.decode(buf),
                     ByteBufCodecs.INT.decode(buf),
                     ByteBufCodecs.STRING_UTF8.decode(buf),
                     ByteBufCodecs.STRING_UTF8.decode(buf),
@@ -88,6 +91,7 @@ public record AuctionActionPayload(
     public AuctionActionPayload {
         slots = slots == null ? List.of() : slots.stream().filter(selectedSlot -> selectedSlot != null).limit(18).toList();
         title = title == null ? "" : title;
+        reservePrice = reservePrice == null ? "" : reservePrice;
     }
 
     public static AuctionActionPayload refresh(String search, String category, String sort, String min, String max, long hoursLeft) {
@@ -99,7 +103,7 @@ public record AuctionActionPayload(
     }
 
     public static AuctionActionPayload refresh(String search, String category, String sort, String min, String max, long hoursLeft, String modId, boolean adminMode) {
-        return new AuctionActionPayload("REFRESH", null, null, -1, List.of(), "", "", "", "", 0, "", "", search, category, sort, min, max, hoursLeft, modId, null, adminMode);
+        return new AuctionActionPayload("REFRESH", null, null, -1, List.of(), "", "", "", "", "", 0, "", "", search, category, sort, min, max, hoursLeft, modId, null, adminMode);
     }
 
     public List<Integer> selectedSlots() {

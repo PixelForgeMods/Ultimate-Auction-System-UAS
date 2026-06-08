@@ -40,11 +40,22 @@ class UasAuctionApiTest {
         UasAuctionApi api = new UasAuctionApi(new AuctionHouse(new FakeUasBankingService()));
         UasAuctionQuery query = new UasAuctionQuery(null, null, null, null, 0L, null, null, 500);
         UasCreateAuctionRequest request = new UasCreateAuctionRequest(List.of(3, 3, -1, 5), null, null, null, null, LocalDateTime.now());
+        UasCreateAuctionRequest reserveRequest = new UasCreateAuctionRequest(
+                List.of(7),
+                "Reserve listing",
+                "",
+                new BigDecimal("10"),
+                new BigDecimal("30"),
+                new BigDecimal("20"),
+                LocalDateTime.now().plusHours(1)
+        );
 
         assertEquals("1", api.apiVersion());
         assertEquals(120, query.limit());
         assertEquals(List.of(3, 5), request.inventorySlots());
         assertEquals(BigDecimal.ZERO, request.startingBid());
         assertEquals(BigDecimal.ZERO, request.buyoutPrice());
+        assertEquals(BigDecimal.ZERO, request.reservePrice());
+        assertEquals(new BigDecimal("20"), reserveRequest.reservePrice());
     }
 }

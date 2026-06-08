@@ -64,6 +64,7 @@ UasCreateAuctionRequest request = new UasCreateAuctionRequest(
         "Helmet and sword bundle",
         new BigDecimal("100"),
         new BigDecimal("500"),
+        new BigDecimal("250"),
         LocalDateTime.now().plusHours(6)
 );
 
@@ -72,7 +73,9 @@ UasAuctionResult result = UasAuctionApi.get().createListing(serverPlayer, reques
 
 `inventorySlots` can contain one slot or multiple slots for a bundle listing. UAS normalizes null, duplicate, and negative slots before validation. The same server service used by the GUI validates auction-house bans, item restrictions, UBS account state, listing fees, duration limits, bundle size, and escrow transfer before activating the auction.
 
-`buyoutPrice` may be zero to create a normal bid-only auction. A positive buyout must satisfy the same validation as the GUI.
+`buyoutPrice` may be zero to create a normal bid-only auction. `reservePrice` may be zero for no reserve. A positive reserve must be at least the starting bid, and a positive buyout must be at least both the starting bid and reserve. The compatibility constructor without `reservePrice` still creates no-reserve listings.
+
+`UasAuctionSnapshot` exposes `reservePrice()` and `reserveMet()`. Read APIs expose the actual reserve amount because they are server-side integration APIs; normal client auction summaries only send the amount to the seller or admins, while bidders receive reserve status without the hidden price.
 
 ## Cancel Listings
 

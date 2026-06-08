@@ -16,6 +16,7 @@ public record PendingAuctionListing(
         String title,
         BigDecimal startingBid,
         BigDecimal buyoutPrice,
+        BigDecimal reservePrice,
         LocalDateTime endsAt,
         String description,
         LocalDateTime createdAt,
@@ -35,6 +36,20 @@ public record PendingAuctionListing(
                                  LocalDateTime createdAt,
                                  LocalDateTime expiresAt,
                                  String sourceLabel) {
+        this(playerId, slot, itemSnapshot, startingBid, buyoutPrice, BigDecimal.ZERO, endsAt, description, createdAt, expiresAt, sourceLabel);
+    }
+
+    public PendingAuctionListing(UUID playerId,
+                                 int slot,
+                                 ItemStack itemSnapshot,
+                                 BigDecimal startingBid,
+                                 BigDecimal buyoutPrice,
+                                 BigDecimal reservePrice,
+                                 LocalDateTime endsAt,
+                                 String description,
+                                 LocalDateTime createdAt,
+                                 LocalDateTime expiresAt,
+                                 String sourceLabel) {
         this(
                 playerId,
                 List.of(slot),
@@ -42,6 +57,7 @@ public record PendingAuctionListing(
                 "",
                 startingBid,
                 buyoutPrice,
+                reservePrice,
                 endsAt,
                 description,
                 createdAt,
@@ -63,6 +79,7 @@ public record PendingAuctionListing(
         title = title == null ? "" : title.trim();
         startingBid = startingBid == null ? BigDecimal.ZERO : startingBid;
         buyoutPrice = buyoutPrice == null ? BigDecimal.ZERO : buyoutPrice;
+        reservePrice = reservePrice == null ? BigDecimal.ZERO : reservePrice;
         description = description == null ? "" : description;
         createdAt = createdAt == null ? LocalDateTime.now() : createdAt;
         expiresAt = expiresAt == null ? createdAt.plusSeconds(Config.pendingListingConfirmationSeconds) : expiresAt;
@@ -159,6 +176,7 @@ public record PendingAuctionListing(
                 totalItemCount(),
                 startingBid,
                 buyoutPrice,
+                reservePrice,
                 Config.calculateListingFee(startingBid),
                 endsAt,
                 expiresAt,

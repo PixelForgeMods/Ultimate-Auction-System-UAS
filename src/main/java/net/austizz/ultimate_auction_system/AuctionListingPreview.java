@@ -13,6 +13,7 @@ public record AuctionListingPreview(
         int itemCount,
         BigDecimal startingBid,
         BigDecimal buyoutPrice,
+        BigDecimal reservePrice,
         BigDecimal listingFee,
         LocalDateTime endsAt,
         LocalDateTime expiresAt,
@@ -26,6 +27,7 @@ public record AuctionListingPreview(
         itemName = itemName == null ? "" : itemName;
         startingBid = startingBid == null ? BigDecimal.ZERO : startingBid;
         buyoutPrice = buyoutPrice == null ? BigDecimal.ZERO : buyoutPrice;
+        reservePrice = reservePrice == null ? BigDecimal.ZERO : reservePrice;
         listingFee = listingFee == null ? BigDecimal.ZERO : listingFee;
         description = description == null ? "" : description;
         sourceLabel = sourceLabel == null ? "" : sourceLabel;

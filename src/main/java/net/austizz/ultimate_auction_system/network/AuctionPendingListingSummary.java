@@ -17,6 +17,7 @@ public record AuctionPendingListingSummary(
         int itemCount,
         String startingBid,
         String buyoutPrice,
+        String reservePrice,
         String listingFee,
         String endsAt,
         String expiresAt,
@@ -30,6 +31,7 @@ public record AuctionPendingListingSummary(
             ItemStack.EMPTY,
             "",
             0,
+            "0",
             "0",
             "0",
             "0",
@@ -58,6 +60,7 @@ public record AuctionPendingListingSummary(
                 ByteBufCodecs.INT.encode(buf, summary.itemCount());
                 ByteBufCodecs.STRING_UTF8.encode(buf, summary.startingBid());
                 ByteBufCodecs.STRING_UTF8.encode(buf, summary.buyoutPrice());
+                ByteBufCodecs.STRING_UTF8.encode(buf, summary.reservePrice());
                 ByteBufCodecs.STRING_UTF8.encode(buf, summary.listingFee());
                 ByteBufCodecs.STRING_UTF8.encode(buf, summary.endsAt());
                 ByteBufCodecs.STRING_UTF8.encode(buf, summary.expiresAt());
@@ -71,6 +74,7 @@ public record AuctionPendingListingSummary(
                     ItemStack.OPTIONAL_STREAM_CODEC.decode(buf),
                     ByteBufCodecs.STRING_UTF8.decode(buf),
                     ByteBufCodecs.INT.decode(buf),
+                    ByteBufCodecs.STRING_UTF8.decode(buf),
                     ByteBufCodecs.STRING_UTF8.decode(buf),
                     ByteBufCodecs.STRING_UTF8.decode(buf),
                     ByteBufCodecs.STRING_UTF8.decode(buf),
@@ -94,6 +98,7 @@ public record AuctionPendingListingSummary(
                 preview.itemCount(),
                 UasMoneyFormatter.display(preview.startingBid()),
                 UasMoneyFormatter.display(preview.buyoutPrice()),
+                UasMoneyFormatter.display(preview.reservePrice()),
                 UasMoneyFormatter.display(preview.listingFee()),
                 time(preview.endsAt()),
                 time(preview.expiresAt()),

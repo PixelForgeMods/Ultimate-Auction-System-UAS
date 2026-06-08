@@ -84,7 +84,7 @@ Claim a won item or an expired unsold seller return:
 /ah claim <auctionId>
 ```
 
-The GUI is preferred for most player workflows because it includes inventory slot selection, bundle creation, optional buyout, date/time picking, account selection, listing-fee preview, bid review, delivery storage, relisting expired unsold auctions, and validation before submission.
+The GUI is preferred for most player workflows because it includes inventory slot selection, bundle creation, optional buyout, optional hidden reserve price, date/time picking, account selection, listing-fee preview, bid review, delivery storage, relisting expired unsold auctions, and validation before submission.
 
 Server owners can place `ultimate_auction_system:auction_terminal` blocks in hubs or marketplaces. Interacting with a terminal opens the same Auction House GUI as `/ah`; disabling terminal access does not disable `/ah`.
 
@@ -110,9 +110,11 @@ The Filters modal can save named Browse presets. Saved searches persist per play
 
 Bid and raise-bid modals use a two-step flow. The first action refreshes the UBS account snapshot and shows the selected account, balance, bid amount, expected remaining balance, and warnings. The second action submits the bid to the same server service used by `/ah bid`.
 
-Create-auction supports one inventory slot or a bundle of up to 18 stacks. Bundle auctions show a bundle title and a contents preview. UAS validates the selected item contents again on confirm before escrow.
+Reserve-price auctions keep the reserve amount hidden from bidders, but auction rows show whether the reserve has been met. If an auction ends below reserve, UAS refunds the held highest bid and lets the seller claim the unsold item return.
 
-Relist appears on expired unsold auctions owned by the current player. It reuses the old escrowed item contents and previous pricing fields, lets the seller edit the new price/date/description, charges the configured listing fee again, creates a fresh active auction, and keeps the original expired auction as an audited history entry.
+Create-auction supports one inventory slot or a bundle of up to 18 stacks. Bundle auctions show a bundle title and a contents preview. UAS validates the selected item contents again on confirm before escrow. When reserve prices are enabled, the reserve must be at least the starting bid, and any positive buyout must be at least the reserve.
+
+Relist appears on expired unsold auctions owned by the current player. It reuses the old escrowed item contents and previous pricing fields, including any visible reserve price, lets the seller edit the new price/date/description, charges the configured listing fee again, creates a fresh active auction, and keeps the original expired auction as an audited history entry.
 
 Auction stats track auctions listed, auctions won, gross sold value, gross spent value, and UUID-based marketplace ranks. Stats update from server-side listing activation and successful settlement events, not from client UI actions. `/ah stats` shows a player's own stats; `/ah leaderboard` shows top sellers and buyers only when enabled by config.
 
@@ -196,7 +198,7 @@ The dashboard includes:
 - Recovery storage for force-cancelled auctions held for admin review
 - Audit log for dashboard admin actions
 
-Auction exports are written asynchronously under the server/world `uas_exports/` directory. UAS sanitizes custom file names so exports stay inside that directory, includes item ids/names, prices, states, timestamps, seller/winner UUIDs, bid counts, and settlement references, and records each export in the admin audit log.
+Auction exports are written asynchronously under the server/world `uas_exports/` directory. UAS sanitizes custom file names so exports stay inside that directory, includes item ids/names, prices, reserve price/status, states, timestamps, seller/winner UUIDs, bid counts, and settlement references, and records each export in the admin audit log.
 
 ## Admin Permission
 
@@ -249,6 +251,7 @@ Marketplace:
 - `marketplace.maxSavedSearchesPerPlayer`: named Browse filter presets each player can save, default `12`
 - `marketplace.enableLeaderboards`: expose `/ah leaderboard` top seller/buyer rankings, default `false`
 - `marketplace.enableAuctionTerminal`: allow `ultimate_auction_system:auction_terminal` block interactions to open the Auction House GUI, default `true`
+- `marketplace.enableReservePrices`: allow sellers to set optional hidden reserve prices on new listings, default `true`
 
 Settlement:
 

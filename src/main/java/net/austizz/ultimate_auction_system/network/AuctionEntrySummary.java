@@ -24,6 +24,10 @@ public record AuctionEntrySummary(
         String startingBid,
         String currentBid,
         String buyoutPrice,
+        String reservePrice,
+        boolean reserveActive,
+        boolean reservePriceVisible,
+        boolean reserveMet,
         int bidCount,
         String endsAt,
         boolean viewerIsSeller,
@@ -41,6 +45,7 @@ public record AuctionEntrySummary(
         int totalItemCount
 ) {
     public AuctionEntrySummary {
+        reservePrice = reservePrice == null ? "" : reservePrice;
         contents = contents == null || contents.isEmpty()
                 ? List.of(item == null ? ItemStack.EMPTY : item.copy())
                 : contents.stream()
@@ -64,6 +69,10 @@ public record AuctionEntrySummary(
                 ByteBufCodecs.STRING_UTF8.encode(buf, summary.startingBid());
                 ByteBufCodecs.STRING_UTF8.encode(buf, summary.currentBid());
                 ByteBufCodecs.STRING_UTF8.encode(buf, summary.buyoutPrice());
+                ByteBufCodecs.STRING_UTF8.encode(buf, summary.reservePrice());
+                ByteBufCodecs.BOOL.encode(buf, summary.reserveActive());
+                ByteBufCodecs.BOOL.encode(buf, summary.reservePriceVisible());
+                ByteBufCodecs.BOOL.encode(buf, summary.reserveMet());
                 ByteBufCodecs.INT.encode(buf, summary.bidCount());
                 ByteBufCodecs.STRING_UTF8.encode(buf, summary.endsAt());
                 ByteBufCodecs.BOOL.encode(buf, summary.viewerIsSeller());
@@ -93,6 +102,10 @@ public record AuctionEntrySummary(
                     ByteBufCodecs.STRING_UTF8.decode(buf),
                     ByteBufCodecs.STRING_UTF8.decode(buf),
                     ByteBufCodecs.STRING_UTF8.decode(buf),
+                    ByteBufCodecs.STRING_UTF8.decode(buf),
+                    ByteBufCodecs.BOOL.decode(buf),
+                    ByteBufCodecs.BOOL.decode(buf),
+                    ByteBufCodecs.BOOL.decode(buf),
                     ByteBufCodecs.INT.decode(buf),
                     ByteBufCodecs.STRING_UTF8.decode(buf),
                     ByteBufCodecs.BOOL.decode(buf),
@@ -125,6 +138,10 @@ public record AuctionEntrySummary(
                 UasMoneyFormatter.display(summary.startingBid()),
                 UasMoneyFormatter.display(summary.currentBid()),
                 UasMoneyFormatter.display(summary.buyoutPrice()),
+                summary.reservePriceVisible() ? UasMoneyFormatter.display(summary.reservePrice()) : "",
+                summary.reserveActive(),
+                summary.reservePriceVisible(),
+                summary.reserveMet(),
                 summary.bidCount(),
                 time(summary.endsAt()),
                 summary.viewerIsSeller(),

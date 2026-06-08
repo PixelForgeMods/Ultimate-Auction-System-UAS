@@ -27,6 +27,7 @@ Run the health check:
 4. Confirm UBS is loaded, UBS version is `1.2.0` or newer, UBS server API is available, config loaded, and storage is healthy.
 5. Review economy settings before players create live auctions.
 6. Decide whether to configure banned auction entries before opening the auction house.
+7. Decide whether to allow hidden reserve prices with `marketplace.enableReservePrices`.
 
 ## Admin Dashboard Sections
 
@@ -136,7 +137,15 @@ Admins can export persisted auction history for external economy analysis:
 /uas admin export csv custom-name.csv
 ```
 
-Exports are written under the server/world `uas_exports/` directory. UAS sanitizes custom filenames, runs the file write asynchronously, and records an `AUCTION_EXPORT` audit entry. Export rows include auction ids, item ids/names, prices, states, timestamps, seller/winner UUIDs, bid counts, and settlement references.
+Exports are written under the server/world `uas_exports/` directory. UAS sanitizes custom filenames, runs the file write asynchronously, and records an `AUCTION_EXPORT` audit entry. Export rows include auction ids, item ids/names, prices, reserve price/status, states, timestamps, seller/winner UUIDs, bid counts, and settlement references.
+
+## Reserve-Price Auctions
+
+Reserve-price auctions are controlled by `marketplace.enableReservePrices`, default `true`. Sellers can set an optional hidden reserve in the GUI or through API-created listings. Bidders see only whether the reserve has been met.
+
+If an auction ends below reserve, UAS deposits the held highest bid back to the bidder account using a `RESERVE_REFUND` financial event, clears the winning bidder from the auction, and leaves the escrowed item claimable by the seller. If that refund cannot be completed, the auction moves to `FAILED_SETTLEMENT` for admin recovery instead of silently ending.
+
+Admin inspect output shows the reserve amount and reserve-met status. Auction exports include `reserve_price` and `reserve_met` columns for offline review.
 
 ## Audit And Suspicion Signals
 

@@ -39,6 +39,7 @@ public class AuctionItem {
     private String escrowSource;
     private BigDecimal startingBidPrice;
     private BigDecimal buyoutPrice;
+    private BigDecimal reservePrice;
     private ConcurrentSkipListMap<UUID, BigDecimal> bids;
     private final ArrayList<AuctionBidRecord> bidRecords;
     private final ArrayList<AuctionFinancialEvent> financialEvents;
@@ -62,7 +63,19 @@ public class AuctionItem {
                        UUID playerId,
                        UUID sellerAccountId,
                        BigDecimal buyoutPrice) {
-        this(UUID.randomUUID(), item, description, dateOfEnd, dateOfStart, startingBidPrice, playerId, sellerAccountId, buyoutPrice);
+        this(UUID.randomUUID(), item, description, dateOfEnd, dateOfStart, startingBidPrice, playerId, sellerAccountId, buyoutPrice, null);
+    }
+
+    public AuctionItem(ItemStack item,
+                       String description,
+                       LocalDateTime dateOfEnd,
+                       LocalDateTime dateOfStart,
+                       BigDecimal startingBidPrice,
+                       UUID playerId,
+                       UUID sellerAccountId,
+                       BigDecimal buyoutPrice,
+                       BigDecimal reservePrice) {
+        this(UUID.randomUUID(), item, description, dateOfEnd, dateOfStart, startingBidPrice, playerId, sellerAccountId, buyoutPrice, reservePrice);
     }
 
     AuctionItem(UUID auctionId,
@@ -74,7 +87,20 @@ public class AuctionItem {
                 UUID playerId,
                 UUID sellerAccountId,
                 BigDecimal buyoutPrice) {
-        this(auctionId, List.of(item), "", description, dateOfEnd, dateOfStart, startingBidPrice, playerId, sellerAccountId, buyoutPrice);
+        this(auctionId, List.of(item), "", description, dateOfEnd, dateOfStart, startingBidPrice, playerId, sellerAccountId, buyoutPrice, null);
+    }
+
+    AuctionItem(UUID auctionId,
+                ItemStack item,
+                String description,
+                LocalDateTime dateOfEnd,
+                LocalDateTime dateOfStart,
+                BigDecimal startingBidPrice,
+                UUID playerId,
+                UUID sellerAccountId,
+                BigDecimal buyoutPrice,
+                BigDecimal reservePrice) {
+        this(auctionId, List.of(item), "", description, dateOfEnd, dateOfStart, startingBidPrice, playerId, sellerAccountId, buyoutPrice, reservePrice);
     }
 
     AuctionItem(UUID auctionId,
@@ -87,6 +113,20 @@ public class AuctionItem {
                 UUID playerId,
                 UUID sellerAccountId,
                 BigDecimal buyoutPrice) {
+        this(auctionId, contents, title, description, dateOfEnd, dateOfStart, startingBidPrice, playerId, sellerAccountId, buyoutPrice, null);
+    }
+
+    AuctionItem(UUID auctionId,
+                List<ItemStack> contents,
+                String title,
+                String description,
+                LocalDateTime dateOfEnd,
+                LocalDateTime dateOfStart,
+                BigDecimal startingBidPrice,
+                UUID playerId,
+                UUID sellerAccountId,
+                BigDecimal buyoutPrice,
+                BigDecimal reservePrice) {
         this(
                 auctionId,
                 contents,
@@ -101,6 +141,7 @@ public class AuctionItem {
                 "",
                 startingBidPrice,
                 buyoutPrice,
+                reservePrice,
                 playerId,
                 sellerAccountId,
                 AuctionState.ACTIVE,
@@ -127,6 +168,7 @@ public class AuctionItem {
                         String escrowSource,
                         BigDecimal startingBidPrice,
                         BigDecimal buyoutPrice,
+                        BigDecimal reservePrice,
                         UUID playerId,
                         UUID sellerAccountId,
                         AuctionState state,
@@ -150,6 +192,7 @@ public class AuctionItem {
         this.escrowSource = escrowSource == null ? "" : escrowSource;
         this.startingBidPrice = startingBidPrice == null ? BigDecimal.ZERO : startingBidPrice;
         this.buyoutPrice = normalizeOptionalPrice(buyoutPrice);
+        this.reservePrice = normalizeOptionalPrice(reservePrice);
         this.bids = bids == null ? new ConcurrentSkipListMap<>() : bids;
         this.bidRecords = bidRecords == null ? new ArrayList<>() : new ArrayList<>(bidRecords);
         this.financialEvents = financialEvents == null ? new ArrayList<>() : new ArrayList<>(financialEvents);
@@ -188,6 +231,7 @@ public class AuctionItem {
     public UUID getSellerAccountId() { return sellerAccountId; }
     public int getItemQuantity() { return item == null ? 0 : item.getCount(); }
     public Optional<BigDecimal> getBuyoutPrice() { return Optional.ofNullable(buyoutPrice); }
+    public Optional<BigDecimal> getReservePrice() { return Optional.ofNullable(reservePrice); }
     public LocalDateTime getCreatedAt() { return createdAt; }
     public LocalDateTime getUpdatedAt() { return updatedAt; }
     public boolean isEscrowed() { return escrowed; }
@@ -199,6 +243,15 @@ public class AuctionItem {
     public List<UUID> getNotificationSubscribers() { return List.copyOf(notificationSubscribers); }
     public boolean isEndingSoonNotificationSent() { return endingSoonNotificationSent; }
     public AuctionState getState() { return state; }
+
+    public boolean hasReservePrice() {
+        return reservePrice != null && reservePrice.compareTo(BigDecimal.ZERO) > 0;
+    }
+
+    public boolean isReserveMet() {
+        return !hasReservePrice()
+                || (highestBidderId.get() != null && highestBid.get().compareTo(reservePrice) >= 0);
+    }
 
     public boolean isNotificationSubscriber(UUID playerId) {
         return playerId != null && notificationSubscribers.contains(playerId);
@@ -274,6 +327,21 @@ public class AuctionItem {
             this.buyoutPrice = normalized;
             markChanged();
         }
+    }
+
+    public void setReservePrice(BigDecimal reservePrice) {
+        BigDecimal normalized = normalizeOptionalPrice(reservePrice);
+        if (!Objects.equals(this.reservePrice, normalized)) {
+            this.reservePrice = normalized;
+            markChanged();
+        }
+    }
+
+    public synchronized void clearWinningBidAfterReserveRefund() {
+        bids.clear();
+        highestBid.set(startingBidPrice == null ? BigDecimal.ZERO : startingBidPrice);
+        highestBidderId.set(null);
+        markChanged();
     }
 
     public void markEscrowed(String source) {
@@ -575,6 +643,12 @@ public class AuctionItem {
         if (buyoutPrice != null && buyoutPrice.compareTo(startingBidPrice) < 0) {
             return Optional.of("buyout price is below starting price");
         }
+        if (reservePrice != null && reservePrice.compareTo(startingBidPrice) < 0) {
+            return Optional.of("reserve price is below starting price");
+        }
+        if (buyoutPrice != null && reservePrice != null && buyoutPrice.compareTo(reservePrice) < 0) {
+            return Optional.of("buyout price is below reserve price");
+        }
         if (state == null) {
             return Optional.of("missing auction state");
         }
@@ -617,6 +691,9 @@ public class AuctionItem {
         tag.putString("highestBid", this.highestBid.get().toPlainString());
         if (this.buyoutPrice != null) {
             tag.putString("buyoutPrice", this.buyoutPrice.toPlainString());
+        }
+        if (this.reservePrice != null) {
+            tag.putString("reservePrice", this.reservePrice.toPlainString());
         }
         if (this.title != null && !this.title.isBlank()) {
             tag.putString("title", this.title);
@@ -713,6 +790,7 @@ public class AuctionItem {
             BigDecimal startingBidPrice = new BigDecimal(tag.getString("startingBidPrice"));
             BigDecimal currentPrice = new BigDecimal(tag.getString("currentPrice"));
             BigDecimal buyoutPrice = tag.contains("buyoutPrice") ? new BigDecimal(tag.getString("buyoutPrice")) : null;
+            BigDecimal reservePrice = tag.contains("reservePrice") ? new BigDecimal(tag.getString("reservePrice")) : null;
             UUID highestBidderId = tag.contains("highestBidderId") ? tag.getUUID("highestBidderId") : null;
             ConcurrentSkipListMap<UUID, BigDecimal> bids = loadBids(tag);
             List<AuctionBidRecord> bidRecords = loadBidRecords(tag, auctionId);
@@ -735,6 +813,7 @@ public class AuctionItem {
                     tag.getString("escrowSource"),
                     startingBidPrice,
                     buyoutPrice,
+                    reservePrice,
                     playerId,
                     sellerAccountId,
                     AuctionState.fromSerializedName(tag.getString("state")),

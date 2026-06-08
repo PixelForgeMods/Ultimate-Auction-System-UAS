@@ -85,6 +85,7 @@ public final class UasPayloads {
                         payload.title(),
                         money(payload.startingBid()),
                         money(payload.buyoutPrice()),
+                        money(payload.reservePrice()),
                         endDateTime(payload),
                         payload.description(),
                         payload.accountId()
@@ -104,6 +105,7 @@ public final class UasPayloads {
                         payload.title(),
                         money(payload.startingBid()),
                         money(payload.buyoutPrice()),
+                        money(payload.reservePrice()),
                         endDateTime(payload),
                         payload.description(),
                         payload.accountId()

@@ -19,6 +19,7 @@ class AuctionSettlementModelTest {
         assertEquals("UAS_AUCTION_PAYOUT:" + auctionId, AuctionHouse.auctionReference(AuctionHouse.EVENT_AUCTION_PAYOUT, auctionId));
         assertEquals("UAS_SALES_TAX:" + auctionId, AuctionHouse.auctionReference(AuctionHouse.EVENT_SALES_TAX, auctionId));
         assertEquals("UAS_BID_ESCROW:" + auctionId, AuctionHouse.auctionReference(AuctionHouse.EVENT_BID_ESCROW, auctionId));
+        assertEquals("UAS_RESERVE_REFUND:" + auctionId, AuctionHouse.auctionReference(AuctionHouse.EVENT_RESERVE_REFUND, auctionId));
     }
 
     @Test
@@ -152,4 +153,5 @@ class AuctionSettlementModelTest {
         assertEquals("Auction Treasury", banking.cheques().getFirst().issuerName());
         assertEquals("Seller", banking.cheques().getFirst().recipientName());
     }
+
 }

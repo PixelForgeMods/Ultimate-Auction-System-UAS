@@ -10,13 +10,24 @@ public record UasCreateAuctionRequest(
         String description,
         BigDecimal startingBid,
         BigDecimal buyoutPrice,
+        BigDecimal reservePrice,
         LocalDateTime endsAt
 ) {
+    public UasCreateAuctionRequest(List<Integer> inventorySlots,
+                                   String title,
+                                   String description,
+                                   BigDecimal startingBid,
+                                   BigDecimal buyoutPrice,
+                                   LocalDateTime endsAt) {
+        this(inventorySlots, title, description, startingBid, buyoutPrice, BigDecimal.ZERO, endsAt);
+    }
+
     public UasCreateAuctionRequest {
         inventorySlots = inventorySlots == null ? List.of() : inventorySlots.stream().filter(slot -> slot != null && slot >= 0).distinct().toList();
         title = title == null ? "" : title;
         description = description == null ? "" : description;
         startingBid = startingBid == null ? BigDecimal.ZERO : startingBid;
         buyoutPrice = buyoutPrice == null ? BigDecimal.ZERO : buyoutPrice;
+        reservePrice = reservePrice == null ? BigDecimal.ZERO : reservePrice;
     }
 }

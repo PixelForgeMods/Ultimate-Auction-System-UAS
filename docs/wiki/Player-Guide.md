@@ -52,12 +52,15 @@ The GUI is the recommended way to create auctions.
 4. Enter a bundle title if you selected multiple stacks.
 5. Enter a starting bid.
 6. Optionally enter a buyout price.
-7. Pick an end date and time.
-8. Add a description.
-9. Review the listing fee, selected UBS account, and item preview.
-10. Confirm the listing.
+7. Optionally enter a hidden reserve price when the server enables reserve auctions.
+8. Pick an end date and time.
+9. Add a description.
+10. Review the listing fee, selected UBS account, and item preview.
+11. Confirm the listing.
 
 Bundle auctions can include up to 18 item stacks. UAS escrows the selected item contents when the listing is confirmed, so players cannot sell an item and keep using it at the same time.
+
+Reserve prices are hidden from bidders. Auction rows still show whether the reserve has been met. A reserve must be at least the starting bid, and a positive buyout must be at least the reserve. If the auction ends below reserve, UAS refunds the held highest bid and the seller can claim the unsold item back.
 
 ## Create An Auction With Commands
 
@@ -93,7 +96,7 @@ The bid modal uses a two-step review:
 1. Review refreshes your UBS account snapshot and shows balance, bid amount, and expected remaining balance.
 2. Confirm submits the bid to the server.
 
-Buyout is also confirmed before money is spent. A buyout is only available while the current highest bid is below the buyout price.
+Buyout is also confirmed before money is spent. A buyout is only available while the current highest bid is below the buyout price. On reserve-price auctions, bids below reserve can still be accepted and held, but the listing will not sell until the reserve is met.
 
 Command buyout flow:
 
@@ -142,13 +145,13 @@ If your inventory is full, or an admin releases a recovered item later, UAS can 
 
 ## Relist Expired Unsold Auctions
 
-Expired auctions with no accepted bids show a Relist action for the original seller in `/ah`. Relist opens a themed edit modal with the old item contents already selected and the previous starting bid, buyout, and description filled in. You can adjust those fields and choose a new end date before submitting.
+Expired auctions with no accepted bids, or auctions that ended below reserve after refund, show a Relist action for the original seller in `/ah`. Relist opens a themed edit modal with the old item contents already selected and the previous starting bid, buyout, reserve, and description filled in. You can adjust those fields and choose a new end date before submitting.
 
 Relisting charges the normal configured listing fee again and creates a new active auction. The original expired auction remains in history as an audited record and cannot be claimed separately after the relist succeeds. Relist still respects current banned-item rules, account checks, listing limits, and rate limits.
 
 ## Refunds And Failed Settlement
 
-UAS refunds losing bids automatically when a higher bid is accepted, when a buyout replaces a bid, or when an eligible admin force-cancel returns money. If UBS cannot safely refund, pay out, or reverse escrow, UAS marks the auction as failed settlement and blocks normal claim flow until an admin fixes the UBS/account problem and retries settlement.
+UAS refunds losing bids automatically when a higher bid is accepted, when a buyout replaces a bid, when a reserve-price auction ends below reserve, or when an eligible admin force-cancel returns money. If UBS cannot safely refund, pay out, or reverse escrow, UAS marks the auction as failed settlement and blocks normal claim flow until an admin fixes the UBS/account problem and retries settlement.
 
 ## Manage Your Auctions
 

@@ -18,6 +18,8 @@ public record UasAuctionSnapshot(
         BigDecimal startingBid,
         BigDecimal currentBid,
         BigDecimal buyoutPrice,
+        BigDecimal reservePrice,
+        boolean reserveMet,
         int acceptedBidCount,
         UUID highestBidderId,
         LocalDateTime createdAt,
@@ -26,6 +28,42 @@ public record UasAuctionSnapshot(
         int totalItemCount,
         List<ItemStack> contents
 ) {
+    public UasAuctionSnapshot(UUID auctionId,
+                              UUID sellerId,
+                              String title,
+                              String description,
+                              AuctionState state,
+                              BigDecimal startingBid,
+                              BigDecimal currentBid,
+                              BigDecimal buyoutPrice,
+                              int acceptedBidCount,
+                              UUID highestBidderId,
+                              LocalDateTime createdAt,
+                              LocalDateTime endsAt,
+                              boolean bundle,
+                              int totalItemCount,
+                              List<ItemStack> contents) {
+        this(
+                auctionId,
+                sellerId,
+                title,
+                description,
+                state,
+                startingBid,
+                currentBid,
+                buyoutPrice,
+                BigDecimal.ZERO,
+                true,
+                acceptedBidCount,
+                highestBidderId,
+                createdAt,
+                endsAt,
+                bundle,
+                totalItemCount,
+                contents
+        );
+    }
+
     public UasAuctionSnapshot {
         title = title == null ? "" : title;
         description = description == null ? "" : description;
@@ -33,6 +71,7 @@ public record UasAuctionSnapshot(
         startingBid = startingBid == null ? BigDecimal.ZERO : startingBid;
         currentBid = currentBid == null ? BigDecimal.ZERO : currentBid;
         buyoutPrice = buyoutPrice == null ? BigDecimal.ZERO : buyoutPrice;
+        reservePrice = reservePrice == null ? BigDecimal.ZERO : reservePrice;
         contents = copyContents(contents);
     }
 
@@ -58,6 +97,8 @@ public record UasAuctionSnapshot(
                 item.getStartingBidPrice(),
                 item.getCurrentPrice(),
                 item.getBuyoutPrice().orElse(BigDecimal.ZERO),
+                item.getReservePrice().orElse(BigDecimal.ZERO),
+                item.isReserveMet(),
                 (int) item.getBidRecords().stream().filter(record -> record != null && record.isAccepted()).count(),
                 item.getHighestBidderId(),
                 item.getCreatedAt(),

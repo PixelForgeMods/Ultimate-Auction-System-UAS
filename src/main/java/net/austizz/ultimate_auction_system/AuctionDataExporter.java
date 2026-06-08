@@ -36,6 +36,8 @@ public final class AuctionDataExporter {
             "starting_bid",
             "current_bid",
             "buyout_price",
+            "reserve_price",
+            "reserve_met",
             "date_start",
             "date_end",
             "created_at",
@@ -217,6 +219,8 @@ public final class AuctionDataExporter {
         row.put("starting_bid", money(item.getStartingBidPrice()));
         row.put("current_bid", money(item.getHighestBid()));
         row.put("buyout_price", item.getBuyoutPrice().map(AuctionDataExporter::money).orElse(""));
+        row.put("reserve_price", item.getReservePrice().map(AuctionDataExporter::money).orElse(""));
+        row.put("reserve_met", item.hasReservePrice() ? String.valueOf(item.isReserveMet()) : "");
         row.put("date_start", time(item.getDateOfStart()));
         row.put("date_end", time(item.getDateOfEnd()));
         row.put("created_at", time(item.getCreatedAt()));

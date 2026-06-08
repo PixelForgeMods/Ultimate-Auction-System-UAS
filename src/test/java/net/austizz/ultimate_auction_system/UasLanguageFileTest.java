@@ -64,7 +64,18 @@ class UasLanguageFileTest {
             "Top categories",
             "Top items",
             "Gross volume",
-            "Failed settlements"
+            "Failed settlements",
+            "Reserve (dollars)",
+            "Optional hidden reserve",
+            "Reserve: {0}",
+            "Reserve: {0} ({1})",
+            "Met",
+            "Not met",
+            "Reserve Not Met",
+            "Reserve-price auctions are disabled on this server.",
+            "Reserve price must be at least the starting bid.",
+            "Buyout price must be at least the reserve price.",
+            "Auction {0}: Your bid of {2} on {1} was refunded because reserve was not met."
     );
     private static final List<String> CRITICAL_TRANSLATED_AWAY_KEYS = List.of(
             "UAS ADMIN DASHBOARD",
@@ -95,7 +106,18 @@ class UasLanguageFileTest {
             "Top categories",
             "Top items",
             "Gross volume",
-            "Failed settlements"
+            "Failed settlements",
+            "Reserve (dollars)",
+            "Optional hidden reserve",
+            "Reserve: {0}",
+            "Reserve: {0} ({1})",
+            "Met",
+            "Not met",
+            "Reserve Not Met",
+            "Reserve-price auctions are disabled on this server.",
+            "Reserve price must be at least the starting bid.",
+            "Buyout price must be at least the reserve price.",
+            "Auction {0}: Your bid of {2} on {1} was refunded because reserve was not met."
     );
 
     @Test

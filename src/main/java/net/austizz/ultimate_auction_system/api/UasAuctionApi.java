@@ -80,8 +80,10 @@ public final class UasAuctionApi {
                 request.title(),
                 request.startingBid(),
                 request.buyoutPrice(),
+                request.reservePrice(),
                 request.endsAt(),
-                request.description()
+                request.description(),
+                null
         );
         if (!prepared.success()) {
             return UasAuctionResult.fromAction(prepared, null);

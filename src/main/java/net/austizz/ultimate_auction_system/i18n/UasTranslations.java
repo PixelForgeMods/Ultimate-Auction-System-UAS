@@ -63,6 +63,7 @@ public final class UasTranslations {
             "s: ",
             ", start ",
             ", buyout ",
+            ", reserve ",
             ", duration ",
             ", fee ",
             ". Required: ",

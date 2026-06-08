@@ -46,6 +46,7 @@ class AuctionDataExporterTest {
 
         String body = Files.readString(result.path());
         assertTrue(body.startsWith("auction_id,item_ids,item_names,title,description,state,starting_bid,current_bid,buyout_price"));
+        assertTrue(body.contains("reserve_price,reserve_met"));
         assertEquals(0, result.auctionCount());
     }
 
@@ -79,6 +80,8 @@ class AuctionDataExporterTest {
         row.put("starting_bid", "10");
         row.put("current_bid", "12");
         row.put("buyout_price", "25");
+        row.put("reserve_price", "20");
+        row.put("reserve_met", "false");
         row.put("date_start", "2026-06-08T12:00");
         row.put("date_end", "2026-06-09T12:30");
         row.put("created_at", "2026-06-08T12:00");
@@ -100,6 +103,8 @@ class AuctionDataExporterTest {
         assertTrue(body.contains("\"starting_bid\": \"10\""));
         assertTrue(body.contains("\"current_bid\": \"12\""));
         assertTrue(body.contains("\"buyout_price\": \"25\""));
+        assertTrue(body.contains("\"reserve_price\": \"20\""));
+        assertTrue(body.contains("\"reserve_met\": \"false\""));
         assertTrue(body.contains("\"date_start\": \"2026-06-08T12:00\""));
         assertTrue(body.contains("\"date_end\": \"2026-06-09T12:30\""));
         assertTrue(body.contains("\"seller_uuid\": \"" + sellerId + "\""));

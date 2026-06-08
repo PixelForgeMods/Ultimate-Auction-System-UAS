@@ -140,6 +140,7 @@ public class AuctionHouseScreen extends Screen {
     private String maxPriceDraft = "";
     private String startingBidDraft = "";
     private String buyoutDraft = "";
+    private String reserveDraft = "";
     private String bidDraft = "";
     private UUID selectedAccountId;
     private Modal accountSelectorReturnModal = Modal.NONE;
@@ -175,6 +176,7 @@ public class AuctionHouseScreen extends Screen {
     private EditBox bidBox;
     private EditBox startingBidBox;
     private EditBox buyoutBox;
+    private EditBox reserveBox;
     private EditBox bundleTitleBox;
     private EditBox descriptionBox;
     private EditBox endHourBox;
@@ -267,6 +269,7 @@ public class AuctionHouseScreen extends Screen {
         bidDraft = sanitizeMoneyInput(value(bidBox, bidDraft));
         startingBidDraft = sanitizeMoneyInput(value(startingBidBox, startingBidDraft));
         buyoutDraft = sanitizeMoneyInput(value(buyoutBox, buyoutDraft));
+        reserveDraft = sanitizeMoneyInput(value(reserveBox, reserveDraft));
         bundleTitleDraft = value(bundleTitleBox, bundleTitleDraft);
         savedSearchNameDraft = value(savedSearchNameBox, savedSearchNameDraft);
         adminSearchDraft = value(adminSearchBox, adminSearchDraft);
@@ -784,8 +787,9 @@ public class AuctionHouseScreen extends Screen {
         int bundleOffset = createSelectionIsBundle() ? 48 : 0;
         int startingY = y + (compact ? 274 : 190) + bundleOffset - scroll;
         int buyoutY = y + (compact ? 322 : 190) + bundleOffset - scroll;
-        int endY = y + (compact ? 370 : 190) + bundleOffset - scroll;
-        int descriptionY = y + (compact ? 418 : 238) + bundleOffset - scroll;
+        int reserveY = y + (compact ? 370 : 190) + bundleOffset - scroll;
+        int endY = y + (compact ? 418 : 238) + bundleOffset - scroll;
+        int descriptionY = y + (compact ? 466 : 286) + bundleOffset - scroll;
         int fieldW = compact ? modalW - 40 : 138;
 
         if (createSelectionIsBundle()) {
@@ -814,7 +818,15 @@ public class AuctionHouseScreen extends Screen {
         setVisibleInModalBody(buyoutBox, bodyTop, bodyBottom);
         addRenderableWidget(buyoutBox);
 
-        AuctionButton endDateButton = addAuctionButton(compact ? x + 20 : x + 310, endY, compact ? modalW - 40 : Math.max(90, modalW - 330), 22, Component.literal(endDateDisplay()), AuctionButton.Style.DARK, button -> {
+        reserveBox = new AuctionEditBox(font, compact ? x + 20 : x + 310, reserveY, compact ? modalW - 40 : 128, 22, Component.translatable("Reserve"));
+        reserveBox.setHint(Component.translatable("Optional hidden reserve"));
+        reserveBox.setFilter(this::moneyInput);
+        reserveBox.setValue(reserveDraft);
+        reserveBox.setResponder(value -> reserveDraft = value);
+        setVisibleInModalBody(reserveBox, bodyTop, bodyBottom);
+        addRenderableWidget(reserveBox);
+
+        AuctionButton endDateButton = addAuctionButton(x + 20, endY, modalW - 40, 22, Component.literal(endDateDisplay()), AuctionButton.Style.DARK, button -> {
             datePickerReturnModal = Modal.CREATE;
             modal = Modal.DATE_PICKER;
             calendarMonth = YearMonth.from(selectedEndDate);
@@ -829,7 +841,7 @@ public class AuctionHouseScreen extends Screen {
         setVisibleInModalBody(descriptionBox, bodyTop, bodyBottom);
         addRenderableWidget(descriptionBox);
 
-        int feeY = y + (compact ? 466 : 274) + bundleOffset - scroll;
+        int feeY = y + (compact ? 514 : 334) + bundleOffset - scroll;
         AuctionButton accountButton = addAuctionButton(x + modalW - 128, feeY + 16, 104, 22, "Change", AuctionButton.Style.GRAY, button -> openAccountSelector());
         accountButton.active = !accountOptions().isEmpty();
         setVisibleInModalBody(accountButton, bodyTop, bodyBottom);
@@ -852,8 +864,9 @@ public class AuctionHouseScreen extends Screen {
         int bodyBottom = modalBodyBottom(y, modalH);
         int startingY = y + (compact ? 190 : 166) - scroll;
         int buyoutY = y + (compact ? 238 : 166) - scroll;
-        int endY = y + (compact ? 286 : 166) - scroll;
-        int descriptionY = y + (compact ? 334 : 214) - scroll;
+        int reserveY = y + (compact ? 286 : 166) - scroll;
+        int endY = y + (compact ? 334 : 214) - scroll;
+        int descriptionY = y + (compact ? 382 : 262) - scroll;
         int fieldW = compact ? modalW - 40 : 138;
 
         startingBidBox = new AuctionEditBox(font, x + 20, startingY, fieldW, 22, Component.translatable("Starting Bid"));
@@ -872,7 +885,15 @@ public class AuctionHouseScreen extends Screen {
         setVisibleInModalBody(buyoutBox, bodyTop, bodyBottom);
         addRenderableWidget(buyoutBox);
 
-        AuctionButton endDateButton = addAuctionButton(compact ? x + 20 : x + 310, endY, compact ? modalW - 40 : Math.max(90, modalW - 330), 22, Component.literal(endDateDisplay()), AuctionButton.Style.DARK, button -> {
+        reserveBox = new AuctionEditBox(font, compact ? x + 20 : x + 310, reserveY, compact ? modalW - 40 : 128, 22, Component.translatable("Reserve"));
+        reserveBox.setHint(Component.translatable("Optional hidden reserve"));
+        reserveBox.setFilter(this::moneyInput);
+        reserveBox.setValue(reserveDraft);
+        reserveBox.setResponder(value -> reserveDraft = value);
+        setVisibleInModalBody(reserveBox, bodyTop, bodyBottom);
+        addRenderableWidget(reserveBox);
+
+        AuctionButton endDateButton = addAuctionButton(x + 20, endY, modalW - 40, 22, Component.literal(endDateDisplay()), AuctionButton.Style.DARK, button -> {
             datePickerReturnModal = Modal.RELIST;
             modal = Modal.DATE_PICKER;
             calendarMonth = YearMonth.from(selectedEndDate);
@@ -887,7 +908,7 @@ public class AuctionHouseScreen extends Screen {
         setVisibleInModalBody(descriptionBox, bodyTop, bodyBottom);
         addRenderableWidget(descriptionBox);
 
-        int feeY = y + (compact ? 382 : 250) - scroll;
+        int feeY = y + (compact ? 430 : 310) - scroll;
         AuctionButton accountButton = addAuctionButton(x + modalW - 128, feeY + 16, 104, 22, "Change", AuctionButton.Style.GRAY, button -> openAccountSelector());
         accountButton.active = !accountOptions().isEmpty();
         setVisibleInModalBody(accountButton, bodyTop, bodyBottom);
@@ -1379,6 +1400,7 @@ public class AuctionHouseScreen extends Screen {
         selectedInventorySlots = new ArrayList<>();
         startingBidDraft = "";
         buyoutDraft = "";
+        reserveDraft = "";
         bundleTitleDraft = "";
         descriptionDraft = "";
         selectedEndDate = LocalDate.now().plusDays(1);
@@ -1635,8 +1657,10 @@ public class AuctionHouseScreen extends Screen {
         selectedInventorySlots = new ArrayList<>();
         BigDecimal startingBid = moneyDraft(entry == null ? "" : entry.startingBid());
         BigDecimal buyout = moneyDraft(entry == null ? "" : entry.buyoutPrice());
+        BigDecimal reserve = entry != null && entry.reservePriceVisible() ? moneyDraft(entry.reservePrice()) : BigDecimal.ZERO;
         startingBidDraft = startingBid.compareTo(BigDecimal.ZERO) <= 0 ? "0" : startingBid.stripTrailingZeros().toPlainString();
         buyoutDraft = buyout.compareTo(BigDecimal.ZERO) <= 0 ? "" : buyout.stripTrailingZeros().toPlainString();
+        reserveDraft = reserve.compareTo(BigDecimal.ZERO) <= 0 ? "" : reserve.stripTrailingZeros().toPlainString();
         bundleTitleDraft = entry != null && entry.bundle() ? entry.itemName() : "";
         descriptionDraft = entry == null ? "" : entry.description();
         LocalDateTime defaultEnd = LocalDateTime.now().plusDays(1);
@@ -1910,6 +1934,7 @@ public class AuctionHouseScreen extends Screen {
     private void sendCreateAction() {
         startingBidDraft = sanitizeMoneyInput(value(startingBidBox, startingBidDraft));
         buyoutDraft = sanitizeMoneyInput(value(buyoutBox, buyoutDraft));
+        reserveDraft = sanitizeMoneyInput(value(reserveBox, reserveDraft));
         bundleTitleDraft = value(bundleTitleBox, bundleTitleDraft);
         descriptionDraft = value(descriptionBox, descriptionDraft);
         PacketDistributor.sendToServer(new AuctionActionPayload(
@@ -1922,6 +1947,7 @@ public class AuctionHouseScreen extends Screen {
                 "",
                 startingBidDraft,
                 buyoutDraft,
+                reserveDraft,
                 Math.max(1, (int) Duration.between(LocalDateTime.now(), selectedEndDateTime()).toHours()),
                 selectedEndDateTime().toString(),
                 descriptionDraft,
@@ -1945,6 +1971,7 @@ public class AuctionHouseScreen extends Screen {
         }
         startingBidDraft = sanitizeMoneyInput(value(startingBidBox, startingBidDraft));
         buyoutDraft = sanitizeMoneyInput(value(buyoutBox, buyoutDraft));
+        reserveDraft = sanitizeMoneyInput(value(reserveBox, reserveDraft));
         descriptionDraft = value(descriptionBox, descriptionDraft);
         PacketDistributor.sendToServer(new AuctionActionPayload(
                 "RELIST",
@@ -1956,6 +1983,7 @@ public class AuctionHouseScreen extends Screen {
                 "",
                 startingBidDraft,
                 buyoutDraft,
+                reserveDraft,
                 Math.max(1, (int) Duration.between(LocalDateTime.now(), selectedEndDateTime()).toHours()),
                 selectedEndDateTime().toString(),
                 descriptionDraft,
@@ -1981,6 +2009,7 @@ public class AuctionHouseScreen extends Screen {
                 List.of(),
                 "",
                 amount == null ? "" : sanitizeMoneyInput(amount),
+                "",
                 "",
                 "",
                 0,
@@ -2821,6 +2850,10 @@ public class AuctionHouseScreen extends Screen {
             graphics.drawString(font, Component.literal(Component.translatable("Buyout").getString() + ": " + entry.buyoutPrice()), textX, buyoutY, 0xFF55FF55, false);
         }
         int descriptionY = hasBuyout ? buyoutY + 16 : buyoutY;
+        if (entry.reserveActive()) {
+            graphics.drawString(font, Component.literal(trimToWidth(reserveStatusText(entry), textW)), textX, descriptionY, reserveStatusColor(entry), false);
+            descriptionY += 12;
+        }
         if (entry.bundle()) {
             graphics.drawString(font, Component.translatable("Bundle - {0} stacks / {1} items", entry.contents().size(), entry.totalItemCount()), textX, descriptionY, 0xFF55FF55, false);
             descriptionY += 12;
@@ -2843,7 +2876,19 @@ public class AuctionHouseScreen extends Screen {
     }
 
     private int auctionRowHeight() {
-        return 128;
+        return 142;
+    }
+
+    private String reserveStatusText(AuctionEntrySummary entry) {
+        String status = Component.translatable(entry.reserveMet() ? "Met" : "Not met").getString();
+        if (entry.reservePriceVisible() && entry.reservePrice() != null && !entry.reservePrice().isBlank()) {
+            return Component.translatable("Reserve: {0} ({1})", entry.reservePrice(), status).getString();
+        }
+        return Component.translatable("Reserve: {0}", status).getString();
+    }
+
+    private int reserveStatusColor(AuctionEntrySummary entry) {
+        return entry.reserveMet() ? 0xFF55FF55 : 0xFFFFD966;
     }
 
     private int rowActionColumnWidth(AuctionEntrySummary entry) {
@@ -3139,8 +3184,9 @@ public class AuctionHouseScreen extends Screen {
             }
             drawCreateLabel(graphics, "Starting Bid (dollars)", x + 20, y + 262 + bundleOffset - scroll, modalW - 40);
             drawCreateLabel(graphics, "Buyout (dollars)", x + 20, y + 310 + bundleOffset - scroll, modalW - 40);
-            drawCreateLabel(graphics, "Auction End Date & Time", x + 20, y + 358 + bundleOffset - scroll, modalW - 40);
-            drawCreateLabel(graphics, "Description", x + 20, y + 406 + bundleOffset - scroll, modalW - 40);
+            drawCreateLabel(graphics, "Reserve (dollars)", x + 20, y + 358 + bundleOffset - scroll, modalW - 40);
+            drawCreateLabel(graphics, "Auction End Date & Time", x + 20, y + 406 + bundleOffset - scroll, modalW - 40);
+            drawCreateLabel(graphics, "Description", x + 20, y + 454 + bundleOffset - scroll, modalW - 40);
         } else {
             renderSelectedItemPreview(graphics, x + 236, y + 72 - scroll, modalW - 256, 88);
             if (createSelectionIsBundle()) {
@@ -3148,8 +3194,9 @@ public class AuctionHouseScreen extends Screen {
             }
             drawCreateLabel(graphics, "Starting Bid (dollars)", x + 20, y + 178 + bundleOffset - scroll, 138);
             drawCreateLabel(graphics, "Buyout (dollars)", x + 170, y + 178 + bundleOffset - scroll, 128);
-            drawCreateLabel(graphics, "Auction End Date & Time", x + 310, y + 178 + bundleOffset - scroll, Math.max(90, modalW - 330));
-            drawCreateLabel(graphics, "Description", x + 20, y + 226 + bundleOffset - scroll, modalW - 40);
+            drawCreateLabel(graphics, "Reserve (dollars)", x + 310, y + 178 + bundleOffset - scroll, 128);
+            drawCreateLabel(graphics, "Auction End Date & Time", x + 20, y + 226 + bundleOffset - scroll, modalW - 40);
+            drawCreateLabel(graphics, "Description", x + 20, y + 274 + bundleOffset - scroll, modalW - 40);
         }
 
         int feeY = y + (compact ? 466 : 274) + bundleOffset - scroll;
@@ -3180,13 +3227,15 @@ public class AuctionHouseScreen extends Screen {
         if (compact) {
             drawCreateLabel(graphics, "Starting Bid (dollars)", x + 20, y + 178 - scroll, modalW - 40);
             drawCreateLabel(graphics, "Buyout (dollars)", x + 20, y + 226 - scroll, modalW - 40);
-            drawCreateLabel(graphics, "Auction End Date & Time", x + 20, y + 274 - scroll, modalW - 40);
-            drawCreateLabel(graphics, "Description", x + 20, y + 322 - scroll, modalW - 40);
+            drawCreateLabel(graphics, "Reserve (dollars)", x + 20, y + 274 - scroll, modalW - 40);
+            drawCreateLabel(graphics, "Auction End Date & Time", x + 20, y + 322 - scroll, modalW - 40);
+            drawCreateLabel(graphics, "Description", x + 20, y + 370 - scroll, modalW - 40);
         } else {
             drawCreateLabel(graphics, "Starting Bid (dollars)", x + 20, y + 154 - scroll, 138);
             drawCreateLabel(graphics, "Buyout (dollars)", x + 170, y + 154 - scroll, 128);
-            drawCreateLabel(graphics, "Auction End Date & Time", x + 310, y + 154 - scroll, Math.max(90, modalW - 330));
-            drawCreateLabel(graphics, "Description", x + 20, y + 202 - scroll, modalW - 40);
+            drawCreateLabel(graphics, "Reserve (dollars)", x + 310, y + 154 - scroll, 128);
+            drawCreateLabel(graphics, "Auction End Date & Time", x + 20, y + 202 - scroll, modalW - 40);
+            drawCreateLabel(graphics, "Description", x + 20, y + 250 - scroll, modalW - 40);
         }
 
         int feeY = y + (compact ? 382 : 250) - scroll;
@@ -3267,9 +3316,10 @@ public class AuctionHouseScreen extends Screen {
         int columnW = Math.max(90, (modalW - 56) / 3);
         renderInfoChip(graphics, x + 20, infoTop, columnW, "Starting Bid", pending.startingBid(), 0xFFFFD700);
         renderInfoChip(graphics, x + 28 + columnW, infoTop, columnW, "Buyout", isZeroMoneyLabel(pending.buyoutPrice()) ? Component.translatable("None").getString() : pending.buyoutPrice(), 0xFF55FF55);
-        renderInfoChip(graphics, x + 36 + columnW * 2, infoTop, columnW, "Listing Fee", pending.listingFee(), 0xFFFFD700);
+        renderInfoChip(graphics, x + 36 + columnW * 2, infoTop, columnW, "Reserve", isZeroMoneyLabel(pending.reservePrice()) ? Component.translatable("None").getString() : pending.reservePrice(), 0xFFFFAA00);
 
         int accountY = infoTop + 54;
+        graphics.drawString(font, Component.translatable("Listing Fee").append(Component.literal(": " + pending.listingFee())), x + 20, accountY - 14, 0xFFFFD700, false);
         graphics.drawString(font, Component.literal(trimToWidth(accountSelectorButtonLabel(), modalW - 154)), x + 20, accountY, selectedAccount().frozen() ? 0xFFFF6666 : 0xFFBDBDBD, false);
 
         int descTop = accountY + 18;
@@ -3507,9 +3557,9 @@ public class AuctionHouseScreen extends Screen {
 
     private int createContentHeight(int modalW) {
         if (modal == Modal.RELIST) {
-            return compactCreateModal(modalW) ? 434 : 306;
+            return compactCreateModal(modalW) ? 482 : 366;
         }
-        return (compactCreateModal(modalW) ? 478 : 286) + (createSelectionIsBundle() ? 48 : 0);
+        return (compactCreateModal(modalW) ? 526 : 346) + (createSelectionIsBundle() ? 48 : 0);
     }
 
     private int filterContentHeight() {
@@ -3854,6 +3904,7 @@ public class AuctionHouseScreen extends Screen {
                 -1,
                 List.of(),
                 "DELETE_SEARCH".equals(action) ? "" : name,
+                "",
                 "",
                 "",
                 "",
