@@ -239,6 +239,7 @@ class AuctionUiModelTest {
 
     @Test
     void createPayloadUsesSlotFallbackWhenSlotListIsEmpty() {
+        UUID accountId = UUID.randomUUID();
         AuctionActionPayload payload = new AuctionActionPayload(
                 "PREPARE_CREATE",
                 null,
@@ -259,10 +260,12 @@ class AuctionUiModelTest {
                 "",
                 0L,
                 "",
+                accountId,
                 false
         );
 
         assertEquals(List.of(4), payload.selectedSlots());
+        assertEquals(accountId, payload.accountId());
     }
 
     @Test
@@ -287,6 +290,7 @@ class AuctionUiModelTest {
                 "",
                 0L,
                 "",
+                null,
                 false
         );
 

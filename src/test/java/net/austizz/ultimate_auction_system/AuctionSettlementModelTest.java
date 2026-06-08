@@ -83,4 +83,19 @@ class AuctionSettlementModelTest {
         assertEquals(reference, banking.transactions().getFirst().reference());
         assertEquals(new BigDecimal("75"), banking.getBalance(accountId).balanceAfter());
     }
+
+    @Test
+    void fakeBankingServiceExposesPlayerAccountsAndOwnership() {
+        FakeUasBankingService banking = new FakeUasBankingService();
+        UUID playerId = UUID.randomUUID();
+        UUID otherPlayerId = UUID.randomUUID();
+        UUID primary = banking.createPrimaryAccount(playerId, new BigDecimal("100"));
+        UUID savings = banking.createAccount(playerId, new BigDecimal("250"), "SAVINGS", "Savings");
+        UUID other = banking.createPrimaryAccount(otherPlayerId, new BigDecimal("50"));
+
+        assertEquals(2, banking.getPlayerAccounts(playerId).size());
+        assertTrue(banking.playerOwnsAccount(playerId, primary));
+        assertTrue(banking.playerOwnsAccount(playerId, savings));
+        assertTrue(!banking.playerOwnsAccount(playerId, other));
+    }
 }

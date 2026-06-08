@@ -20,7 +20,8 @@ public record PendingAuctionListing(
         String description,
         LocalDateTime createdAt,
         LocalDateTime expiresAt,
-        String sourceLabel
+        String sourceLabel,
+        UUID sellerAccountId
 ) {
     public static final int MAIN_HAND_SLOT = -1;
 
@@ -45,7 +46,8 @@ public record PendingAuctionListing(
                 description,
                 createdAt,
                 expiresAt,
-                sourceLabel
+                sourceLabel,
+                null
         );
     }
 

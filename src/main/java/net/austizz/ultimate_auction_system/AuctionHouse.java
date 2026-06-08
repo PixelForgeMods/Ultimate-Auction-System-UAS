@@ -98,6 +98,19 @@ public class AuctionHouse {
         }
     }
 
+    private record AccountSelection(boolean success,
+                                    String message,
+                                    UUID accountId,
+                                    UasAccountSnapshot snapshot) {
+        static AccountSelection ok(UasAccountSnapshot snapshot) {
+            return new AccountSelection(true, "", snapshot.accountId(), snapshot);
+        }
+
+        static AccountSelection fail(String message) {
+            return new AccountSelection(false, message == null ? "Selected UBS account is unavailable." : message, null, null);
+        }
+    }
+
     private static final class AdminPlayerAccumulator {
         private final UUID playerId;
         private String name;
@@ -320,6 +333,17 @@ public class AuctionHouse {
                                                                 BigDecimal buyoutPrice,
                                                                 LocalDateTime end,
                                                                 String description) {
+        return prepareAuctionFromInventorySlots(player, slots, title, startingBidPrice, buyoutPrice, end, description, null);
+    }
+
+    public AuctionActionResult prepareAuctionFromInventorySlots(ServerPlayer player,
+                                                                List<Integer> slots,
+                                                                String title,
+                                                                BigDecimal startingBidPrice,
+                                                                BigDecimal buyoutPrice,
+                                                                LocalDateTime end,
+                                                                String description,
+                                                                UUID sellerAccountId) {
         if (player == null) {
             return AuctionActionResult.fail("Only players can create auctions.");
         }
@@ -344,7 +368,7 @@ public class AuctionHouse {
         }
 
         LocalDateTime now = LocalDateTime.now();
-        AuctionActionResult validation = validateListingRequest(player, snapshots, startingBidPrice, buyoutPrice, end);
+        AuctionActionResult validation = validateListingRequest(player, snapshots, startingBidPrice, buyoutPrice, end, sellerAccountId);
         if (!validation.success()) {
             return validation;
         }
@@ -360,13 +384,18 @@ public class AuctionHouse {
                 description,
                 now,
                 now.plusSeconds(Config.pendingListingConfirmationSeconds),
-                snapshots.size() > 1 ? "Bundle (" + snapshots.size() + " items)" : "Inventory Slot " + (safeSlots.getFirst() + 1)
+                snapshots.size() > 1 ? "Bundle (" + snapshots.size() + " items)" : "Inventory Slot " + (safeSlots.getFirst() + 1),
+                sellerAccountId
         );
         pendingListings.put(player.getUUID(), pending);
         return AuctionActionResult.ok(pendingPreviewMessage(pending));
     }
 
     public AuctionActionResult confirmPendingAuction(ServerPlayer player) {
+        return confirmPendingAuction(player, null);
+    }
+
+    public AuctionActionResult confirmPendingAuction(ServerPlayer player, UUID sellerAccountId) {
         if (player == null) {
             return AuctionActionResult.fail("Only players can create auctions.");
         }
@@ -384,26 +413,27 @@ public class AuctionHouse {
             return AuctionActionResult.fail("The item no longer matches the pending auction listing. Start the listing again.");
         }
 
-        AuctionActionResult validation = validateListingRequest(player, pending.itemSnapshots(), pending.startingBid(), pending.buyoutPrice(), pending.endsAt());
+        UUID accountId = sellerAccountId == null ? pending.sellerAccountId() : sellerAccountId;
+        AuctionActionResult validation = validateListingRequest(player, pending.itemSnapshots(), pending.startingBid(), pending.buyoutPrice(), pending.endsAt(), accountId);
         if (!validation.success()) {
             return validation;
         }
 
-        Optional<UUID> sellerAccountId = bankingService.getPrimaryAccountId(player.getUUID());
-        if (sellerAccountId.isEmpty()) {
-            return AuctionActionResult.fail(accountSetupMessage(player.getUUID()));
+        AccountSelection sellerAccount = validateSellerAccount(player.getUUID(), accountId, pending.startingBid());
+        if (!sellerAccount.success()) {
+            return AuctionActionResult.fail(sellerAccount.message());
         }
 
         UUID auctionId = UUID.randomUUID();
         String listingFeeReference = auctionReference(EVENT_LISTING_FEE, auctionId);
-        UasBankingResult feeResult = chargeListingFee(sellerAccountId.get(), pending.startingBid(), listingFeeReference);
+        UasBankingResult feeResult = chargeListingFee(sellerAccount.accountId(), pending.startingBid(), listingFeeReference);
         if (!feeResult.success()) {
             return AuctionActionResult.fail(feeFailureMessage("listing fee", Config.calculateListingFee(pending.startingBid()), feeResult));
         }
 
         List<ItemStack> escrowStacks = pending.itemSnapshots();
         if (!takePendingEscrowFromSeller(player, pending)) {
-            refundListingFee(sellerAccountId.get(), pending.startingBid(), auctionReference(EVENT_LISTING_FEE_REFUND, auctionId));
+            refundListingFee(sellerAccount.accountId(), pending.startingBid(), auctionReference(EVENT_LISTING_FEE_REFUND, auctionId));
             pendingListings.remove(player.getUUID());
             return AuctionActionResult.fail(pending.isBundle()
                     ? "One selected inventory item no longer matches this bundle listing."
@@ -421,7 +451,7 @@ public class AuctionHouse {
                 now,
                 pending.startingBid(),
                 pending.buyoutPrice(),
-                sellerAccountId.get(),
+                sellerAccount.accountId(),
                 pending.isMainHand() ? "SELLER_MAIN_HAND" : pending.isBundle() ? "SELLER_INVENTORY_BUNDLE" : "SELLER_INVENTORY_SLOT_" + pending.slot()
         );
         if (activation.success()) {
@@ -458,26 +488,35 @@ public class AuctionHouse {
     }
 
     public AuctionActionResult placeBidWithEscrow(ServerPlayer bidder, UUID auctionId, BigDecimal amount) {
+        return placeBidWithEscrow(bidder, auctionId, amount, null);
+    }
+
+    public AuctionActionResult placeBidWithEscrow(ServerPlayer bidder, UUID auctionId, BigDecimal amount, UUID bidderAccountId) {
         if (bidder == null) {
             return AuctionActionResult.fail("Only players can place bids.");
         }
         if (AuctionAdminSavedData.isBlocked(bidder.getServer(), bidder.getUUID(), AuctionBanAction.BID)) {
             return auctionBanFailure(AuctionBanAction.BID);
         }
-        return placeBidWithEscrow(bidder.getUUID(), auctionId, amount, true, bidder.getServer());
+        return placeBidWithEscrow(bidder.getUUID(), auctionId, amount, bidderAccountId, true, bidder.getServer());
     }
 
     AuctionActionResult placeBidWithEscrow(UUID bidderId, UUID auctionId, BigDecimal amount) {
-        return placeBidWithEscrow(bidderId, auctionId, amount, true);
+        return placeBidWithEscrow(bidderId, auctionId, amount, null, true);
     }
 
-    private AuctionActionResult placeBidWithEscrow(UUID bidderId, UUID auctionId, BigDecimal amount, boolean emitBidAlerts) {
-        return placeBidWithEscrow(bidderId, auctionId, amount, emitBidAlerts, ServerLifecycleHooks.getCurrentServer());
+    AuctionActionResult placeBidWithEscrow(UUID bidderId, UUID auctionId, BigDecimal amount, UUID bidderAccountId) {
+        return placeBidWithEscrow(bidderId, auctionId, amount, bidderAccountId, true);
+    }
+
+    private AuctionActionResult placeBidWithEscrow(UUID bidderId, UUID auctionId, BigDecimal amount, UUID bidderAccountId, boolean emitBidAlerts) {
+        return placeBidWithEscrow(bidderId, auctionId, amount, bidderAccountId, emitBidAlerts, ServerLifecycleHooks.getCurrentServer());
     }
 
     private AuctionActionResult placeBidWithEscrow(UUID bidderId,
                                                    UUID auctionId,
                                                    BigDecimal amount,
+                                                   UUID requestedBidderAccountId,
                                                    boolean emitBidAlerts,
                                                    MinecraftServer auditServer) {
         if (bidderId == null) {
@@ -511,15 +550,16 @@ public class AuctionHouse {
                 return AuctionActionResult.fail("Bid must be at least " + moneyLabel(minimum) + ".");
             }
 
-            Optional<UUID> bidderAccountId = bankingService.getPrimaryAccountId(bidderId);
-            if (bidderAccountId.isEmpty()) {
+            AccountSelection bidderAccount = resolveBidderAccount(bidderId, requestedBidderAccountId);
+            if (!bidderAccount.success()) {
                 item.recordRejectedBid(bidderId, null, safeAmount, AuctionBidResult.REJECTED_NO_ACCOUNT, "Bidder has no UBS primary account.");
-                return AuctionActionResult.fail("UAS could not find your UBS primary account.");
+                return AuctionActionResult.fail(bidderAccount.message());
             }
-            UasBankingResult canSend = bankingService.validateCanSend(bidderAccountId.get(), safeAmount);
+            UUID bidderAccountId = bidderAccount.accountId();
+            UasBankingResult canSend = bankingService.validateCanSend(bidderAccountId, safeAmount);
             if (!canSend.success()) {
-                item.recordRejectedBid(bidderId, bidderAccountId.get(), safeAmount, AuctionBidResult.REJECTED_ACCOUNT_UNAVAILABLE, canSend.reason());
-                return AuctionActionResult.fail("Your UBS primary account cannot pay this bid: " + canSend.reason());
+                item.recordRejectedBid(bidderId, bidderAccountId, safeAmount, AuctionBidResult.REJECTED_ACCOUNT_UNAVAILABLE, canSend.reason());
+                return AuctionActionResult.fail("Your selected UBS account cannot pay this bid: " + canSend.reason());
             }
 
             UUID previousBidderId = item.getHighestBidderId();
@@ -529,11 +569,11 @@ public class AuctionHouse {
                     .orElse(null);
 
             String holdReference = auctionReference(EVENT_BID_ESCROW, item.getAuctionId());
-            UasBankingResult hold = bankingService.withdraw(bidderAccountId.get(), safeAmount, holdReference);
+            UasBankingResult hold = bankingService.withdraw(bidderAccountId, safeAmount, holdReference);
             recordBankingEvent(item, EVENT_BID_ESCROW, safeAmount, holdReference, hold);
             if (!hold.success()) {
-                item.recordRejectedBid(bidderId, bidderAccountId.get(), safeAmount, AuctionBidResult.REJECTED_ACCOUNT_UNAVAILABLE, hold.reason());
-                return AuctionActionResult.fail("Your UBS primary account could not reserve the bid: " + hold.reason());
+                item.recordRejectedBid(bidderId, bidderAccountId, safeAmount, AuctionBidResult.REJECTED_ACCOUNT_UNAVAILABLE, hold.reason());
+                return AuctionActionResult.fail("Your selected UBS account could not reserve the bid: " + hold.reason());
             }
 
             if (previousBidderId != null && previousAccountId != null) {
@@ -542,9 +582,9 @@ public class AuctionHouse {
                 recordBankingEvent(item, EVENT_OUTBID_REFUND, previousAmount, refundReference, refund);
                 if (!refund.success()) {
                     String holdRefundReference = auctionReference(EVENT_BID_ESCROW_REFUND, item.getAuctionId());
-                    UasBankingResult holdRefund = bankingService.deposit(bidderAccountId.get(), safeAmount, holdRefundReference);
+                    UasBankingResult holdRefund = bankingService.deposit(bidderAccountId, safeAmount, holdRefundReference);
                     recordBankingEvent(item, EVENT_BID_ESCROW_REFUND, safeAmount, holdRefundReference, holdRefund);
-                    item.recordRejectedBid(bidderId, bidderAccountId.get(), safeAmount, AuctionBidResult.REJECTED_ACCOUNT_UNAVAILABLE, "Outbid refund failed: " + refund.reason());
+                    item.recordRejectedBid(bidderId, bidderAccountId, safeAmount, AuctionBidResult.REJECTED_ACCOUNT_UNAVAILABLE, "Outbid refund failed: " + refund.reason());
                     String message = "Outbid refund failed for auction " + item.getAuctionId() + ": " + refund.reason();
                     UltimateAuctionSystem.LOGGER.warn("[UAS] {}", message);
                     alertOnlineAdmins("Auction Refund Failed", "Outbid refund failed for auction {0}: {1}", "ERROR", item.getAuctionId(), refund.reason());
@@ -552,10 +592,10 @@ public class AuctionHouse {
                 }
             }
 
-            AuctionBidRecord bidRecord = item.recordBid(bidderId, bidderAccountId.get(), safeAmount);
+            AuctionBidRecord bidRecord = item.recordBid(bidderId, bidderAccountId, safeAmount);
             if (!bidRecord.isAccepted()) {
                 String refundReference = auctionReference(EVENT_BID_ESCROW_REFUND, item.getAuctionId());
-                UasBankingResult refund = bankingService.deposit(bidderAccountId.get(), safeAmount, refundReference);
+                UasBankingResult refund = bankingService.deposit(bidderAccountId, safeAmount, refundReference);
                 recordBankingEvent(item, EVENT_BID_ESCROW_REFUND, safeAmount, refundReference, refund);
                 if (!refund.success()) {
                     item.transitionTo(AuctionState.FAILED_SETTLEMENT, "bid escrow refund failed after rejected bid: " + refund.reason());
@@ -599,20 +639,28 @@ public class AuctionHouse {
     }
 
     public AuctionActionResult buyout(ServerPlayer bidder, UUID auctionId) {
+        return buyout(bidder, auctionId, null);
+    }
+
+    public AuctionActionResult buyout(ServerPlayer bidder, UUID auctionId, UUID bidderAccountId) {
         if (bidder == null) {
             return AuctionActionResult.fail("Only players can place bids.");
         }
         if (AuctionAdminSavedData.isBlocked(bidder.getServer(), bidder.getUUID(), AuctionBanAction.BUYOUT)) {
             return auctionBanFailure(AuctionBanAction.BUYOUT);
         }
-        return buyout(bidder.getUUID(), auctionId, bidder.getServer());
+        return buyout(bidder.getUUID(), auctionId, bidderAccountId, bidder.getServer());
     }
 
     AuctionActionResult buyout(UUID bidderId, UUID auctionId) {
-        return buyout(bidderId, auctionId, ServerLifecycleHooks.getCurrentServer());
+        return buyout(bidderId, auctionId, null, ServerLifecycleHooks.getCurrentServer());
     }
 
-    private AuctionActionResult buyout(UUID bidderId, UUID auctionId, MinecraftServer auditServer) {
+    AuctionActionResult buyout(UUID bidderId, UUID auctionId, UUID bidderAccountId) {
+        return buyout(bidderId, auctionId, bidderAccountId, ServerLifecycleHooks.getCurrentServer());
+    }
+
+    private AuctionActionResult buyout(UUID bidderId, UUID auctionId, UUID requestedBidderAccountId, MinecraftServer auditServer) {
         if (bidderId == null) {
             return AuctionActionResult.fail("Only players can buy out auctions.");
         }
@@ -644,15 +692,16 @@ public class AuctionHouse {
                 return AuctionActionResult.fail("The current bid already reached the buyout price.");
             }
 
-            Optional<UUID> bidderAccountId = bankingService.getPrimaryAccountId(bidderId);
-            if (bidderAccountId.isEmpty()) {
+            AccountSelection bidderAccount = resolveBidderAccount(bidderId, requestedBidderAccountId);
+            if (!bidderAccount.success()) {
                 item.recordRejectedBid(bidderId, null, buyoutAmount, AuctionBidResult.REJECTED_NO_ACCOUNT, "Bidder has no UBS primary account.");
-                return AuctionActionResult.fail("UAS could not find your UBS primary account.");
+                return AuctionActionResult.fail(bidderAccount.message());
             }
-            UasBankingResult canSend = bankingService.validateCanSend(bidderAccountId.get(), buyoutAmount);
+            UUID bidderAccountId = bidderAccount.accountId();
+            UasBankingResult canSend = bankingService.validateCanSend(bidderAccountId, buyoutAmount);
             if (!canSend.success()) {
-                item.recordRejectedBid(bidderId, bidderAccountId.get(), buyoutAmount, AuctionBidResult.REJECTED_ACCOUNT_UNAVAILABLE, canSend.reason());
-                return AuctionActionResult.fail("Your UBS primary account cannot pay this buyout: " + canSend.reason());
+                item.recordRejectedBid(bidderId, bidderAccountId, buyoutAmount, AuctionBidResult.REJECTED_ACCOUNT_UNAVAILABLE, canSend.reason());
+                return AuctionActionResult.fail("Your selected UBS account cannot pay this buyout: " + canSend.reason());
             }
 
             UUID previousBidderId = item.getHighestBidderId();
@@ -662,11 +711,11 @@ public class AuctionHouse {
                     .orElse(null);
 
             String holdReference = auctionReference(EVENT_BUYOUT_ESCROW, item.getAuctionId());
-            UasBankingResult hold = bankingService.withdraw(bidderAccountId.get(), buyoutAmount, holdReference);
+            UasBankingResult hold = bankingService.withdraw(bidderAccountId, buyoutAmount, holdReference);
             recordBankingEvent(item, EVENT_BUYOUT_ESCROW, buyoutAmount, holdReference, hold);
             if (!hold.success()) {
-                item.recordRejectedBid(bidderId, bidderAccountId.get(), buyoutAmount, AuctionBidResult.REJECTED_ACCOUNT_UNAVAILABLE, hold.reason());
-                return AuctionActionResult.fail("Your UBS primary account could not reserve the buyout: " + hold.reason());
+                item.recordRejectedBid(bidderId, bidderAccountId, buyoutAmount, AuctionBidResult.REJECTED_ACCOUNT_UNAVAILABLE, hold.reason());
+                return AuctionActionResult.fail("Your selected UBS account could not reserve the buyout: " + hold.reason());
             }
 
             if (previousBidderId != null && previousAccountId != null) {
@@ -675,9 +724,9 @@ public class AuctionHouse {
                 recordBankingEvent(item, EVENT_OUTBID_REFUND, previousAmount, refundReference, refund);
                 if (!refund.success()) {
                     String holdRefundReference = auctionReference(EVENT_BUYOUT_ESCROW_REFUND, item.getAuctionId());
-                    UasBankingResult holdRefund = bankingService.deposit(bidderAccountId.get(), buyoutAmount, holdRefundReference);
+                    UasBankingResult holdRefund = bankingService.deposit(bidderAccountId, buyoutAmount, holdRefundReference);
                     recordBankingEvent(item, EVENT_BUYOUT_ESCROW_REFUND, buyoutAmount, holdRefundReference, holdRefund);
-                    item.recordRejectedBid(bidderId, bidderAccountId.get(), buyoutAmount, AuctionBidResult.REJECTED_ACCOUNT_UNAVAILABLE, "Outbid refund failed: " + refund.reason());
+                    item.recordRejectedBid(bidderId, bidderAccountId, buyoutAmount, AuctionBidResult.REJECTED_ACCOUNT_UNAVAILABLE, "Outbid refund failed: " + refund.reason());
                     String message = "Buyout refund of previous bidder failed for auction " + item.getAuctionId() + ": " + refund.reason();
                     UltimateAuctionSystem.LOGGER.warn("[UAS] {}", message);
                     alertOnlineAdmins("Auction Refund Failed", "Buyout refund of previous bidder failed for auction {0}: {1}", "ERROR", item.getAuctionId(), refund.reason());
@@ -685,10 +734,10 @@ public class AuctionHouse {
                 }
             }
 
-            AuctionBidRecord bidRecord = item.recordBid(bidderId, bidderAccountId.get(), buyoutAmount);
+            AuctionBidRecord bidRecord = item.recordBid(bidderId, bidderAccountId, buyoutAmount);
             if (!bidRecord.isAccepted()) {
                 String refundReference = auctionReference(EVENT_BUYOUT_ESCROW_REFUND, item.getAuctionId());
-                UasBankingResult refund = bankingService.deposit(bidderAccountId.get(), buyoutAmount, refundReference);
+                UasBankingResult refund = bankingService.deposit(bidderAccountId, buyoutAmount, refundReference);
                 recordBankingEvent(item, EVENT_BUYOUT_ESCROW_REFUND, buyoutAmount, refundReference, refund);
                 if (!refund.success()) {
                     item.transitionTo(AuctionState.FAILED_SETTLEMENT, "buyout escrow refund failed after rejected buyout: " + refund.reason());
@@ -1403,11 +1452,17 @@ public class AuctionHouse {
                 .toList();
         List<AuctionListingSummary> dashboardListings = buildPersonalDashboard(all, viewerId);
 
+        List<UasAccountSnapshot> accounts = List.of();
         UasAccountSnapshot primaryAccount = null;
         if (viewerId != null) {
-            primaryAccount = bankingService.getPrimaryAccountId(viewerId)
-                    .flatMap(bankingService::getAccountSnapshot)
+            accounts = bankingService.getPlayerAccounts(viewerId);
+            primaryAccount = accounts.stream()
+                    .filter(UasAccountSnapshot::primary)
+                    .findFirst()
                     .orElse(null);
+            if (primaryAccount == null && !accounts.isEmpty()) {
+                primaryAccount = accounts.getFirst();
+            }
         }
         List<AuctionDeliveryEntry> deliveries = viewerId == null || deliveryData == null
                 ? List.of()
@@ -1418,7 +1473,7 @@ public class AuctionHouse {
         AuctionAdminDashboardSnapshot adminDashboard = resolvedAdminMode
                 ? buildAdminDashboard(all, adminSavedData(viewer))
                 : AuctionAdminDashboardSnapshot.empty();
-        return new AuctionHouseSnapshot(browse, myBids, myAuctions, dashboardListings, deliveries, modFilters, primaryAccount, pendingListing, Config.listingFeeRate, message == null ? "" : message, success, resolvedAdminMode, adminDashboard);
+        return new AuctionHouseSnapshot(browse, myBids, myAuctions, dashboardListings, deliveries, modFilters, accounts, primaryAccount, pendingListing, Config.listingFeeRate, message == null ? "" : message, success, resolvedAdminMode, adminDashboard);
     }
 
     private List<AuctionListingSummary> buildPersonalDashboard(List<AuctionListingSummary> all, UUID viewerId) {
@@ -1988,10 +2043,72 @@ public class AuctionHouse {
         return "UAS could not find your UBS primary account. Open UBS and create or select a usable primary account, then try again.";
     }
 
+    private AccountSelection resolvePlayerAccount(UUID playerId, UUID requestedAccountId) {
+        if (playerId == null) {
+            return AccountSelection.fail("Only players can choose UBS accounts.");
+        }
+        UUID accountId = requestedAccountId;
+        if (accountId == null) {
+            Optional<UUID> primary = bankingService.getPrimaryAccountId(playerId);
+            if (primary.isEmpty()) {
+                return AccountSelection.fail(accountSetupMessage(playerId));
+            }
+            accountId = primary.get();
+        }
+        if (!bankingService.playerOwnsAccount(playerId, accountId)) {
+            return AccountSelection.fail("Selected UBS account does not belong to you. Refresh UAS and choose one of your accounts.");
+        }
+        Optional<UasAccountSnapshot> snapshot = bankingService.getAccountSnapshot(accountId);
+        if (snapshot.isEmpty()) {
+            return AccountSelection.fail("Selected UBS account snapshot is unavailable. Refresh UAS or choose another account.");
+        }
+        if (!playerId.equals(snapshot.get().playerId())) {
+            return AccountSelection.fail("Selected UBS account does not belong to you. Refresh UAS and choose one of your accounts.");
+        }
+        return AccountSelection.ok(snapshot.get());
+    }
+
+    private AccountSelection validateSellerAccount(UUID playerId, UUID requestedAccountId, BigDecimal startingBid) {
+        AccountSelection selection = resolvePlayerAccount(playerId, requestedAccountId);
+        if (!selection.success()) {
+            return selection;
+        }
+        UasAccountSnapshot snapshot = selection.snapshot();
+        if (snapshot.frozen()) {
+            String reason = snapshot.frozenReason().isBlank() ? "no reason provided" : snapshot.frozenReason();
+            return AccountSelection.fail("Your selected UBS account is frozen and cannot list auctions right now: " + reason);
+        }
+        UasBankingResult canReceive = bankingService.validateCanReceive(selection.accountId());
+        if (!canReceive.success()) {
+            return AccountSelection.fail("Your selected UBS account cannot receive auction payouts right now: " + canReceive.reason());
+        }
+        BigDecimal listingFee = Config.calculateListingFee(startingBid);
+        if (listingFee.compareTo(BigDecimal.ZERO) > 0) {
+            UasBankingResult canPayFee = bankingService.validateCanSend(selection.accountId(), listingFee);
+            if (!canPayFee.success()) {
+                return AccountSelection.fail(feeFailureMessage("listing fee", listingFee, canPayFee));
+            }
+        }
+        return selection;
+    }
+
+    private AccountSelection resolveBidderAccount(UUID playerId, UUID requestedAccountId) {
+        AccountSelection selection = resolvePlayerAccount(playerId, requestedAccountId);
+        if (!selection.success()) {
+            return selection;
+        }
+        UasAccountSnapshot snapshot = selection.snapshot();
+        if (snapshot.frozen()) {
+            String reason = snapshot.frozenReason().isBlank() ? "no reason provided" : snapshot.frozenReason();
+            return AccountSelection.fail("Your selected UBS account is frozen and cannot pay auctions right now: " + reason);
+        }
+        return selection;
+    }
+
     private String feeFailureMessage(String feeLabel, BigDecimal required, UasBankingResult result) {
         String current = result == null ? "unknown" : moneyLabel(result.balanceAfter());
         String reason = result == null ? "UBS returned no result" : result.reason();
-        return "Your UBS primary account cannot pay the " + feeLabel
+        return "Your selected UBS account cannot pay the " + feeLabel
                 + ". Required: " + moneyLabel(required)
                 + ", available: " + current
                 + ". UBS says: " + reason;
@@ -2221,7 +2338,7 @@ public class AuctionHouse {
                                                        BigDecimal startingBidPrice,
                                                        BigDecimal buyoutPrice,
                                                        LocalDateTime end) {
-        return validateListingRequest(player, stack == null || stack.isEmpty() ? List.of() : List.of(stack), startingBidPrice, buyoutPrice, end);
+        return validateListingRequest(player, stack == null || stack.isEmpty() ? List.of() : List.of(stack), startingBidPrice, buyoutPrice, end, null);
     }
 
     private AuctionActionResult validateListingRequest(ServerPlayer player,
@@ -2229,6 +2346,15 @@ public class AuctionHouse {
                                                        BigDecimal startingBidPrice,
                                                        BigDecimal buyoutPrice,
                                                        LocalDateTime end) {
+        return validateListingRequest(player, stacks, startingBidPrice, buyoutPrice, end, null);
+    }
+
+    private AuctionActionResult validateListingRequest(ServerPlayer player,
+                                                       List<ItemStack> stacks,
+                                                       BigDecimal startingBidPrice,
+                                                       BigDecimal buyoutPrice,
+                                                       LocalDateTime end,
+                                                       UUID sellerAccountId) {
         if (mutationsBlocked) {
             return AuctionActionResult.fail("Auction storage has a migration problem. New listings are blocked until an admin fixes the saved data.");
         }
@@ -2278,27 +2404,9 @@ public class AuctionHouse {
                 return AuctionActionResult.fail("One selected item is restricted and cannot be auctioned.");
             }
         }
-        Optional<UUID> sellerAccountId = bankingService.getPrimaryAccountId(player.getUUID());
-        if (Config.requireUbsForListing && sellerAccountId.isEmpty()) {
-            return AuctionActionResult.fail(accountSetupMessage(player.getUUID()));
-        }
-        if (sellerAccountId.isPresent()) {
-            Optional<UasAccountSnapshot> snapshot = bankingService.getAccountSnapshot(sellerAccountId.get());
-            if (snapshot.isPresent() && snapshot.get().frozen()) {
-                String reason = snapshot.get().frozenReason().isBlank() ? "no reason provided" : snapshot.get().frozenReason();
-                return AuctionActionResult.fail("Your UBS primary account is frozen and cannot list auctions right now: " + reason);
-            }
-            UasBankingResult canReceive = bankingService.validateCanReceive(sellerAccountId.get());
-            if (!canReceive.success()) {
-                return AuctionActionResult.fail("Your UBS primary account cannot receive auction payouts right now: " + canReceive.reason());
-            }
-            BigDecimal listingFee = Config.calculateListingFee(startingBid);
-            if (listingFee.compareTo(BigDecimal.ZERO) > 0) {
-                UasBankingResult canPayFee = bankingService.validateCanSend(sellerAccountId.get(), listingFee);
-                if (!canPayFee.success()) {
-                    return AuctionActionResult.fail(feeFailureMessage("listing fee", listingFee, canPayFee));
-                }
-            }
+        AccountSelection account = validateSellerAccount(player.getUUID(), sellerAccountId, startingBid);
+        if (!account.success()) {
+            return AuctionActionResult.fail(account.message());
         }
         return AuctionActionResult.ok("");
     }

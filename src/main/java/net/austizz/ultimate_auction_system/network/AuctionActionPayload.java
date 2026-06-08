@@ -30,6 +30,7 @@ public record AuctionActionPayload(
         String maximumPrice,
         long maximumHoursLeft,
         String modId,
+        UUID accountId,
         boolean adminMode
 ) implements CustomPacketPayload {
     public static final Type<AuctionActionPayload> TYPE = new Type<>(
@@ -56,6 +57,7 @@ public record AuctionActionPayload(
                 ByteBufCodecs.STRING_UTF8.encode(buf, payload.maximumPrice());
                 ByteBufCodecs.VAR_LONG.encode(buf, payload.maximumHoursLeft());
                 ByteBufCodecs.STRING_UTF8.encode(buf, payload.modId());
+                UasNetworkCodecs.OPTIONAL_UUID_CODEC.encode(buf, payload.accountId());
                 ByteBufCodecs.BOOL.encode(buf, payload.adminMode());
             },
             buf -> new AuctionActionPayload(
@@ -78,6 +80,7 @@ public record AuctionActionPayload(
                     ByteBufCodecs.STRING_UTF8.decode(buf),
                     ByteBufCodecs.VAR_LONG.decode(buf),
                     ByteBufCodecs.STRING_UTF8.decode(buf),
+                    UasNetworkCodecs.OPTIONAL_UUID_CODEC.decode(buf),
                     ByteBufCodecs.BOOL.decode(buf)
             )
     );
@@ -96,7 +99,7 @@ public record AuctionActionPayload(
     }
 
     public static AuctionActionPayload refresh(String search, String category, String sort, String min, String max, long hoursLeft, String modId, boolean adminMode) {
-        return new AuctionActionPayload("REFRESH", null, null, -1, List.of(), "", "", "", "", 0, "", "", search, category, sort, min, max, hoursLeft, modId, adminMode);
+        return new AuctionActionPayload("REFRESH", null, null, -1, List.of(), "", "", "", "", 0, "", "", search, category, sort, min, max, hoursLeft, modId, null, adminMode);
     }
 
     public List<Integer> selectedSlots() {

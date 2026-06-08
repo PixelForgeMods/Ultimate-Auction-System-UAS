@@ -1,5 +1,7 @@
 # Commands and Config
 
+This page is the quick reference for commands, GUI behavior, and important server config.
+
 ## Player Commands
 
 Open the auction house GUI:
@@ -20,22 +22,48 @@ View one auction in chat with clickable shortcuts:
 /ah view <auctionId>
 ```
 
-Bid on an active auction with your UBS primary account:
+Show your own auctions, optionally filtered and paged:
+
+```text
+/ah mine
+/ah mine active
+/ah mine sold
+/ah mine cancelled
+/ah mine expired
+/ah mine active 2
+```
+
+Create an auction from the item in your main hand:
+
+```text
+/ah create <Starting Price> <Duration Hours> <Description>
+/ah create <Starting Price> <Duration Hours> buyout <Buyout Price> <Description>
+```
+
+Confirm or discard the pending command-created listing:
+
+```text
+/ah confirm
+/ah discard
+```
+
+Bid on an active auction:
 
 ```text
 /ah bid <auctionId> <amount>
 ```
 
-Preview a buyout for an active auction that still has a buyout price above the current highest bid:
+Preview and confirm a buyout:
 
 ```text
 /ah buyout <auctionId>
+/ah buyout confirm <auctionId>
 ```
 
-The preview creates a short-lived confirmation. Confirm the spend with:
+Cancel your own active no-bid auction:
 
 ```text
-/ah buyout confirm <auctionId>
+/ah cancel <auctionId>
 ```
 
 Claim a won item or an expired unsold seller return:
@@ -44,23 +72,35 @@ Claim a won item or an expired unsold seller return:
 /ah claim <auctionId>
 ```
 
-Create an auction from the item in your main hand:
+The GUI is preferred for most player workflows because it includes inventory slot selection, bundle creation, optional buyout, date/time picking, account selection, listing-fee preview, bid review, delivery storage, and validation before submission.
 
-```text
-/ah create <Starting Price> <Description> <Ending Date dd-MM>
-```
+## Auction House GUI
 
-Most creation flows should use the GUI because it supports buyout, expiry selection, inventory item selection, listing-fee preview, and validation.
+Player tabs:
 
-## Auction House GUI Filters
+- Dashboard: active, ending soon, claimable, watching, and history sections for the current player
+- Browse: active listings across the server
+- My Bids: auctions where the player has bid, is winning, won, or can claim
+- My Auctions: auctions created by the player
 
-The browser filters run server-side before listings are sent to the client. Text search matches item display names, item registry IDs such as `minecraft:diamond_sword`, bundled item names/registry IDs, seller names, seller UUIDs, descriptions, and auction IDs. Price filters match either the current bid or a positive buyout price, and the time filter limits results to auctions ending within the selected window.
+Supported Browse filters:
 
-Bid and raise-bid modals use a two-step confirmation flow. The first click refreshes the player's UBS primary account snapshot and shows the selected account, current balance, bid amount, expected remaining balance, and any unavailable/frozen/insufficient-funds warning. The second click submits to the same server-side bid service used by `/ah bid`.
+- Search text: item display names, item registry ids, bundled item names/ids, seller names, seller UUIDs, descriptions, and auction IDs
+- Category: all, weapons, armor, tools, consumables, blocks, or misc
+- Mod: all mods or a specific mod id from active listings
+- Price range: current bid or positive buyout price
+- Time left: any time, under 1 hour, under 24 hours, or under 7 days
+- Sort: newest, ending soon, highest bid, lowest price, or buyout price
 
-Auction events and chat list rows use clickable shortcuts with hover text. Outbid, won, sold, expired, cancelled, settlement failed/recovered, payout, and refund-related messages include the auction ID plus relevant shortcuts such as `[View]`, `[Bid]`, `[Buyout]`, `[Claim]`, `[Open /ah]`, or `[My Auctions]`. Buyout shortcuts open the preview flow and never spend money on the first click.
+Bid and raise-bid modals use a two-step flow. The first action refreshes the UBS account snapshot and shows the selected account, balance, bid amount, expected remaining balance, and warnings. The second action submits the bid to the same server service used by `/ah bid`.
 
-The personal Dashboard tab is fetched server-side and capped for large histories. It separates Active, Ending Soon, Claimable, Watching, and History sections, each using the same auction-row actions as the browser where valid.
+Create-auction supports one inventory slot or a bundle of up to 18 stacks. Bundle auctions show a bundle title and a contents preview. UAS validates the selected item contents again on confirm before escrow.
+
+The GUI account selector lists the player's UBS accounts with account type, bank UUID prefix, balance, primary flag, and frozen status. A selected account UUID is sent with create, bid, and buyout actions, then UAS re-checks ownership and fetches a fresh UBS snapshot before taking listing fees, bid escrow, or buyout escrow. If UBS cannot return the selected account snapshot, the action fails with a clear message instead of falling back silently.
+
+Delivery Storage appears when an item cannot be placed directly into a player's inventory or when an admin releases a recovered item. Players can withdraw delivery items after making inventory space.
+
+Auction events and chat list rows use clickable shortcuts with hover text. Buyout shortcuts always open a preview/confirm flow before spending money.
 
 ## Admin Commands
 
@@ -70,13 +110,20 @@ Show dependency, storage, config, and auction health:
 /uas status
 ```
 
-Inspect a specific auction record and full bid history:
+Open the admin dashboard GUI:
 
 ```text
-/uas admin inspect <auctionId>
+/uas admin
+/uas admin gui
 ```
 
-Show a persisted economy report for auction activity:
+Inspect one seller's auction stats:
+
+```text
+/uas admin seller <player>
+```
+
+Show a persisted economy report:
 
 ```text
 /uas admin report
@@ -85,110 +132,132 @@ Show a persisted economy report for auction activity:
 /uas admin report all
 ```
 
-Retry a failed settlement after reviewing the previous failure and proposed action:
+Inspect a specific auction record and full bid history:
+
+```text
+/uas admin inspect <auctionId>
+```
+
+Retry a failed settlement:
 
 ```text
 /uas admin settlement retry <auctionId>
 ```
 
-Force-cancel any non-final auction with a required audit reason. `return` sends the escrowed item back to the seller through inventory or delivery storage. `recover` refunds the bidder but moves the escrowed item into admin recovery storage for later release:
+Force-cancel a non-final auction with an audit reason:
 
 ```text
 /uas admin forcecancel <auctionId> return <reason...>
 /uas admin forcecancel <auctionId> recover <reason...>
 ```
 
-Open the admin dashboard GUI:
+`return` sends the escrowed item back to the seller through inventory or delivery storage. `recover` refunds the bidder when needed, then moves the escrowed item into admin recovery storage for later release.
 
-```text
-/uas admin
-/uas admin gui
-```
+## Admin Dashboard
 
-The admin dashboard includes:
+The dashboard includes:
 
 - Overview cards for auction, economy, settlement, and moderation health
 - Auction inspection, bid history, force-cancel, and failed-settlement retry tools
-- Player inspection with granular auction-house bans for creating, bidding, buyouts, and notifications
-- Economy windows for 24h, 7d, and all-time auction activity, including gross volume, fees, taxes, failed settlements, and compact top seller/category/item summaries
-- Moderation queues for failed settlements and active auctions that now match banned item rules
+- Player inspection with granular auction-house bans for create, bid, buyout, and notification actions
+- Economy windows for 24h, 7d, and all-time auction activity
+- Moderation queues for failed settlements and active auctions matching banned item rules
 - Suspicion signals for rapid bid escalation, repeated bidder pairs, seller self-bids, and repeated cancellations
-- A live banned auction entries editor
-- Recovery storage for force-cancelled auctions whose items were confiscated for admin review
-- An audit log for dashboard admin actions
-
-The inspect command prints:
-
-- Auction id
-- Item and quantity
-- Description
-- State
-- Seller player UUID
-- Seller account UUID
-- Starting price, current price, buyout price
-- Highest bidder
-- Start/end/created/updated timestamps
-- Escrow flag, source, and timestamp
-- Notification subscriber count
-- Every bid record, including rejected records when audit config stores them
-- Suspicion signals for rapid bid escalation, repeated bidder pairs, and seller self-bids
-- Settlement reference and transaction id when present
-- Every financial event, including UBS reference, amount, transaction id, and result
-
-The economy report command and dashboard Economy tab read from persisted auction records and persisted financial events. Completed sale volume is based on successful payout records, fees come from successful listing/cancellation fee records, taxes come from successful `SALES_TAX` records, and failed settlement counts come from current failed-settlement auctions. Broad reports show seller/category/item summaries only and do not expose bidder details.
+- Live banned auction entries editor
+- Recovery storage for force-cancelled auctions held for admin review
+- Audit log for dashboard admin actions
 
 ## Admin Permission
 
-`/uas status`, `/uas admin inspect`, `/uas admin settlement retry`, and the admin dashboard use `Config.adminStatusPermissionLevel`.
+`/uas status`, `/uas admin`, `/uas admin gui`, `/uas admin seller`, `/uas admin report`, `/uas admin inspect`, `/uas admin settlement retry`, and `/uas admin forcecancel` use:
+
+```text
+admin.statusPermissionLevel
+```
+
+Default: `2`.
 
 ## Important Config Values
 
-- `listingFeeRate`: percentage charged when creating an auction
-- `salesTaxRate`: percentage charged on sale settlement
-- `salesTaxDestinationAccountUuid`: optional UBS account UUID that receives sales tax
-- `minimumBidIncrementDollars`: minimum increase over current bid
-- `allowSellerSelfBid`: whether sellers may bid on or buy out their own auctions
-- `maxActiveListingsPerPlayer`: active listing cap per seller
-- `maxAuctionDurationHours`: maximum listing duration
-- `autoSettleExpiredAuctions`: whether UAS scans expired auctions and pays sellers before winner claim
-- `autosaveIntervalTicks`: persistent save cadence
-- `auditRejectedBids`: whether rejected bid attempts are stored in bid history
-- `auditStateTransitions`: whether lifecycle transitions are logged
-- `audit.suspiciousBidPatterns`: whether UAS logs non-punitive suspicious bid/cancel/outbid evidence
-- `audit.suspiciousRapidBidWindowSeconds`: rapid escalation detection window
-- `audit.suspiciousRapidBidCount`: bid count inside the rapid window required for a signal
-- `audit.suspiciousRepeatedBidderPairCount`: alternating outbid turns between the same two bidders required for a signal
-- `audit.suspiciousCancelWindowHours`: repeated seller cancellation detection window
-- `audit.suspiciousCancelCount`: cancelled listing count required for a signal
-- `audit.sellerSelfBidSignals`: whether seller self-bid attempts and accepted self-bids are logged as suspicion signals
-- `audit.externalSuspicionSignalHooks`: reserved opt-in hook for future same-IP or known-collaborator integrations; UAS does not collect or persist IP addresses itself
-- `bannedAuctionEntries`: item, tag, or mod restrictions for future auction listings
-- `rateLimits.createCooldownSeconds`: per-player cooldown for preparing auction listings
-- `rateLimits.bidCooldownSeconds`: per-player cooldown for bids
-- `rateLimits.buyoutCooldownSeconds`: per-player cooldown for buyouts
-- `rateLimits.cancelCooldownSeconds`: per-player cooldown for seller cancellations
-- `rateLimits.searchCooldownSeconds`: per-player cooldown for listing/search refreshes
+Config is generated in `ultimate_auction_system-common.toml`.
 
-Admins with the configured UAS admin permission bypass player rate limits. Claims, delivery withdrawals, settlement recovery, and admin recovery tools are not rate-limited.
+Economy:
 
-## UBS Bidding and Settlement Policy
+- `economy.listingFeeRate`: fraction of starting bid charged when creating a listing, default `0.05`
+- `economy.cancellationFeeRate`: fraction of starting bid charged when a seller cancels a no-bid auction, default `0.0`
+- `economy.salesTaxRate`: fraction of final sale deducted from seller proceeds, default `0.05`
+- `economy.salesTaxDestinationAccountUuid`: optional UBS account UUID that receives tax; blank means tax is recorded as a money sink
+- `economy.minimumBidIncrementDollars`: minimum whole-dollar increase over current highest bid, default `1`
 
-UAS uses the player's UBS primary account by default.
+Bidding and limits:
 
-- Bid placement validates the bidder account, available balance, auction state, self-bid config, and minimum increment server-side.
+- `bidding.allowSellerSelfBid`: whether sellers can bid on or buy out their own auctions, default `false`
+- `limits.maxActiveListingsPerPlayer`: active listing cap per seller, default `25`
+- `limits.minAuctionDurationMinutes`: minimum auction duration, default `5`
+- `limits.maxAuctionDurationHours`: maximum auction duration, default `168`
+- `limits.pendingListingConfirmationSeconds`: pending listing confirmation timeout, default `60`
+- `limits.bannedAuctionEntries`: exact item, tag, or mod restrictions for new listings
+
+Settlement:
+
+- `settlement.requireUbsForListing`: require a usable UBS primary account before creating listings, default `true`
+- `settlement.autoSettleExpiredAuctions`: settle expired auctions automatically, default `true`
+- `settlement.retryAttempts`: automatic settlement retry attempts, default `3`
+- `settlement.retryDelaySeconds`: delay between automatic retry attempts, default `60`
+
+Rate limits:
+
+- `rateLimits.createCooldownSeconds`: per-player cooldown for preparing listings, default `5`
+- `rateLimits.bidCooldownSeconds`: per-player cooldown for bids, default `2`
+- `rateLimits.buyoutCooldownSeconds`: per-player cooldown for buyouts, default `2`
+- `rateLimits.cancelCooldownSeconds`: per-player cooldown for seller cancellations, default `5`
+- `rateLimits.searchCooldownSeconds`: per-player cooldown for listing/search refreshes, default `1`
+
+Audit and moderation:
+
+- `audit.rejectedBids`: persist rejected bid attempts with reason codes, default `true`
+- `audit.stateTransitions`: log auction lifecycle transitions, default `true`
+- `audit.suspiciousBidPatterns`: log non-punitive suspicious bid/cancel/outbid evidence, default `true`
+- `audit.suspiciousRapidBidWindowSeconds`: rapid escalation detection window, default `300`
+- `audit.suspiciousRapidBidCount`: bid count in the rapid window before a signal, default `4`
+- `audit.suspiciousRepeatedBidderPairCount`: alternating outbid turns before a repeated-pair signal, default `3`
+- `audit.suspiciousCancelWindowHours`: repeated seller cancellation detection window, default `24`
+- `audit.suspiciousCancelCount`: cancelled listing count before a signal, default `3`
+- `audit.sellerSelfBidSignals`: log seller self-bid attempts and accepted self-bids as suspicion signals, default `true`
+- `audit.externalSuspicionSignalHooks`: reserved opt-in hook for future privacy-reviewed integrations, default `false`
+
+Storage:
+
+- `storage.autosaveIntervalTicks`: SavedData autosave cadence, default `6000`
+
+Admins with UAS admin permission bypass player rate limits. Claims, delivery withdrawals, settlement recovery, and admin recovery tools are not rate-limited.
+
+## Banned Auction Entries
+
+Supported entry forms:
+
+```text
+minecraft:bedrock
+#minecraft:shulker_boxes
+@minecraft
+```
+
+Dashboard changes save back to `limits.bannedAuctionEntries`. New listings are checked immediately. Existing active auctions are not auto-cancelled, but matching listings appear in the admin Moderation queue.
+
+## UBS Bidding And Settlement Policy
+
+UAS uses the selected UBS account in GUI flows and the player's UBS primary account in command/API flows that do not pass an explicit account.
+
 - Accepted bids use immediate withdrawal escrow because UBS does not expose a dedicated reserve/hold API.
-- First bids must meet or exceed the starting price. Later bids must exceed the current highest bid by at least `minimumBidIncrementDollars`.
-- When a new highest bid is accepted, UAS refunds the previous highest bidder before committing the new bid. If the refund cannot be completed safely, the new bid is rejected and the auction remains with the previous highest bidder.
-- Buyout remains available while the current highest bid is below the buyout price. A buyout immediately escrows buyer funds, refunds the previous highest bidder when needed, pays the seller net proceeds, and leaves the item claimable by the buyer.
-- `salesTaxRate` is deducted from seller proceeds.
-- When `salesTaxDestinationAccountUuid` is blank, sales tax stays a recorded money sink.
-- When `salesTaxDestinationAccountUuid` is set, UAS deposits the tax into that UBS account with the `SALES_TAX` reference before paying the seller.
-- If a configured tax deposit fails, settlement moves to `FAILED_SETTLEMENT` so admins can retry instead of partially paying the seller first.
-- Failed seller payout or escrow refund states move the auction into `FAILED_SETTLEMENT` where normal claim is blocked until an admin retry succeeds.
+- When a higher bid is accepted, UAS refunds the previous highest bidder before committing the new bid.
+- If a previous-bid refund cannot complete safely, the new bid is rejected and the auction keeps the previous highest bidder.
+- Buyout immediately escrows buyer funds, refunds the previous highest bidder when needed, pays the seller net proceeds, and leaves the item claimable by the buyer.
+- Sales tax is deducted before seller payout.
+- If tax deposit, seller payout, or escrow refund fails, the auction moves to `FAILED_SETTLEMENT` for admin recovery.
 
 ## UBS Reference Format
 
-Every UAS-triggered UBS transaction uses a stable reference:
+Every UAS-triggered UBS transaction uses:
 
 ```text
 UAS_<EVENT_TYPE>:<auctionId>
@@ -208,24 +277,12 @@ Current event types:
 - `ADMIN_FORCE_CANCEL_REFUND`
 - `CANCELLATION_FEE`
 
-`SALES_TAX` is recorded in UAS financial events. If a tax destination account is configured, the event contains the UBS transfer result and transaction id when UBS returns one. If no destination is configured, the event records the tax as a money-sink deduction. `/uas admin inspect <auctionId>` shows the UAS auction id, UBS reference, transaction id when UBS returns one, amount, and result for each financial event.
-
-## Banned Auction Entries
-
-Admins can change banned auction entries from the admin dashboard without restarting the server. Dashboard changes apply immediately to new listing attempts and are saved back to `limits.bannedAuctionEntries` in the common config.
-
-Supported entry forms:
-
-- `minecraft:bedrock` for one exact item id
-- `#minecraft:shulker_boxes` for an item tag
-- `@minecraft` for every item from a mod id
-
-Existing active auctions are not auto-cancelled when a new banned entry is added. They are flagged in the dashboard moderation queue so admins can inspect or force-cancel them manually.
+`/uas admin inspect <auctionId>` shows auction id, UBS reference, transaction id when UBS returns one, amount, result, bid history, state transitions, and financial events.
 
 ## Currency
 
-UAS displays money with dollars. UBS still owns account balances and payment settlement.
+UAS displays money in dollars. UBS remains the source of truth for account balances and settlement.
 
 ## Developer API
 
-Other mods should use `UasAuctionApi` instead of reading auction storage directly. The API supports version checks, active-auction queries, immutable auction snapshots, listing creation, seller cancellation, status inspection, and stable `UasAuctionResultCode` values. See [Developer API](Developer-API.md).
+Other mods should use `UasAuctionApi` instead of reading auction storage directly. See [Developer API](Developer-API.md).

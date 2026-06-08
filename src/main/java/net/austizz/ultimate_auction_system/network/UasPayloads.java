@@ -76,12 +76,13 @@ public final class UasPayloads {
                         money(payload.startingBid()),
                         money(payload.buyoutPrice()),
                         endDateTime(payload),
-                        payload.description()
+                        payload.description(),
+                        payload.accountId()
                 );
-                case "CONFIRM_CREATE" -> house.confirmPendingAuction(player);
+                case "CONFIRM_CREATE" -> house.confirmPendingAuction(player, payload.accountId());
                 case "DISCARD_CREATE" -> house.discardPendingAuction(player);
-                case "BID" -> house.placeBidWithEscrow(player, payload.auctionId(), money(payload.amount()));
-                case "BUYOUT" -> house.buyout(player, payload.auctionId());
+                case "BID" -> house.placeBidWithEscrow(player, payload.auctionId(), money(payload.amount()), payload.accountId());
+                case "BUYOUT" -> house.buyout(player, payload.auctionId(), payload.accountId());
                 case "CANCEL" -> house.cancelOwnAuction(player, payload.auctionId(), deliveryData);
                 case "ADMIN_FORCE_CANCEL" -> adminMode
                         ? AuctionActionResult.fail("Use the admin dashboard force-cancel action with a reason.")

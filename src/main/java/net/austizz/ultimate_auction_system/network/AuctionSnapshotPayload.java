@@ -17,6 +17,7 @@ public record AuctionSnapshotPayload(
         List<AuctionEntrySummary> dashboardListings,
         List<AuctionDeliverySummary> deliveries,
         List<AuctionModFilterSummaryPayload> modFilters,
+        List<AuctionAccountSummary> accounts,
         AuctionAccountSummary account,
         AuctionPendingListingSummary pendingListing,
         double listingFeeRate,
@@ -36,6 +37,7 @@ public record AuctionSnapshotPayload(
                 AuctionEntrySummary.STREAM_CODEC.apply(ByteBufCodecs.list(256)).encode(buf, payload.dashboardListings());
                 AuctionDeliverySummary.STREAM_CODEC.apply(ByteBufCodecs.list(128)).encode(buf, payload.deliveries());
                 AuctionModFilterSummaryPayload.STREAM_CODEC.apply(ByteBufCodecs.list(256)).encode(buf, payload.modFilters());
+                AuctionAccountSummary.STREAM_CODEC.apply(ByteBufCodecs.list(16)).encode(buf, payload.accounts());
                 AuctionAccountSummary.STREAM_CODEC.encode(buf, payload.account());
                 AuctionPendingListingSummary.STREAM_CODEC.encode(buf, payload.pendingListing());
                 ByteBufCodecs.DOUBLE.encode(buf, payload.listingFeeRate());
@@ -51,6 +53,7 @@ public record AuctionSnapshotPayload(
                     AuctionEntrySummary.STREAM_CODEC.apply(ByteBufCodecs.list(256)).decode(buf),
                     AuctionDeliverySummary.STREAM_CODEC.apply(ByteBufCodecs.list(128)).decode(buf),
                     AuctionModFilterSummaryPayload.STREAM_CODEC.apply(ByteBufCodecs.list(256)).decode(buf),
+                    AuctionAccountSummary.STREAM_CODEC.apply(ByteBufCodecs.list(16)).decode(buf),
                     AuctionAccountSummary.STREAM_CODEC.decode(buf),
                     AuctionPendingListingSummary.STREAM_CODEC.decode(buf),
                     ByteBufCodecs.DOUBLE.decode(buf),
@@ -63,6 +66,7 @@ public record AuctionSnapshotPayload(
 
     public AuctionSnapshotPayload {
         dashboardListings = dashboardListings == null ? List.of() : dashboardListings;
+        accounts = accounts == null ? List.of() : accounts;
         adminDashboard = adminDashboard == null ? AuctionAdminDashboardPayload.EMPTY : adminDashboard;
     }
 
@@ -74,6 +78,7 @@ public record AuctionSnapshotPayload(
                 snapshot.dashboardListings().stream().map(AuctionEntrySummary::fromListing).toList(),
                 snapshot.deliveries().stream().map(AuctionDeliverySummary::fromEntry).toList(),
                 snapshot.modFilters().stream().map(AuctionModFilterSummaryPayload::fromSummary).toList(),
+                snapshot.accounts().stream().map(AuctionAccountSummary::fromSnapshot).toList(),
                 AuctionAccountSummary.fromSnapshot(snapshot.primaryAccount()),
                 AuctionPendingListingSummary.fromPreview(snapshot.pendingListing()),
                 snapshot.listingFeeRate(),

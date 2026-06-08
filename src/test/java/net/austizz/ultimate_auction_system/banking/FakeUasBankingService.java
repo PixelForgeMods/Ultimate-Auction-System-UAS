@@ -40,6 +40,22 @@ public final class FakeUasBankingService implements UasBankingService {
         return accountId;
     }
 
+    public UUID createAccount(UUID playerId, BigDecimal balance, String accountType, String accountTypeLabel) {
+        UUID accountId = UUID.randomUUID();
+        accounts.put(accountId, new UasAccountSnapshot(
+                accountId,
+                playerId,
+                UUID.randomUUID(),
+                accountType,
+                accountTypeLabel,
+                balance,
+                false,
+                false,
+                ""
+        ));
+        return accountId;
+    }
+
     public void failNext(String reason) {
         this.nextFailureReason = reason == null || reason.isBlank() ? "Forced banking failure" : reason;
     }
@@ -185,8 +201,25 @@ public final class FakeUasBankingService implements UasBankingService {
     }
 
     @Override
+    public List<UasAccountSnapshot> getPlayerAccounts(UUID playerId) {
+        if (playerId == null) {
+            return List.of();
+        }
+        return accounts.values().stream()
+                .filter(snapshot -> playerId.equals(snapshot.playerId()))
+                .sorted((left, right) -> Boolean.compare(right.primary(), left.primary()))
+                .toList();
+    }
+
+    @Override
     public Optional<UasAccountSnapshot> getAccountSnapshot(UUID accountId) {
         return Optional.ofNullable(accounts.get(accountId));
+    }
+
+    @Override
+    public boolean playerOwnsAccount(UUID playerId, UUID accountId) {
+        UasAccountSnapshot snapshot = accounts.get(accountId);
+        return snapshot != null && playerId != null && playerId.equals(snapshot.playerId());
     }
 
     @Override

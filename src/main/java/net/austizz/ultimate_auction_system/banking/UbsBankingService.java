@@ -8,6 +8,7 @@ import net.austizz.ultimatebankingsystem.api.UltimateBankingApi;
 import net.austizz.ultimatebankingsystem.api.UltimateBankingApiProvider;
 
 import java.math.BigDecimal;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -147,11 +148,26 @@ public final class UbsBankingService implements UasBankingService {
     }
 
     @Override
+    public List<UasAccountSnapshot> getPlayerAccounts(UUID playerId) {
+        if (api == null || playerId == null) {
+            return List.of();
+        }
+        return api.getPlayerAccounts(playerId).stream()
+                .map(this::fromSnapshot)
+                .toList();
+    }
+
+    @Override
     public Optional<UasAccountSnapshot> getAccountSnapshot(UUID accountId) {
         if (api == null) {
             return Optional.empty();
         }
         return api.getAccountSnapshot(accountId).map(this::fromSnapshot);
+    }
+
+    @Override
+    public boolean playerOwnsAccount(UUID playerId, UUID accountId) {
+        return api != null && playerId != null && accountId != null && api.playerOwnsAccount(playerId, accountId);
     }
 
     @Override

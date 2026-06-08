@@ -11,6 +11,7 @@ public record AuctionHouseSnapshot(
         List<AuctionListingSummary> dashboardListings,
         List<AuctionDeliveryEntry> deliveries,
         List<AuctionModFilterSummary> modFilters,
+        List<UasAccountSnapshot> accounts,
         UasAccountSnapshot primaryAccount,
         AuctionListingPreview pendingListing,
         double listingFeeRate,
@@ -21,6 +22,7 @@ public record AuctionHouseSnapshot(
 ) {
     public AuctionHouseSnapshot {
         dashboardListings = dashboardListings == null ? List.of() : dashboardListings;
+        accounts = accounts == null ? List.of() : accounts;
         adminDashboard = adminDashboard == null ? AuctionAdminDashboardSnapshot.empty() : adminDashboard;
     }
 
@@ -42,6 +44,7 @@ public record AuctionHouseSnapshot(
                 List.of(),
                 deliveries,
                 modFilters,
+                primaryAccount == null ? List.of() : List.of(primaryAccount),
                 primaryAccount,
                 pendingListing,
                 listingFeeRate,

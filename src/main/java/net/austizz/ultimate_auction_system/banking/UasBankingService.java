@@ -1,6 +1,7 @@
 package net.austizz.ultimate_auction_system.banking;
 
 import java.math.BigDecimal;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -45,7 +46,11 @@ public interface UasBankingService {
 
     Optional<UUID> getPrimaryAccountId(UUID playerId);
 
+    List<UasAccountSnapshot> getPlayerAccounts(UUID playerId);
+
     Optional<UasAccountSnapshot> getAccountSnapshot(UUID accountId);
+
+    boolean playerOwnsAccount(UUID playerId, UUID accountId);
 
     UasAlertResult sendSuccessAlert(UUID playerId, String title, String message, int durationMs);
 

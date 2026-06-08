@@ -6,6 +6,7 @@ import net.austizz.ultimate_auction_system.banking.UasMoneyFormatter;
 import net.austizz.ultimate_auction_system.network.AuctionAdminActionPayload;
 import net.austizz.ultimate_auction_system.network.AuctionAdminDashboardPayload;
 import net.austizz.ultimate_auction_system.network.AuctionActionPayload;
+import net.austizz.ultimate_auction_system.network.AuctionAccountSummary;
 import net.austizz.ultimate_auction_system.network.AuctionBidSummary;
 import net.austizz.ultimate_auction_system.network.AuctionDeliverySummary;
 import net.austizz.ultimate_auction_system.network.AuctionEntrySummary;
@@ -117,6 +118,7 @@ public class AuctionHouseScreen extends Screen {
         FILTER,
         MOD_FILTER,
         CONTENTS,
+        ACCOUNT_SELECTOR,
         ADMIN_FORCE_CANCEL
     }
 
@@ -137,6 +139,8 @@ public class AuctionHouseScreen extends Screen {
     private String startingBidDraft = "";
     private String buyoutDraft = "";
     private String bidDraft = "";
+    private UUID selectedAccountId;
+    private Modal accountSelectorReturnModal = Modal.NONE;
     private UUID bidReviewAuctionId;
     private String bidReviewAmount = "";
     private boolean bidReviewFresh = false;
@@ -194,6 +198,7 @@ public class AuctionHouseScreen extends Screen {
     private int bidsScroll = 0;
     private int modScroll = 0;
     private int contentsScroll = 0;
+    private int accountScroll = 0;
     private int adminScroll = 0;
     private int modalRenderableStart = 0;
     private int modalChildStart = 0;
@@ -214,6 +219,7 @@ public class AuctionHouseScreen extends Screen {
         if (selectedAuctionId != null) {
             selectedAuction = findAuction(updated, selectedAuctionId);
         }
+        ensureSelectedAccount();
         if (modal == Modal.BID && bidReviewPending && bidReviewMatchesCurrent()) {
             bidReviewPending = false;
             bidReviewFresh = true;
@@ -228,6 +234,7 @@ public class AuctionHouseScreen extends Screen {
 
     @Override
     protected void init() {
+        ensureSelectedAccount();
         rebuildWidgets();
     }
 
@@ -659,9 +666,25 @@ public class AuctionHouseScreen extends Screen {
             addModFilterModalWidgets(x, y, modalW, modalH);
         } else if (modal == Modal.CONTENTS) {
             addAuctionButton(x + modalW - 100, closeY, 80, 24, "Close", AuctionButton.Style.GRAY, button -> closeModal());
+        } else if (modal == Modal.ACCOUNT_SELECTOR) {
+            addAccountSelectorModalWidgets(x, y, modalW, modalH);
         } else if (modal == Modal.ADMIN_FORCE_CANCEL) {
             addAdminForceCancelModalWidgets(x, y, modalW, modalH);
         }
+    }
+
+    private void addAccountSelectorModalWidgets(int x, int y, int modalW, int modalH) {
+        int listTop = y + 60;
+        int listBottom = y + modalH - 58;
+        int rowH = 52;
+        int rowY = listTop + 4 - accountScroll;
+        for (AuctionAccountSummary account : accountOptions()) {
+            AuctionButton button = addAuctionButton(x + 22, rowY + 8, modalW - 44, 36, Component.literal(accountSelectorRowTitle(account)), account.frozen() ? AuctionButton.Style.DARK : AuctionButton.Style.GRAY, ignored -> chooseAccount(account));
+            button.active = !account.frozen();
+            setVisibleInModalBody(button, listTop, listBottom);
+            rowY += rowH;
+        }
+        addAuctionButton(x + 20, y + modalH - 38, Math.max(96, modalW / 3), 26, "Cancel", AuctionButton.Style.GRAY, button -> closeModal());
     }
 
     private void addAdminForceCancelModalWidgets(int x, int y, int modalW, int modalH) {
@@ -680,6 +703,8 @@ public class AuctionHouseScreen extends Screen {
     }
 
     private void addConfirmCreateModalWidgets(int x, int y, int modalW, int modalH) {
+        AuctionButton accountButton = addAuctionButton(x + modalW - 124, y + modalH - 72, 104, 22, "Change Account", AuctionButton.Style.GRAY, button -> openAccountSelector());
+        accountButton.active = !accountOptions().isEmpty();
         int actionY = y + modalH - 38;
         int actionW = Math.max(112, (modalW - 52) / 2);
         addAuctionButton(x + 20, actionY, actionW, 26, "Discard", AuctionButton.Style.GRAY, button -> sendAuctionAction("DISCARD_CREATE", null, "", null));
@@ -724,6 +749,11 @@ public class AuctionHouseScreen extends Screen {
         addAuctionButton(quickX + quickW + gap, quickY, quickW, 24, Component.literal("+$500"), AuctionButton.Style.GRAY, button -> addBidIncrement("500"));
         addAuctionButton(quickX + (quickW + gap) * 2, quickY, quickW, 24, Component.literal("+$1000"), AuctionButton.Style.GRAY, button -> addBidIncrement("1000"));
         addAuctionButton(quickX + (quickW + gap) * 3, quickY, quickW, 24, Component.literal("+$5000"), AuctionButton.Style.GRAY, button -> addBidIncrement("5000"));
+
+        int accountPanelH = modalH < 360 ? 56 : 68;
+        int accountY = inputY - accountPanelH - 14;
+        AuctionButton accountButton = addAuctionButton(x + modalW - 112, accountY + 8, 90, 22, "Change", AuctionButton.Style.GRAY, button -> openAccountSelector());
+        accountButton.active = !accountOptions().isEmpty();
 
         int actionW = Math.max(110, (modalW - 52) / 2);
         addAuctionButton(x + 20, actionY, actionW, 26, "Cancel", AuctionButton.Style.GRAY, button -> closeModal());
@@ -782,6 +812,11 @@ public class AuctionHouseScreen extends Screen {
         descriptionBox.setResponder(value -> descriptionDraft = value);
         setVisibleInModalBody(descriptionBox, bodyTop, bodyBottom);
         addRenderableWidget(descriptionBox);
+
+        int feeY = y + (compact ? 466 : 274) + bundleOffset - scroll;
+        AuctionButton accountButton = addAuctionButton(x + modalW - 128, feeY + 16, 104, 22, "Change", AuctionButton.Style.GRAY, button -> openAccountSelector());
+        accountButton.active = !accountOptions().isEmpty();
+        setVisibleInModalBody(accountButton, bodyTop, bodyBottom);
 
         inventoryGridLeft = x + 20;
         inventoryGridTop = y + 72 - scroll;
@@ -1182,6 +1217,9 @@ public class AuctionHouseScreen extends Screen {
         if (modal == Modal.CONTENTS) {
             return Math.min(560, panelWidth - 44);
         }
+        if (modal == Modal.ACCOUNT_SELECTOR) {
+            return Math.min(500, panelWidth - 44);
+        }
         return Math.min(520, panelWidth - 44);
     }
 
@@ -1189,7 +1227,7 @@ public class AuctionHouseScreen extends Screen {
         if (modal == Modal.FILTER) {
             return Math.max(220, panelHeight - 34);
         }
-        if (modal == Modal.CREATE || modal == Modal.CONFIRM_CREATE || modal == Modal.DATE_PICKER || modal == Modal.BID || modal == Modal.BIDS || modal == Modal.MOD_FILTER || modal == Modal.CONTENTS) {
+        if (modal == Modal.CREATE || modal == Modal.CONFIRM_CREATE || modal == Modal.DATE_PICKER || modal == Modal.BID || modal == Modal.BIDS || modal == Modal.MOD_FILTER || modal == Modal.CONTENTS || modal == Modal.ACCOUNT_SELECTOR) {
             return Math.min(430, panelHeight - 48);
         }
         if (modal == Modal.ADMIN_FORCE_CANCEL) {
@@ -1222,7 +1260,16 @@ public class AuctionHouseScreen extends Screen {
         if (modal == Modal.BID) {
             resetBidReview();
         }
-        modal = modal == Modal.DATE_PICKER ? Modal.CREATE : modal == Modal.MOD_FILTER ? Modal.FILTER : Modal.NONE;
+        modal = modal == Modal.DATE_PICKER
+                ? Modal.CREATE
+                : modal == Modal.MOD_FILTER
+                ? Modal.FILTER
+                : modal == Modal.ACCOUNT_SELECTOR
+                ? (accountSelectorReturnModal == Modal.NONE ? Modal.NONE : accountSelectorReturnModal)
+                : Modal.NONE;
+        if (modal != Modal.ACCOUNT_SELECTOR) {
+            accountSelectorReturnModal = Modal.NONE;
+        }
         rebuildWidgets();
     }
 
@@ -1534,14 +1581,14 @@ public class AuctionHouseScreen extends Screen {
 
     private boolean bidSubmitAllowed() {
         return bidReviewMatchesCurrent()
-                && payload.account().present()
-                && !payload.account().frozen()
+                && selectedAccount().present()
+                && !selectedAccount().frozen()
                 && moneyDraft(bidDraft).compareTo(moneyDraft(nextBidValue(selectedAuction))) >= 0
                 && bidRemainingBalance().compareTo(BigDecimal.ZERO) >= 0;
     }
 
     private BigDecimal bidRemainingBalance() {
-        return moneyDraft(payload.account().balance()).subtract(moneyDraft(bidDraft));
+        return moneyDraft(selectedAccount().balance()).subtract(moneyDraft(bidDraft));
     }
 
     private String bidReviewStatus() {
@@ -1551,10 +1598,10 @@ public class AuctionHouseScreen extends Screen {
         if (bidReviewPending) {
             return Component.translatable("Refreshing UBS account snapshot...").getString();
         }
-        if (!payload.account().present()) {
+        if (!selectedAccount().present()) {
             return Component.translatable("UBS account unavailable.").getString();
         }
-        if (payload.account().frozen()) {
+        if (selectedAccount().frozen()) {
             return Component.translatable("UBS account is frozen.").getString();
         }
         if (moneyDraft(bidDraft).compareTo(moneyDraft(nextBidValue(selectedAuction))) < 0) {
@@ -1576,8 +1623,8 @@ public class AuctionHouseScreen extends Screen {
         if (bidReviewPending) {
             return 0xFFFFD966;
         }
-        if (!payload.account().present()
-                || payload.account().frozen()
+        if (!selectedAccount().present()
+                || selectedAccount().frozen()
                 || moneyDraft(bidDraft).compareTo(moneyDraft(nextBidValue(selectedAuction))) < 0
                 || bidRemainingBalance().compareTo(BigDecimal.ZERO) < 0) {
             return 0xFFFF6666;
@@ -1586,14 +1633,115 @@ public class AuctionHouseScreen extends Screen {
     }
 
     private String bidAccountLabel() {
-        if (!payload.account().present()) {
+        AuctionAccountSummary account = selectedAccount();
+        if (!account.present()) {
             return Component.translatable("No UBS account").getString();
         }
-        String type = payload.account().accountTypeLabel() == null || payload.account().accountTypeLabel().isBlank()
+        String type = account.accountTypeLabel() == null || account.accountTypeLabel().isBlank()
                 ? "UBS account"
-                : payload.account().accountTypeLabel();
-        UUID accountId = payload.account().accountId();
+                : account.accountTypeLabel();
+        UUID accountId = account.accountId();
         return type + (accountId == null ? "" : " " + accountId.toString().substring(0, 8));
+    }
+
+    private List<AuctionAccountSummary> accountOptions() {
+        if (payload == null || payload.accounts() == null || payload.accounts().isEmpty()) {
+            return payload != null && payload.account() != null && payload.account().present()
+                    ? List.of(payload.account())
+                    : List.of();
+        }
+        return payload.accounts().stream()
+                .filter(account -> account != null && account.present())
+                .toList();
+    }
+
+    private AuctionAccountSummary selectedAccount() {
+        ensureSelectedAccount();
+        if (selectedAccountId != null) {
+            for (AuctionAccountSummary account : accountOptions()) {
+                if (selectedAccountId.equals(account.accountId())) {
+                    return account;
+                }
+            }
+        }
+        return payload == null || payload.account() == null ? AuctionAccountSummary.EMPTY : payload.account();
+    }
+
+    private void ensureSelectedAccount() {
+        List<AuctionAccountSummary> options = accountOptions();
+        if (options.isEmpty()) {
+            selectedAccountId = null;
+            return;
+        }
+        if (selectedAccountId != null) {
+            for (AuctionAccountSummary account : options) {
+                if (selectedAccountId.equals(account.accountId())) {
+                    return;
+                }
+            }
+        }
+        selectedAccountId = options.stream()
+                .filter(AuctionAccountSummary::primary)
+                .findFirst()
+                .orElse(options.getFirst())
+                .accountId();
+    }
+
+    private UUID selectedAccountIdForAction() {
+        ensureSelectedAccount();
+        return selectedAccountId;
+    }
+
+    private String accountSelectorButtonLabel() {
+        AuctionAccountSummary account = selectedAccount();
+        if (!account.present()) {
+            return Component.translatable("No UBS account").getString();
+        }
+        return Component.translatable("Account: {0}", bidAccountLabel()).getString();
+    }
+
+    private String accountDetailLine(AuctionAccountSummary account) {
+        if (account == null || !account.present()) {
+            return Component.translatable("No UBS account").getString();
+        }
+        String bank = account.bankIdLabel().isBlank()
+                ? Component.translatable("Bank unavailable").getString()
+                : Component.translatable("Bank: {0}", account.bankIdLabel()).getString();
+        String flags = account.primary()
+                ? Component.translatable("Primary").getString()
+                : Component.translatable("Secondary").getString();
+        if (account.frozen()) {
+            flags += " - " + Component.translatable("Frozen").getString();
+        }
+        return bank + " - " + flags;
+    }
+
+    private String accountSelectorRowTitle(AuctionAccountSummary account) {
+        if (account == null || !account.present()) {
+            return Component.translatable("No UBS account").getString();
+        }
+        String type = account.accountTypeLabel() == null || account.accountTypeLabel().isBlank()
+                ? Component.translatable("UBS account").getString()
+                : account.accountTypeLabel();
+        return Component.translatable("{0} - {1}", type, account.balance()).getString();
+    }
+
+    private void openAccountSelector() {
+        accountSelectorReturnModal = modal == Modal.NONE ? Modal.BID : modal;
+        modal = Modal.ACCOUNT_SELECTOR;
+        accountScroll = 0;
+        rebuildWidgets();
+    }
+
+    private void chooseAccount(AuctionAccountSummary account) {
+        if (account == null || !account.present()) {
+            return;
+        }
+        selectedAccountId = account.accountId();
+        resetBidReview();
+        modal = accountSelectorReturnModal == Modal.ACCOUNT_SELECTOR ? Modal.NONE : accountSelectorReturnModal;
+        accountSelectorReturnModal = Modal.NONE;
+        rebuildWidgets();
     }
 
     private AuctionEntrySummary findAuction(AuctionSnapshotPayload source, UUID auctionId) {
@@ -1653,6 +1801,7 @@ public class AuctionHouseScreen extends Screen {
                 maxPriceValue(),
                 maxHoursLeft,
                 selectedModId,
+                selectedAccountIdForAction(),
                 payload.adminMode()
         ));
         modal = Modal.NONE;
@@ -1679,6 +1828,7 @@ public class AuctionHouseScreen extends Screen {
                 maxPriceValue(),
                 maxHoursLeft,
                 selectedModId,
+                selectedAccountIdForAction(),
                 payload.adminMode()
         ));
         modal = Modal.NONE;
@@ -1856,8 +2006,9 @@ public class AuctionHouseScreen extends Screen {
         graphics.fill(panelLeft + 10, panelTop + 10, panelLeft + panelWidth - 10, panelTop + headerHeight - 10, 0xFF565656);
         graphics.drawString(font, Component.translatable(payload.adminMode() ? "ADMIN AUCTIONS" : "AUCTION HOUSE").withStyle(ChatFormatting.BOLD), panelLeft + 18, panelTop + 20, 0xFFFFAA00, false);
         int accountY = panelWidth < 760 ? panelTop + 31 : panelTop + 42;
-        if (payload.account().present()) {
-            graphics.drawString(font, Component.translatable("{0} Primary Account: {1}", localPlayerName(), payload.account().balance()), panelLeft + 18, accountY, 0xFF55FF55, false);
+        AuctionAccountSummary headerAccount = payload.account().present() ? payload.account() : selectedAccount();
+        if (headerAccount.present()) {
+            graphics.drawString(font, Component.translatable("{0} Primary Account: {1}", localPlayerName(), headerAccount.balance()), panelLeft + 18, accountY, 0xFF55FF55, false);
         } else {
             graphics.drawString(font, Component.translatable("No UBS account"), panelLeft + 18, accountY, 0xFFFF5555, false);
         }
@@ -2595,6 +2746,8 @@ public class AuctionHouseScreen extends Screen {
             renderModFilterModal(graphics, x, y, modalW, modalH);
         } else if (modal == Modal.CONTENTS && selectedAuction != null) {
             renderContentsModal(graphics, x, y, modalW, modalH, selectedAuction.contents());
+        } else if (modal == Modal.ACCOUNT_SELECTOR) {
+            renderAccountSelectorModal(graphics, x, y, modalW, modalH);
         } else if (modal == Modal.ADMIN_FORCE_CANCEL && selectedAuction != null) {
             renderAdminForceCancelModal(graphics, x, y, modalW);
         }
@@ -2645,9 +2798,10 @@ public class AuctionHouseScreen extends Screen {
         graphics.drawString(font, Component.translatable("Current Bid"), x + 34, currentY + 10, 0xFFBDBDBD, false);
         graphics.drawString(font, Component.literal(selectedAuction.currentBid()).withStyle(ChatFormatting.BOLD), x + 34, currentY + 26, 0xFFFFD700, false);
         int accountX = x + modalW / 2;
-        int accountW = x + modalW - 34 - accountX;
-        graphics.drawString(font, Component.literal(trimToWidth(Component.translatable("Account: {0}", bidAccountLabel()).getString(), accountW)), accountX, currentY + 10, payload.account().present() ? 0xFFBDBDBD : 0xFFFF6666, false);
-        graphics.drawString(font, Component.literal(trimToWidth(Component.translatable("Balance: {0}", payload.account().balance()).getString(), accountW)).withStyle(ChatFormatting.BOLD), accountX, currentY + 26, payload.account().frozen() ? 0xFFFF6666 : 0xFF55FF55, false);
+        int accountW = x + modalW - 126 - accountX;
+        AuctionAccountSummary account = selectedAccount();
+        graphics.drawString(font, Component.literal(trimToWidth(Component.translatable("Account: {0}", bidAccountLabel()).getString(), accountW)), accountX, currentY + 10, account.present() ? 0xFFBDBDBD : 0xFFFF6666, false);
+        graphics.drawString(font, Component.literal(trimToWidth(Component.translatable("Balance: {0}", account.balance()).getString(), accountW)).withStyle(ChatFormatting.BOLD), accountX, currentY + 26, account.frozen() ? 0xFFFF6666 : 0xFF55FF55, false);
         if (accountPanelH >= 64) {
             graphics.drawString(font, Component.translatable("Bid: {0}", moneyDisplay(moneyDraft(bidDraft))), x + 34, currentY + 46, 0xFFFFFFFF, false);
             graphics.drawString(font, Component.translatable("After: {0}", moneyDisplay(bidRemainingBalance())).withStyle(ChatFormatting.BOLD), accountX, currentY + 46, bidRemainingBalance().compareTo(BigDecimal.ZERO) < 0 ? 0xFFFF6666 : 0xFF55FF55, false);
@@ -2655,6 +2809,35 @@ public class AuctionHouseScreen extends Screen {
         graphics.drawString(font, Component.literal(trimToWidth(bidReviewStatus(), modalW - 40)), x + 20, currentY + accountPanelH + 4, bidReviewStatusColor(), false);
 
         graphics.drawString(font, Component.translatable("Your Bid").append(Component.literal(" (" + Component.translatable("Minimum").getString() + ": " + moneyDisplay(moneyDraft(nextBidValue(selectedAuction))) + ")")), x + 20, inputY + 2, 0xFFFFFFFF, false);
+    }
+
+    private void renderAccountSelectorModal(GuiGraphics graphics, int x, int y, int modalW, int modalH) {
+        List<AuctionAccountSummary> accounts = accountOptions();
+        int listTop = y + 60;
+        int listBottom = y + modalH - 58;
+        graphics.fill(x + 18, listTop, x + modalW - 18, listBottom, 0xFF000000);
+        graphics.fill(x + 20, listTop + 2, x + modalW - 20, listBottom - 2, 0xFF191919);
+        if (accounts.isEmpty()) {
+            graphics.drawString(font, Component.translatable("No UBS account"), x + 28, listTop + 18, 0xFFFF6666, false);
+            return;
+        }
+        graphics.enableScissor(x + 20, listTop + 2, x + modalW - 20, listBottom - 2);
+        int rowH = 52;
+        int rowY = listTop + 4 - accountScroll;
+        for (AuctionAccountSummary account : accounts) {
+            boolean selected = account.accountId().equals(selectedAccountId);
+            int rowColor = selected ? 0xFF1F6F2B : 0xFF252525;
+            if (account.frozen()) {
+                rowColor = 0xFF351818;
+            }
+            graphics.fill(x + 24, rowY, x + modalW - 24, rowY + rowH - 4, 0xFF000000);
+            graphics.fill(x + 26, rowY + 2, x + modalW - 26, rowY + rowH - 6, rowColor);
+            graphics.drawString(font, Component.literal(trimToWidth(accountSelectorRowTitle(account), modalW - 82)).withStyle(ChatFormatting.BOLD), x + 36, rowY + 10, account.frozen() ? 0xFFFF7777 : 0xFFFFFFFF, false);
+            graphics.drawString(font, Component.literal(trimToWidth(accountDetailLine(account), modalW - 82)), x + 36, rowY + 26, 0xFFBDBDBD, false);
+            rowY += rowH;
+        }
+        graphics.disableScissor();
+        renderScrollBar(graphics, x + modalW - 14, listTop + 2, listBottom - 2, accountScroll, accountContentHeight(), Math.max(1, listBottom - listTop - 4));
     }
 
     private void renderBidsModal(GuiGraphics graphics, int x, int y, int modalW, int modalH) {
@@ -2803,6 +2986,8 @@ public class AuctionHouseScreen extends Screen {
         graphics.fill(x + 22, feeY + 2, x + modalW - 22, feeY + 50, 0xFF191919);
         graphics.drawString(font, Component.translatable("Listing Fee").append(Component.literal(" (" + listingFeeRateLabel() + "%)")), x + 34, feeY + 12, 0xFFE0E0E0, false);
         graphics.drawString(font, Component.literal(moneyDisplay(listingFeePreview())).withStyle(ChatFormatting.BOLD), x + 34, feeY + 30, 0xFFFFD700, false);
+        int accountTextW = Math.max(80, modalW - 190);
+        graphics.drawString(font, Component.literal(trimToWidth(accountSelectorButtonLabel(), accountTextW)), x + 34, feeY + 42, selectedAccount().frozen() ? 0xFFFF6666 : 0xFFBDBDBD, false);
         graphics.disableScissor();
         renderScrollBar(graphics, x + modalW - 12, bodyTop, bodyBottom, createScroll, createContentHeight(modalW), bodyBottom - bodyTop);
     }
@@ -2853,7 +3038,10 @@ public class AuctionHouseScreen extends Screen {
         renderInfoChip(graphics, x + 28 + columnW, infoTop, columnW, "Buyout", isZeroMoneyLabel(pending.buyoutPrice()) ? Component.translatable("None").getString() : pending.buyoutPrice(), 0xFF55FF55);
         renderInfoChip(graphics, x + 36 + columnW * 2, infoTop, columnW, "Listing Fee", pending.listingFee(), 0xFFFFD700);
 
-        int descTop = infoTop + 54;
+        int accountY = infoTop + 54;
+        graphics.drawString(font, Component.literal(trimToWidth(accountSelectorButtonLabel(), modalW - 154)), x + 20, accountY, selectedAccount().frozen() ? 0xFFFF6666 : 0xFFBDBDBD, false);
+
+        int descTop = accountY + 18;
         graphics.drawString(font, Component.translatable("Description").withStyle(ChatFormatting.BOLD), x + 20, descTop, 0xFFFFFFFF, false);
         String description = pending.description() == null || pending.description().isBlank() ? Component.translatable("No description").getString() : pending.description();
         int lineY = descTop + 16;
@@ -3101,6 +3289,10 @@ public class AuctionHouseScreen extends Screen {
         return Math.max(54, 36 + lineCount * 11);
     }
 
+    private int accountContentHeight() {
+        return accountOptions().size() * 52 + 8;
+    }
+
     private void clampModalScrolls() {
         int modalW = modalWidth();
         int viewport = Math.max(1, modalHeight() - 92);
@@ -3113,6 +3305,8 @@ public class AuctionHouseScreen extends Screen {
         int contentsViewport = Math.max(1, modalHeight() - 154);
         List<ItemStack> contents = selectedAuction == null ? List.of() : selectedAuction.contents();
         contentsScroll = clamp(contentsScroll, 0, Math.max(0, contentsContentHeight(contents, modalWidth() - 116) - contentsViewport));
+        int accountViewport = Math.max(1, modalHeight() - 120);
+        accountScroll = clamp(accountScroll, 0, Math.max(0, accountContentHeight() - accountViewport));
     }
 
     private void setVisibleInModalBody(AbstractWidget widget, int bodyTop, int bodyBottom) {
@@ -3488,7 +3682,7 @@ public class AuctionHouseScreen extends Screen {
             }
             return super.mouseScrolled(mouseX, mouseY, scrollX, scrollY);
         }
-        if (modal == Modal.CREATE || modal == Modal.FILTER || modal == Modal.BIDS || modal == Modal.MOD_FILTER || modal == Modal.CONTENTS) {
+        if (modal == Modal.CREATE || modal == Modal.FILTER || modal == Modal.BIDS || modal == Modal.MOD_FILTER || modal == Modal.CONTENTS || modal == Modal.ACCOUNT_SELECTOR) {
             int delta = (int) Math.round(scrollY * 22.0D);
             if (modal == Modal.CREATE) {
                 createScroll -= delta;
@@ -3498,6 +3692,8 @@ public class AuctionHouseScreen extends Screen {
                 modScroll -= delta;
             } else if (modal == Modal.CONTENTS) {
                 contentsScroll -= delta;
+            } else if (modal == Modal.ACCOUNT_SELECTOR) {
+                accountScroll -= delta;
             } else {
                 bidsScroll -= delta;
             }
@@ -3637,6 +3833,7 @@ public class AuctionHouseScreen extends Screen {
             case FILTER -> "Filters";
             case MOD_FILTER -> "Choose Mod";
             case CONTENTS -> "Auction Contents";
+            case ACCOUNT_SELECTOR -> "Choose Account";
             case ADMIN_FORCE_CANCEL -> "Force Cancel Auction";
             case NONE -> "";
         };
