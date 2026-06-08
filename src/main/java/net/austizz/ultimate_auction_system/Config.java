@@ -12,6 +12,8 @@ import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
+import java.util.Optional;
+import java.util.UUID;
 import java.util.regex.Pattern;
 
 @EventBusSubscriber(modid = UltimateAuctionSystem.MODID, bus = EventBusSubscriber.Bus.MOD)
@@ -74,6 +76,14 @@ public class Config {
                     "Use 0.0 to disable tax. Runtime reload: applies to future settlements."
             )
             .defineInRange("economy.salesTaxRate", DEFAULT_SALES_TAX_RATE, 0.0D, 1.0D);
+
+    private static final ModConfigSpec.ConfigValue<String> SALES_TAX_DESTINATION_ACCOUNT_UUID = BUILDER
+            .comment(
+                    "Optional UBS account UUID that receives sales tax.",
+                    "Leave blank to keep sales tax as a money sink deducted from seller proceeds.",
+                    "Runtime reload: applies to future settlements."
+            )
+            .define("economy.salesTaxDestinationAccountUuid", "");
 
     private static final ModConfigSpec.DoubleValue CANCELLATION_FEE_RATE = BUILDER
             .comment(
@@ -229,6 +239,7 @@ public class Config {
     public static double listingFeeRate;
     public static double cancellationFeeRate = DEFAULT_CANCELLATION_FEE_RATE;
     public static double salesTaxRate;
+    public static String salesTaxDestinationAccountUuid = "";
     public static long minimumBidIncrementDollars;
     public static int maxActiveListingsPerPlayer;
     public static int minAuctionDurationMinutes;
@@ -260,6 +271,7 @@ public class Config {
         listingFeeRate = readDouble("economy.listingFeeRate", LISTING_FEE_RATE, DEFAULT_LISTING_FEE_RATE, 0.0D, 1.0D);
         cancellationFeeRate = readDouble("economy.cancellationFeeRate", CANCELLATION_FEE_RATE, DEFAULT_CANCELLATION_FEE_RATE, 0.0D, 1.0D);
         salesTaxRate = readDouble("economy.salesTaxRate", SALES_TAX_RATE, DEFAULT_SALES_TAX_RATE, 0.0D, 1.0D);
+        salesTaxDestinationAccountUuid = readSalesTaxDestination();
         minimumBidIncrementDollars = readLong("economy.minimumBidIncrementDollars", MINIMUM_BID_INCREMENT_DOLLARS, DEFAULT_MINIMUM_BID_INCREMENT_DOLLARS, 1L, MAX_MONEY_DOLLARS);
         maxActiveListingsPerPlayer = readInt("limits.maxActiveListingsPerPlayer", MAX_ACTIVE_LISTINGS_PER_PLAYER, DEFAULT_MAX_ACTIVE_LISTINGS_PER_PLAYER, 1, MAX_LISTINGS_PER_PLAYER);
         minAuctionDurationMinutes = readInt("limits.minAuctionDurationMinutes", MIN_AUCTION_DURATION_MINUTES, DEFAULT_MIN_AUCTION_DURATION_MINUTES, 5, MAX_DURATION_MINUTES);
@@ -319,6 +331,18 @@ public class Config {
     public static BigDecimal calculateSalesTax(BigDecimal saleAmount) {
         BigDecimal amount = saleAmount == null ? BigDecimal.ZERO : saleAmount;
         return amount.multiply(BigDecimal.valueOf(salesTaxRate)).setScale(2, RoundingMode.HALF_UP);
+    }
+
+    public static Optional<UUID> salesTaxDestinationAccountId() {
+        String value = salesTaxDestinationAccountUuid == null ? "" : salesTaxDestinationAccountUuid.trim();
+        if (value.isBlank()) {
+            return Optional.empty();
+        }
+        try {
+            return Optional.of(UUID.fromString(value));
+        } catch (IllegalArgumentException ignored) {
+            return Optional.empty();
+        }
     }
 
     public static String getAdminReloadFlow() {
@@ -426,6 +450,23 @@ public class Config {
             lastConfigLoadMessage = "Invalid config value for " + path + "; using safe default.";
             value.set(fallback);
             return fallback;
+        }
+    }
+
+    private static String readSalesTaxDestination() {
+        try {
+            String value = SALES_TAX_DESTINATION_ACCOUNT_UUID.get();
+            String normalized = value == null ? "" : value.trim();
+            if (normalized.isBlank()) {
+                return "";
+            }
+            UUID.fromString(normalized);
+            return normalized;
+        } catch (RuntimeException exception) {
+            lastConfigLoadHealthy = false;
+            lastConfigLoadMessage = "Invalid config value for economy.salesTaxDestinationAccountUuid; using blank money-sink tax destination.";
+            SALES_TAX_DESTINATION_ACCOUNT_UUID.set("");
+            return "";
         }
     }
 

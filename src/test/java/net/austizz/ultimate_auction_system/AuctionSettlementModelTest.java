@@ -33,6 +33,24 @@ class AuctionSettlementModelTest {
     }
 
     @Test
+    void salesTaxDestinationAccountIdParsesOptionalUuid() {
+        String previousDestination = Config.salesTaxDestinationAccountUuid;
+        UUID destination = UUID.randomUUID();
+        try {
+            Config.salesTaxDestinationAccountUuid = "";
+            assertTrue(Config.salesTaxDestinationAccountId().isEmpty());
+
+            Config.salesTaxDestinationAccountUuid = destination.toString();
+            assertEquals(destination, Config.salesTaxDestinationAccountId().orElseThrow());
+
+            Config.salesTaxDestinationAccountUuid = "not-a-uuid";
+            assertTrue(Config.salesTaxDestinationAccountId().isEmpty());
+        } finally {
+            Config.salesTaxDestinationAccountUuid = previousDestination;
+        }
+    }
+
+    @Test
     void financialEventUsesUbsReferenceAndTransactionId() {
         UUID auctionId = UUID.randomUUID();
         UUID transactionId = UUID.randomUUID();

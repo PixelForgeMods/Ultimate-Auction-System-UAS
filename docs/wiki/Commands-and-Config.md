@@ -124,6 +124,7 @@ The inspect command prints:
 
 - `listingFeeRate`: percentage charged when creating an auction
 - `salesTaxRate`: percentage charged on sale settlement
+- `salesTaxDestinationAccountUuid`: optional UBS account UUID that receives sales tax
 - `minimumBidIncrementDollars`: minimum increase over current bid
 - `allowSellerSelfBid`: whether sellers may bid on or buy out their own auctions
 - `maxActiveListingsPerPlayer`: active listing cap per seller
@@ -150,7 +151,10 @@ UAS uses the player's UBS primary account by default.
 - First bids must meet or exceed the starting price. Later bids must exceed the current highest bid by at least `minimumBidIncrementDollars`.
 - When a new highest bid is accepted, UAS refunds the previous highest bidder before committing the new bid. If the refund cannot be completed safely, the new bid is rejected and the auction remains with the previous highest bidder.
 - Buyout remains available while the current highest bid is below the buyout price. A buyout immediately escrows buyer funds, refunds the previous highest bidder when needed, pays the seller net proceeds, and leaves the item claimable by the buyer.
-- `salesTaxRate` is deducted from seller proceeds as a money sink. There is no tax-recipient UBS account in this phase.
+- `salesTaxRate` is deducted from seller proceeds.
+- When `salesTaxDestinationAccountUuid` is blank, sales tax stays a recorded money sink.
+- When `salesTaxDestinationAccountUuid` is set, UAS deposits the tax into that UBS account with the `SALES_TAX` reference before paying the seller.
+- If a configured tax deposit fails, settlement moves to `FAILED_SETTLEMENT` so admins can retry instead of partially paying the seller first.
 - Failed seller payout or escrow refund states move the auction into `FAILED_SETTLEMENT` where normal claim is blocked until an admin retry succeeds.
 
 ## UBS Reference Format
@@ -175,7 +179,7 @@ Current event types:
 - `ADMIN_FORCE_CANCEL_REFUND`
 - `CANCELLATION_FEE`
 
-`SALES_TAX` is recorded in UAS financial events even though no UBS transfer is created for it. `/uas admin inspect <auctionId>` shows the UAS auction id, UBS reference, transaction id when UBS returns one, amount, and result for each financial event.
+`SALES_TAX` is recorded in UAS financial events. If a tax destination account is configured, the event contains the UBS transfer result and transaction id when UBS returns one. If no destination is configured, the event records the tax as a money-sink deduction. `/uas admin inspect <auctionId>` shows the UAS auction id, UBS reference, transaction id when UBS returns one, amount, and result for each financial event.
 
 ## Banned Auction Entries
 

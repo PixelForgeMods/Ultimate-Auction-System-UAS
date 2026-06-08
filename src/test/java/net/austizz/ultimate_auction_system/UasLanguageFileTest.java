@@ -51,7 +51,9 @@ class UasLanguageFileTest {
             "{0} Primary Account: {1}",
             "Player banned",
             "Rate limited. Try again in ",
-            " seconds."
+            " seconds.",
+            "Auction {0}: {1} payout: gross {2}, tax {3}, fees {4}, net {5}.",
+            "Auction {0} sales tax transfer failed: {1}"
     );
     private static final List<String> CRITICAL_TRANSLATED_AWAY_KEYS = List.of(
             "UAS ADMIN DASHBOARD",
@@ -69,7 +71,9 @@ class UasLanguageFileTest {
             "{0} Primary Account: {1}",
             "Player banned",
             "Rate limited. Try again in ",
-            " seconds."
+            " seconds.",
+            "Auction {0}: {1} payout: gross {2}, tax {3}, fees {4}, net {5}.",
+            "Auction {0} sales tax transfer failed: {1}"
     );
 
     @Test
@@ -143,6 +147,7 @@ class UasLanguageFileTest {
         assertEquals("2h 30m restantes", UasTranslations.formatPlain("fr_fr", "{0}h {1}m left", 2, 30));
         assertEquals("Compte principal de Dev : $10", UasTranslations.formatPlain("fr_fr", "{0} Primary Account: {1}", "Dev", "$10"));
         assertEquals("Te snel. Probeer opnieuw over 2 seconden.", UasTranslations.formatPlain("nl_nl", "Rate limited. Try again in 2 seconds."));
+        assertTrue(UasTranslations.formatPlain("fr_fr", "Auction {0}: {1} payout: gross {2}, tax {3}, fees {4}, net {5}.", "abc", "Sword", "$10", "$1", "$0", "$9").contains("frais $0"));
     }
 
     @Test

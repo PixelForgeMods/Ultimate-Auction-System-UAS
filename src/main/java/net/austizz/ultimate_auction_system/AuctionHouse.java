@@ -2145,6 +2145,11 @@ public class AuctionHouse {
             return SettlementResult.fail("Auction settlement failed: seller account cannot receive payout: " + canReceive.reason(), gross, salesTax, net);
         }
 
+        SettlementResult taxSettlement = settleSalesTax(item, salesTax, gross, net);
+        if (!taxSettlement.success()) {
+            return taxSettlement;
+        }
+
         UasBankingResult deposit = net.compareTo(BigDecimal.ZERO) > 0
                 ? bankingService.deposit(sellerAccountId, net, payoutReference)
                 : UasBankingResult.ok(BigDecimal.ZERO, null, payoutReference);
@@ -2156,20 +2161,52 @@ public class AuctionHouse {
             return SettlementResult.fail("Auction settlement failed: " + deposit.reason(), gross, salesTax, net);
         }
 
-        if (salesTax.compareTo(BigDecimal.ZERO) > 0) {
+        BigDecimal fees = successfulFinancialEventAmount(item, EVENT_LISTING_FEE)
+                .add(successfulFinancialEventAmount(item, EVENT_CANCELLATION_FEE));
+        Object[] args = {item.getAuctionId(), itemName(item), moneyLabel(gross), moneyLabel(salesTax), moneyLabel(fees), moneyLabel(net)};
+        sendAuctionAlert(item.getPlayerId(), "Auction Payout", "Auction {0}: {1} payout: gross {2}, tax {3}, fees {4}, net {5}.", "SUCCESS", args);
+        sendAuctionChatMessage(item.getPlayerId(), "Auction {0}: {1} payout: gross {2}, tax {3}, fees {4}, net {5}.", ChatFormatting.GREEN, args, openAhAction(), myAuctionsAction());
+        return SettlementResult.ok("Auction payout settled.", gross, salesTax, net);
+    }
+
+    private SettlementResult settleSalesTax(AuctionItem item, BigDecimal salesTax, BigDecimal gross, BigDecimal net) {
+        if (item == null || salesTax == null || salesTax.compareTo(BigDecimal.ZERO) <= 0 || item.hasSuccessfulFinancialEvent(EVENT_SALES_TAX)) {
+            return SettlementResult.ok("", gross, salesTax, net);
+        }
+
+        String taxReference = auctionReference(EVENT_SALES_TAX, item.getAuctionId());
+        Optional<UUID> destinationAccountId = Config.salesTaxDestinationAccountId();
+        if (destinationAccountId.isEmpty()) {
             recordManualFinancialEvent(
                     item,
                     EVENT_SALES_TAX,
                     salesTax,
-                    auctionReference(EVENT_SALES_TAX, item.getAuctionId()),
+                    taxReference,
                     true,
-                    "Deducted from seller payout"
+                    "Deducted from seller payout as money sink"
             );
+            return SettlementResult.ok("", gross, salesTax, net);
         }
-        Object[] args = {item.getAuctionId(), itemName(item), moneyLabel(gross), moneyLabel(salesTax), moneyLabel(net)};
-        sendAuctionAlert(item.getPlayerId(), "Auction Payout", "Auction {0}: {1} payout: gross {2}, tax {3}, net {4}.", "SUCCESS", args);
-        sendAuctionChatMessage(item.getPlayerId(), "Auction {0}: {1} payout: gross {2}, tax {3}, net {4}.", ChatFormatting.GREEN, args, openAhAction(), myAuctionsAction());
-        return SettlementResult.ok("Auction payout settled.", gross, salesTax, net);
+
+        UasBankingResult taxDeposit = bankingService.deposit(destinationAccountId.get(), salesTax, taxReference);
+        recordBankingEvent(item, EVENT_SALES_TAX, salesTax, taxReference, taxDeposit);
+        if (!taxDeposit.success()) {
+            item.transitionTo(AuctionState.FAILED_SETTLEMENT, "sales tax transfer failed: " + taxDeposit.reason());
+            alertOnlineAdmins("Auction Settlement Failed", "Auction {0} sales tax transfer failed: {1}", "ERROR", item.getAuctionId(), taxDeposit.reason());
+            return SettlementResult.fail("Auction settlement failed: sales tax transfer failed: " + taxDeposit.reason(), gross, salesTax, net);
+        }
+        return SettlementResult.ok("", gross, salesTax, net);
+    }
+
+    private BigDecimal successfulFinancialEventAmount(AuctionItem item, String type) {
+        if (item == null || type == null || type.isBlank()) {
+            return BigDecimal.ZERO;
+        }
+        String normalized = type.trim().toUpperCase(Locale.ROOT);
+        return item.getFinancialEvents().stream()
+                .filter(event -> event != null && event.success() && normalized.equals(event.type()))
+                .map(AuctionFinancialEvent::amount)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
     }
 
     private void giveOrDeliver(ServerPlayer player,
