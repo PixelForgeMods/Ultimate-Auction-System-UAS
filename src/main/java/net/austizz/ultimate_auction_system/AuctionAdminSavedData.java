@@ -23,6 +23,7 @@ public final class AuctionAdminSavedData extends SavedData {
     private static final String AUDIT_TAG = "auditLog";
     private static final String RECOVERY_TAG = "recoveryEntries";
     private static final int AUDIT_LIMIT = 500;
+    private static final int SUSPICION_DEDUPE_MINUTES = 10;
 
     private final ConcurrentHashMap<UUID, AuctionPlayerBan> playerBans;
     private final ConcurrentHashMap<UUID, AuctionRecoveryEntry> recoveryEntries;
@@ -174,6 +175,30 @@ public final class AuctionAdminSavedData extends SavedData {
             auditLog.remove(auditLog.size() - 1);
         }
         setDirty();
+    }
+
+    public synchronized boolean addSuspicion(AuctionSuspicionSignal signal) {
+        if (signal == null || !Config.auditSuspiciousBidPatterns) {
+            return false;
+        }
+        String target = signal.auditTarget();
+        if (target == null || target.isBlank()) {
+            return false;
+        }
+        String reason = signal.type();
+        LocalDateTime cutoff = LocalDateTime.now().minusMinutes(SUSPICION_DEDUPE_MINUTES);
+        boolean duplicate = auditLog.stream().anyMatch(entry ->
+                entry != null
+                        && "SUSPICIOUS_BID_PATTERN".equalsIgnoreCase(entry.action())
+                        && target.equals(entry.target())
+                        && reason.equalsIgnoreCase(entry.reason())
+                        && entry.createdAt() != null
+                        && entry.createdAt().isAfter(cutoff));
+        if (duplicate) {
+            return false;
+        }
+        addAudit("SUSPICIOUS_BID_PATTERN", null, "UAS Audit", target, reason, true, signal.auditMessage());
+        return true;
     }
 
     @Override

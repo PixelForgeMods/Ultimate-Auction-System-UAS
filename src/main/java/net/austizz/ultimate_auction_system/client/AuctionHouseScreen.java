@@ -22,6 +22,7 @@ import net.minecraft.client.gui.components.events.GuiEventListener;
 import net.minecraft.client.gui.narration.NarrationElementOutput;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.network.chat.Component;
+import net.minecraft.network.chat.MutableComponent;
 import net.minecraft.world.entity.player.Inventory;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
@@ -93,6 +94,7 @@ public class AuctionHouseScreen extends Screen {
         PLAYERS("Players"),
         ECONOMY("Economy"),
         MODERATION("Moderation"),
+        SUSPICION("Suspicion"),
         BANNED_ITEMS("Banned Items"),
         RECOVERY("Recovery"),
         AUDIT("Audit");
@@ -384,7 +386,7 @@ public class AuctionHouseScreen extends Screen {
 
     private void rebuildAdminWidgets() {
         boolean wideNav = adminWideNav();
-        headerHeight = wideNav ? 70 : 112;
+        headerHeight = wideNav ? 70 : 138;
         int navW = wideNav ? 136 : 0;
         contentLeft = panelLeft + 16 + navW;
         contentTop = panelTop + headerHeight + 12;
@@ -405,6 +407,8 @@ public class AuctionHouseScreen extends Screen {
             addAdminPlayerWidgets();
         } else if (adminSection == AdminSection.BANNED_ITEMS) {
             addAdminBannedEntryWidgets();
+        } else if (adminSection == AdminSection.SUSPICION) {
+            addAdminSuspicionWidgets();
         } else if (adminSection == AdminSection.RECOVERY) {
             addAdminRecoveryWidgets();
         }
@@ -1000,6 +1004,28 @@ public class AuctionHouseScreen extends Screen {
             }
             AuctionButton remove = addAuctionButton(contentLeft + contentWidth - 86, rowY + 7, 70, 20, "Remove", AuctionButton.Style.RED, button -> sendAdminBannedEntryAction("REMOVE_BANNED_ENTRY", entry.entry()));
             setVisibleInAdminList(remove);
+        }
+    }
+
+    private void addAdminSuspicionWidgets() {
+        int listTop = contentTop + 30;
+        int rowH = 58;
+        List<AuctionAdminDashboardPayload.Suspicion> signals = adminDashboard().suspicionSignals();
+        int start = Math.max(0, adminScroll / rowH);
+        int rows = Math.max(1, (adminListBottom() - listTop) / rowH);
+        int end = Math.min(signals.size(), start + rows + 1);
+        for (int i = start; i < end; i++) {
+            AuctionAdminDashboardPayload.Suspicion signal = signals.get(i);
+            int rowY = listTop + i * rowH - adminScroll;
+            if (rowY + rowH < listTop || rowY > adminListBottom() || signal.auctionId() == null) {
+                continue;
+            }
+            AuctionEntrySummary entry = findAuction(payload.browseListings(), signal.auctionId());
+            if (entry == null) {
+                continue;
+            }
+            AuctionButton inspect = addAuctionButton(contentLeft + contentWidth - 92, rowY + 18, 76, 22, "Inspect", AuctionButton.Style.GRAY, button -> openBids(entry));
+            setVisibleInAdminList(inspect);
         }
     }
 
@@ -1878,6 +1904,7 @@ public class AuctionHouseScreen extends Screen {
             case PLAYERS -> renderAdminPlayers(graphics);
             case ECONOMY -> renderAdminEconomy(graphics, mouseX, mouseY);
             case MODERATION -> renderAdminModeration(graphics, mouseX, mouseY);
+            case SUSPICION -> renderAdminSuspicion(graphics);
             case BANNED_ITEMS -> renderAdminBannedItems(graphics);
             case RECOVERY -> renderAdminRecovery(graphics);
             case AUDIT -> renderAdminAudit(graphics);
@@ -2040,6 +2067,41 @@ public class AuctionHouseScreen extends Screen {
         renderAdminAuctionRows(graphics, mouseX, mouseY, contentTop + 30);
     }
 
+    private void renderAdminSuspicion(GuiGraphics graphics) {
+        int listTop = contentTop + 30;
+        int rowH = 58;
+        List<AuctionAdminDashboardPayload.Suspicion> signals = adminDashboard().suspicionSignals();
+        graphics.drawString(font, Component.translatable("Suspicious Bid Patterns").withStyle(ChatFormatting.BOLD), contentLeft + 10, contentTop + 8, 0xFFFFFFFF, false);
+        if (signals.isEmpty()) {
+            graphics.drawString(font, Component.translatable("No suspicion signals."), contentLeft + 10, listTop + 16, 0xFFBDBDBD, false);
+            return;
+        }
+
+        int start = Math.max(0, adminScroll / rowH);
+        int rows = Math.max(1, (adminListBottom() - listTop) / rowH);
+        int end = Math.min(signals.size(), start + rows + 1);
+        graphics.enableScissor(contentLeft, listTop, contentLeft + contentWidth, adminListBottom());
+        for (int i = start; i < end; i++) {
+            AuctionAdminDashboardPayload.Suspicion signal = signals.get(i);
+            int rowY = listTop + i * rowH - adminScroll;
+            if (rowY + rowH < listTop || rowY > adminListBottom()) {
+                continue;
+            }
+            graphics.fill(contentLeft, rowY, contentLeft + contentWidth - 10, rowY + rowH - 4, 0xFF000000);
+            graphics.fill(contentLeft + 2, rowY + 2, contentLeft + contentWidth - 12, rowY + rowH - 6, 0xFF241F16);
+            int textW = Math.max(80, contentWidth - 130);
+            graphics.drawString(font, suspicionTypeLabel(signal.type()).withStyle(ChatFormatting.BOLD), contentLeft + 10, rowY + 7, 0xFFFFD700, false);
+            String target = signal.itemName().isBlank()
+                    ? Component.translatable("Player: {0}", signal.primaryPlayerName()).getString()
+                    : signal.itemName();
+            graphics.drawString(font, Component.literal(trimToWidth(target, textW)), contentLeft + 10, rowY + 21, 0xFFE0E0E0, false);
+            graphics.drawString(font, Component.literal(trimToWidth(suspicionDetail(signal).getString(), textW)), contentLeft + 10, rowY + 35, 0xFFBDBDBD, false);
+            graphics.drawString(font, Component.literal(readableDateTime(signal.observedAt())), contentLeft + contentWidth - 146, rowY + 7, 0xFF9E9E9E, false);
+        }
+        graphics.disableScissor();
+        renderScrollBar(graphics, contentLeft + contentWidth - 6, listTop, adminListBottom(), adminScroll, adminContentHeight(), Math.max(1, adminListBottom() - listTop));
+    }
+
     private void renderAdminAuctionRows(GuiGraphics graphics, int mouseX, int mouseY, int listTop) {
         List<AuctionEntrySummary> entries = visibleEntries();
         int rowHeight = auctionRowHeight();
@@ -2186,7 +2248,7 @@ public class AuctionHouseScreen extends Screen {
             }
             graphics.fill(contentLeft, rowY, contentLeft + contentWidth - 10, rowY + rowH - 4, 0xFF000000);
             graphics.fill(contentLeft + 2, rowY + 2, contentLeft + contentWidth - 12, rowY + rowH - 6, entry.success() ? 0xFF242424 : 0xFF3A1C1C);
-            graphics.drawString(font, Component.translatable("{0} by {1}", auditActionLabel(entry.action()), entry.adminName()).withStyle(ChatFormatting.BOLD), contentLeft + 10, rowY + 7, entry.success() ? 0xFFE0E0E0 : 0xFFFF7777, false);
+            graphics.drawString(font, Component.translatable("{0} by {1}", auditActionLabel(entry.action()), auditActorLabel(entry.adminName())).withStyle(ChatFormatting.BOLD), contentLeft + 10, rowY + 7, entry.success() ? 0xFFE0E0E0 : 0xFFFF7777, false);
             graphics.drawString(font, Component.literal(trimToWidth(entry.target(), contentWidth - 40)), contentLeft + 10, rowY + 21, 0xFFBDBDBD, false);
             graphics.drawString(font, Component.literal(readableDateTime(entry.createdAt())), contentLeft + contentWidth - 150, rowY + 7, 0xFF9E9E9E, false);
         }
@@ -2205,10 +2267,66 @@ public class AuctionHouseScreen extends Screen {
             case "ADMIN_FORCE_CANCEL" -> Component.translatable("Admin force-cancelled auction");
             case "ADMIN_RETRY_SETTLEMENT" -> Component.translatable("Admin retried settlement");
             case "ADMIN_RELEASE_RECOVERY" -> Component.translatable("Admin released recovery item");
+            case "SUSPICIOUS_BID_PATTERN" -> Component.translatable("Suspicious bid pattern");
             case "BANNED_ENTRY_ADD" -> Component.translatable("Banned item added");
             case "BANNED_ENTRY_REMOVE" -> Component.translatable("Banned item removed");
             default -> Component.literal(action == null || action.isBlank() ? "-" : action);
         };
+    }
+
+    private Component auditActorLabel(String actorName) {
+        if ("UAS Audit".equals(actorName)) {
+            return Component.translatable("UAS Audit");
+        }
+        return Component.literal(actorName == null || actorName.isBlank() ? "-" : actorName);
+    }
+
+    private MutableComponent suspicionTypeLabel(String type) {
+        String normalized = type == null ? "" : type.trim().toUpperCase(Locale.ROOT);
+        return switch (normalized) {
+            case "RAPID_BID_ESCALATION" -> Component.translatable("Rapid bid escalation");
+            case "REPEATED_BIDDER_PAIR" -> Component.translatable("Repeated bidder pair");
+            case "SELLER_SELF_BID" -> Component.translatable("Seller self-bid signal");
+            case "REPEATED_CANCELLED_LISTINGS" -> Component.translatable("Repeated cancelled listings");
+            default -> Component.translatable("Unknown suspicion signal");
+        };
+    }
+
+    private Component suspicionDetail(AuctionAdminDashboardPayload.Suspicion signal) {
+        String type = signal.type();
+        if ("RAPID_BID_ESCALATION".equals(type)) {
+            return Component.translatable(
+                    "Rapid price movement: {0} bids in {1} minutes, {2} to {3}",
+                    signal.evidenceCount(),
+                    Math.max(1, signal.windowSeconds() / 60),
+                    signal.startAmount(),
+                    signal.endAmount()
+            );
+        }
+        if ("REPEATED_BIDDER_PAIR".equals(type)) {
+            return Component.translatable(
+                    "Repeated outbid pair: {0} and {1}, {2} turns",
+                    signal.primaryPlayerName().isBlank() ? Component.translatable("Unknown") : signal.primaryPlayerName(),
+                    signal.secondaryPlayerName().isBlank() ? Component.translatable("Unknown") : signal.secondaryPlayerName(),
+                    signal.evidenceCount()
+            );
+        }
+        if ("SELLER_SELF_BID".equals(type)) {
+            return Component.translatable(
+                    "Seller self-bid evidence: {0} event(s) for {1}",
+                    signal.evidenceCount(),
+                    signal.primaryPlayerName().isBlank() ? Component.translatable("Unknown") : signal.primaryPlayerName()
+            );
+        }
+        if ("REPEATED_CANCELLED_LISTINGS".equals(type)) {
+            return Component.translatable(
+                    "Repeated cancellations: {0} listings in {1} hours by {2}",
+                    signal.evidenceCount(),
+                    Math.max(1, signal.windowSeconds() / 3600),
+                    signal.primaryPlayerName().isBlank() ? Component.translatable("Unknown") : signal.primaryPlayerName()
+            );
+        }
+        return Component.translatable("Evidence count: {0}", signal.evidenceCount());
     }
 
     private void renderAdminCard(GuiGraphics graphics, int x, int y, int w, int h) {
@@ -3124,6 +3242,7 @@ public class AuctionHouseScreen extends Screen {
             case OVERVIEW -> adminStatsGridHeight(true) + 382;
             case ECONOMY -> adminStatsGridHeight(false) + 232;
             case PLAYERS -> adminPlayerListTop() - contentTop + filteredAdminPlayers().size() * 44 + 12;
+            case SUSPICION -> 38 + adminDashboard().suspicionSignals().size() * 58;
             case BANNED_ITEMS -> 52 + adminDashboard().bannedEntries().size() * 36;
             case RECOVERY -> 38 + adminDashboard().recoveryEntries().size() * 62;
             case AUDIT -> adminDashboard().auditLog().size() * 46 + 24;

@@ -9,13 +9,14 @@ public record AuctionAdminDashboardSnapshot(
         List<AuctionPlayerBan> bans,
         List<AuctionAdminAuditEntry> auditLog,
         List<BannedEntry> bannedEntries,
+        List<AuctionSuspicionSignal> suspicionSignals,
         List<AuctionRecoveryEntry> recoveryEntries,
         List<AuctionListingSummary> restrictedListings,
         List<AuctionListingSummary> failedSettlements,
         String generatedAt
 ) {
     public static AuctionAdminDashboardSnapshot empty() {
-        return new AuctionAdminDashboardSnapshot(List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), "");
+        return new AuctionAdminDashboardSnapshot(List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), "");
     }
 
     public record Stats(

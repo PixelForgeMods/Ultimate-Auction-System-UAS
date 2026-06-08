@@ -4,6 +4,8 @@ import net.austizz.ultimate_auction_system.AuctionAdminAuditEntry;
 import net.austizz.ultimate_auction_system.AuctionAdminDashboardSnapshot;
 import net.austizz.ultimate_auction_system.AuctionPlayerBan;
 import net.austizz.ultimate_auction_system.AuctionRecoveryEntry;
+import net.austizz.ultimate_auction_system.AuctionSuspicionSignal;
+import net.austizz.ultimate_auction_system.banking.UasMoneyFormatter;
 import net.minecraft.network.RegistryFriendlyByteBuf;
 import net.minecraft.network.codec.ByteBufCodecs;
 import net.minecraft.network.codec.StreamCodec;
@@ -18,13 +20,14 @@ public record AuctionAdminDashboardPayload(
         List<Ban> bans,
         List<Audit> auditLog,
         List<BannedEntry> bannedEntries,
+        List<Suspicion> suspicionSignals,
         List<Recovery> recoveryEntries,
         List<AuctionEntrySummary> restrictedListings,
         List<AuctionEntrySummary> failedSettlements,
         String generatedAt
 ) {
     public static final AuctionAdminDashboardPayload EMPTY = new AuctionAdminDashboardPayload(
-            List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), "");
+            List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), "");
 
     public static final StreamCodec<RegistryFriendlyByteBuf, AuctionAdminDashboardPayload> STREAM_CODEC = StreamCodec.of(
             (buf, payload) -> {
@@ -33,6 +36,7 @@ public record AuctionAdminDashboardPayload(
                 Ban.STREAM_CODEC.apply(ByteBufCodecs.list(128)).encode(buf, payload.bans());
                 Audit.STREAM_CODEC.apply(ByteBufCodecs.list(256)).encode(buf, payload.auditLog());
                 BannedEntry.STREAM_CODEC.apply(ByteBufCodecs.list(256)).encode(buf, payload.bannedEntries());
+                Suspicion.STREAM_CODEC.apply(ByteBufCodecs.list(128)).encode(buf, payload.suspicionSignals());
                 Recovery.STREAM_CODEC.apply(ByteBufCodecs.list(128)).encode(buf, payload.recoveryEntries());
                 AuctionEntrySummary.STREAM_CODEC.apply(ByteBufCodecs.list(128)).encode(buf, payload.restrictedListings());
                 AuctionEntrySummary.STREAM_CODEC.apply(ByteBufCodecs.list(128)).encode(buf, payload.failedSettlements());
@@ -44,6 +48,7 @@ public record AuctionAdminDashboardPayload(
                     Ban.STREAM_CODEC.apply(ByteBufCodecs.list(128)).decode(buf),
                     Audit.STREAM_CODEC.apply(ByteBufCodecs.list(256)).decode(buf),
                     BannedEntry.STREAM_CODEC.apply(ByteBufCodecs.list(256)).decode(buf),
+                    Suspicion.STREAM_CODEC.apply(ByteBufCodecs.list(128)).decode(buf),
                     Recovery.STREAM_CODEC.apply(ByteBufCodecs.list(128)).decode(buf),
                     AuctionEntrySummary.STREAM_CODEC.apply(ByteBufCodecs.list(128)).decode(buf),
                     AuctionEntrySummary.STREAM_CODEC.apply(ByteBufCodecs.list(128)).decode(buf),
@@ -61,6 +66,7 @@ public record AuctionAdminDashboardPayload(
                 snapshot.bans().stream().map(Ban::fromBan).toList(),
                 snapshot.auditLog().stream().map(Audit::fromEntry).toList(),
                 snapshot.bannedEntries().stream().map(BannedEntry::fromSnapshot).toList(),
+                snapshot.suspicionSignals().stream().map(Suspicion::fromSignal).toList(),
                 snapshot.recoveryEntries().stream().map(Recovery::fromEntry).toList(),
                 snapshot.restrictedListings().stream().map(AuctionEntrySummary::fromListing).toList(),
                 snapshot.failedSettlements().stream().map(AuctionEntrySummary::fromListing).toList(),
@@ -351,6 +357,69 @@ public record AuctionAdminDashboardPayload(
 
         static BannedEntry fromSnapshot(AuctionAdminDashboardSnapshot.BannedEntry entry) {
             return new BannedEntry(entry.entry(), entry.type(), entry.label(), entry.matchingActiveAuctions());
+        }
+    }
+
+    public record Suspicion(
+            String type,
+            UUID auctionId,
+            String itemName,
+            UUID primaryPlayerId,
+            String primaryPlayerName,
+            UUID secondaryPlayerId,
+            String secondaryPlayerName,
+            int evidenceCount,
+            int windowSeconds,
+            String startAmount,
+            String endAmount,
+            String observedAt
+    ) {
+        public static final StreamCodec<RegistryFriendlyByteBuf, Suspicion> STREAM_CODEC = StreamCodec.of(
+                (buf, signal) -> {
+                    ByteBufCodecs.STRING_UTF8.encode(buf, signal.type());
+                    UasNetworkCodecs.OPTIONAL_UUID_CODEC.encode(buf, signal.auctionId());
+                    ByteBufCodecs.STRING_UTF8.encode(buf, signal.itemName());
+                    UasNetworkCodecs.OPTIONAL_UUID_CODEC.encode(buf, signal.primaryPlayerId());
+                    ByteBufCodecs.STRING_UTF8.encode(buf, signal.primaryPlayerName());
+                    UasNetworkCodecs.OPTIONAL_UUID_CODEC.encode(buf, signal.secondaryPlayerId());
+                    ByteBufCodecs.STRING_UTF8.encode(buf, signal.secondaryPlayerName());
+                    ByteBufCodecs.INT.encode(buf, signal.evidenceCount());
+                    ByteBufCodecs.INT.encode(buf, signal.windowSeconds());
+                    ByteBufCodecs.STRING_UTF8.encode(buf, signal.startAmount());
+                    ByteBufCodecs.STRING_UTF8.encode(buf, signal.endAmount());
+                    ByteBufCodecs.STRING_UTF8.encode(buf, signal.observedAt());
+                },
+                buf -> new Suspicion(
+                        ByteBufCodecs.STRING_UTF8.decode(buf),
+                        UasNetworkCodecs.OPTIONAL_UUID_CODEC.decode(buf),
+                        ByteBufCodecs.STRING_UTF8.decode(buf),
+                        UasNetworkCodecs.OPTIONAL_UUID_CODEC.decode(buf),
+                        ByteBufCodecs.STRING_UTF8.decode(buf),
+                        UasNetworkCodecs.OPTIONAL_UUID_CODEC.decode(buf),
+                        ByteBufCodecs.STRING_UTF8.decode(buf),
+                        ByteBufCodecs.INT.decode(buf),
+                        ByteBufCodecs.INT.decode(buf),
+                        ByteBufCodecs.STRING_UTF8.decode(buf),
+                        ByteBufCodecs.STRING_UTF8.decode(buf),
+                        ByteBufCodecs.STRING_UTF8.decode(buf)
+                )
+        );
+
+        static Suspicion fromSignal(AuctionSuspicionSignal signal) {
+            return new Suspicion(
+                    signal.type(),
+                    signal.auctionId(),
+                    signal.itemName(),
+                    signal.primaryPlayerId(),
+                    signal.primaryPlayerName(),
+                    signal.secondaryPlayerId(),
+                    signal.secondaryPlayerName(),
+                    signal.evidenceCount(),
+                    signal.windowSeconds(),
+                    UasMoneyFormatter.display(signal.startAmount()),
+                    UasMoneyFormatter.display(signal.endAmount()),
+                    time(signal.observedAt())
+            );
         }
     }
 

@@ -33,6 +33,7 @@ import java.time.format.DateTimeFormatterBuilder;
 import java.time.format.DateTimeParseException;
 import java.time.temporal.ChronoField;
 import java.util.List;
+import java.util.Locale;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
@@ -821,6 +822,18 @@ public class AUSCommands {
             }
         }
 
+        List<AuctionSuspicionSignal> suspicionSignals = house.getSuspicionSignals(auctionId);
+        source.sendSystemMessage(UasTranslations.tr("Suspicion signals ({0})", suspicionSignals.size()).withStyle(ChatFormatting.GOLD));
+        if (suspicionSignals.isEmpty()) {
+            source.sendSystemMessage(UasTranslations.literal("- ")
+                    .append(UasTranslations.tr("No suspicion signals."))
+                    .withStyle(ChatFormatting.GRAY));
+        } else {
+            for (AuctionSuspicionSignal signal : suspicionSignals) {
+                source.sendSystemMessage(formatSuspicionSignal(signal));
+            }
+        }
+
         List<AuctionFinancialEvent> financialEvents = auction.getFinancialEvents();
         source.sendSystemMessage(UasTranslations.literal("Financial events (")
                 .append(Component.literal(String.valueOf(financialEvents.size())))
@@ -960,6 +973,64 @@ public class AUSCommands {
                 .append(UasTranslations.literal(record.getSettlementTransactionId().map(UUID::toString).orElse("(none)")).withStyle(ChatFormatting.GRAY))
                 .append(UasTranslations.literal(" settlementResult=").withStyle(ChatFormatting.GRAY))
                 .append(UasTranslations.literal(record.getSettlementResult().orElse("(none)")).withStyle(ChatFormatting.GRAY));
+    }
+
+    private static MutableComponent formatSuspicionSignal(AuctionSuspicionSignal signal) {
+        return UasTranslations.literal("- ")
+                .withStyle(ChatFormatting.GRAY)
+                .append(suspicionTypeLabel(signal.type()).withStyle(ChatFormatting.YELLOW))
+                .append(UasTranslations.literal(" "))
+                .append(suspicionDetail(signal).withStyle(ChatFormatting.GRAY))
+                .append(UasTranslations.literal(" at=").withStyle(ChatFormatting.GRAY))
+                .append(UasTranslations.literal(formatDate(signal.observedAt())).withStyle(ChatFormatting.GRAY));
+    }
+
+    private static MutableComponent suspicionTypeLabel(String type) {
+        String normalized = type == null ? "" : type.trim().toUpperCase(Locale.ROOT);
+        return switch (normalized) {
+            case AuctionSuspicionSignal.RAPID_BID_ESCALATION -> UasTranslations.tr("Rapid bid escalation");
+            case AuctionSuspicionSignal.REPEATED_BIDDER_PAIR -> UasTranslations.tr("Repeated bidder pair");
+            case AuctionSuspicionSignal.SELLER_SELF_BID -> UasTranslations.tr("Seller self-bid signal");
+            case AuctionSuspicionSignal.REPEATED_CANCELLED_LISTINGS -> UasTranslations.tr("Repeated cancelled listings");
+            default -> UasTranslations.literal(normalized.isBlank() ? "Unknown suspicion signal" : normalized);
+        };
+    }
+
+    private static MutableComponent suspicionDetail(AuctionSuspicionSignal signal) {
+        String type = signal.type();
+        if (AuctionSuspicionSignal.RAPID_BID_ESCALATION.equals(type)) {
+            return UasTranslations.tr(
+                    "Rapid price movement: {0} bids in {1} minutes, {2} to {3}",
+                    signal.evidenceCount(),
+                    Math.max(1, signal.windowSeconds() / 60),
+                    UasMoneyFormatter.display(signal.startAmount()),
+                    UasMoneyFormatter.display(signal.endAmount())
+            );
+        }
+        if (AuctionSuspicionSignal.REPEATED_BIDDER_PAIR.equals(type)) {
+            return UasTranslations.tr(
+                    "Repeated outbid pair: {0} and {1}, {2} turns",
+                    blankFallback(signal.primaryPlayerName(), "(unknown)"),
+                    blankFallback(signal.secondaryPlayerName(), "(unknown)"),
+                    signal.evidenceCount()
+            );
+        }
+        if (AuctionSuspicionSignal.SELLER_SELF_BID.equals(type)) {
+            return UasTranslations.tr(
+                    "Seller self-bid evidence: {0} event(s) for {1}",
+                    signal.evidenceCount(),
+                    blankFallback(signal.primaryPlayerName(), "(unknown)")
+            );
+        }
+        if (AuctionSuspicionSignal.REPEATED_CANCELLED_LISTINGS.equals(type)) {
+            return UasTranslations.tr(
+                    "Repeated cancellations: {0} listings in {1} hours by {2}",
+                    signal.evidenceCount(),
+                    Math.max(1, signal.windowSeconds() / 3600),
+                    blankFallback(signal.primaryPlayerName(), "(unknown)")
+            );
+        }
+        return UasTranslations.tr("Evidence count: {0}", signal.evidenceCount());
     }
 
     private static MutableComponent formatFinancialEvent(AuctionFinancialEvent event) {

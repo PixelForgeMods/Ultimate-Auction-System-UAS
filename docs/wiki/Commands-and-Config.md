@@ -103,6 +103,7 @@ The admin dashboard includes:
 - Player inspection with granular auction-house bans for creating, bidding, buyouts, and notifications
 - Economy windows for 24h, 7d, and all-time auction activity
 - Moderation queues for failed settlements and active auctions that now match banned item rules
+- Suspicion signals for rapid bid escalation, repeated bidder pairs, seller self-bids, and repeated cancellations
 - A live banned auction entries editor
 - Recovery storage for force-cancelled auctions whose items were confiscated for admin review
 - An audit log for dashboard admin actions
@@ -121,6 +122,7 @@ The inspect command prints:
 - Escrow flag, source, and timestamp
 - Notification subscriber count
 - Every bid record, including rejected records when audit config stores them
+- Suspicion signals for rapid bid escalation, repeated bidder pairs, and seller self-bids
 - Settlement reference and transaction id when present
 - Every financial event, including UBS reference, amount, transaction id, and result
 
@@ -141,6 +143,14 @@ The inspect command prints:
 - `autosaveIntervalTicks`: persistent save cadence
 - `auditRejectedBids`: whether rejected bid attempts are stored in bid history
 - `auditStateTransitions`: whether lifecycle transitions are logged
+- `audit.suspiciousBidPatterns`: whether UAS logs non-punitive suspicious bid/cancel/outbid evidence
+- `audit.suspiciousRapidBidWindowSeconds`: rapid escalation detection window
+- `audit.suspiciousRapidBidCount`: bid count inside the rapid window required for a signal
+- `audit.suspiciousRepeatedBidderPairCount`: alternating outbid turns between the same two bidders required for a signal
+- `audit.suspiciousCancelWindowHours`: repeated seller cancellation detection window
+- `audit.suspiciousCancelCount`: cancelled listing count required for a signal
+- `audit.sellerSelfBidSignals`: whether seller self-bid attempts and accepted self-bids are logged as suspicion signals
+- `audit.externalSuspicionSignalHooks`: reserved opt-in hook for future same-IP or known-collaborator integrations; UAS does not collect or persist IP addresses itself
 - `bannedAuctionEntries`: item, tag, or mod restrictions for future auction listings
 - `rateLimits.createCooldownSeconds`: per-player cooldown for preparing auction listings
 - `rateLimits.bidCooldownSeconds`: per-player cooldown for bids

@@ -36,6 +36,14 @@ public class Config {
     public static final boolean DEFAULT_AUTO_SETTLE_EXPIRED_AUCTIONS = true;
     public static final boolean DEFAULT_AUDIT_REJECTED_BIDS = true;
     public static final boolean DEFAULT_AUDIT_STATE_TRANSITIONS = true;
+    public static final boolean DEFAULT_AUDIT_SUSPICIOUS_BID_PATTERNS = true;
+    public static final boolean DEFAULT_AUDIT_SELLER_SELF_BID_SIGNALS = true;
+    public static final boolean DEFAULT_AUDIT_EXTERNAL_SUSPICION_SIGNAL_HOOKS = false;
+    public static final int DEFAULT_SUSPICIOUS_RAPID_BID_WINDOW_SECONDS = 300;
+    public static final int DEFAULT_SUSPICIOUS_RAPID_BID_COUNT = 4;
+    public static final int DEFAULT_SUSPICIOUS_REPEATED_BIDDER_PAIR_COUNT = 3;
+    public static final int DEFAULT_SUSPICIOUS_CANCEL_WINDOW_HOURS = 24;
+    public static final int DEFAULT_SUSPICIOUS_CANCEL_COUNT = 3;
     public static final boolean DEFAULT_ALLOW_SELLER_SELF_BID = false;
     public static final int DEFAULT_ADMIN_STATUS_PERMISSION_LEVEL = 2;
     public static final int DEFAULT_AUTOSAVE_INTERVAL_TICKS = 6000;
@@ -53,6 +61,9 @@ public class Config {
     private static final int MAX_SETTLEMENT_RETRY_ATTEMPTS = 20;
     private static final int MAX_SETTLEMENT_RETRY_DELAY_SECONDS = 86_400;
     private static final int MAX_RATE_LIMIT_SECONDS = 3_600;
+    private static final int MAX_AUDIT_WINDOW_SECONDS = 86_400;
+    private static final int MAX_AUDIT_WINDOW_HOURS = 24 * 30;
+    private static final int MAX_AUDIT_SIGNAL_COUNT = 100;
     private static final int MAX_PERMISSION_LEVEL = 4;
     private static final int MIN_AUTOSAVE_INTERVAL_TICKS = 20;
     private static final int MAX_AUTOSAVE_INTERVAL_TICKS = 72_000;
@@ -204,6 +215,62 @@ public class Config {
             )
             .define("audit.stateTransitions", DEFAULT_AUDIT_STATE_TRANSITIONS);
 
+    private static final ModConfigSpec.BooleanValue AUDIT_SUSPICIOUS_BID_PATTERNS = BUILDER
+            .comment(
+                    "When true, UAS logs non-punitive suspicion signals for bid abuse investigation.",
+                    "Signals are evidence for admins only; they never ban, cancel, or punish automatically."
+            )
+            .define("audit.suspiciousBidPatterns", DEFAULT_AUDIT_SUSPICIOUS_BID_PATTERNS);
+
+    private static final ModConfigSpec.IntValue SUSPICIOUS_RAPID_BID_WINDOW_SECONDS = BUILDER
+            .comment(
+                    "Time window used for rapid bid escalation suspicion signals, in seconds.",
+                    "Lower values are stricter. Runtime reload: applies to future audit checks."
+            )
+            .defineInRange("audit.suspiciousRapidBidWindowSeconds", DEFAULT_SUSPICIOUS_RAPID_BID_WINDOW_SECONDS, 30, MAX_AUDIT_WINDOW_SECONDS);
+
+    private static final ModConfigSpec.IntValue SUSPICIOUS_RAPID_BID_COUNT = BUILDER
+            .comment(
+                    "Accepted bid count inside the rapid-bid window before a suspicion signal is logged.",
+                    "Runtime reload: applies to future audit checks."
+            )
+            .defineInRange("audit.suspiciousRapidBidCount", DEFAULT_SUSPICIOUS_RAPID_BID_COUNT, 2, MAX_AUDIT_SIGNAL_COUNT);
+
+    private static final ModConfigSpec.IntValue SUSPICIOUS_REPEATED_BIDDER_PAIR_COUNT = BUILDER
+            .comment(
+                    "Number of alternating outbid turns between the same two bidders before UAS logs a repeated-pair signal.",
+                    "Runtime reload: applies to future audit checks."
+            )
+            .defineInRange("audit.suspiciousRepeatedBidderPairCount", DEFAULT_SUSPICIOUS_REPEATED_BIDDER_PAIR_COUNT, 2, MAX_AUDIT_SIGNAL_COUNT);
+
+    private static final ModConfigSpec.IntValue SUSPICIOUS_CANCEL_WINDOW_HOURS = BUILDER
+            .comment(
+                    "Window used to flag repeated seller cancellations, in hours.",
+                    "Runtime reload: applies to future audit checks."
+            )
+            .defineInRange("audit.suspiciousCancelWindowHours", DEFAULT_SUSPICIOUS_CANCEL_WINDOW_HOURS, 1, MAX_AUDIT_WINDOW_HOURS);
+
+    private static final ModConfigSpec.IntValue SUSPICIOUS_CANCEL_COUNT = BUILDER
+            .comment(
+                    "Cancelled listing count by the same seller inside the cancel window before a suspicion signal is logged.",
+                    "Runtime reload: applies to future audit checks."
+            )
+            .defineInRange("audit.suspiciousCancelCount", DEFAULT_SUSPICIOUS_CANCEL_COUNT, 2, MAX_AUDIT_SIGNAL_COUNT);
+
+    private static final ModConfigSpec.BooleanValue AUDIT_SELLER_SELF_BID_SIGNALS = BUILDER
+            .comment(
+                    "When true, seller self-bid attempts and accepted self-bids are logged as suspicion signals.",
+                    "This is independent of bidding.allowSellerSelfBid and never punishes automatically."
+            )
+            .define("audit.sellerSelfBidSignals", DEFAULT_AUDIT_SELLER_SELF_BID_SIGNALS);
+
+    private static final ModConfigSpec.BooleanValue AUDIT_EXTERNAL_SUSPICION_SIGNAL_HOOKS = BUILDER
+            .comment(
+                    "Reserved hook toggle for future integrations that can provide same-IP or known-collaborator signals.",
+                    "UAS does not collect or persist IP addresses itself. Keep false unless another trusted integration supplies privacy-reviewed signals."
+            )
+            .define("audit.externalSuspicionSignalHooks", DEFAULT_AUDIT_EXTERNAL_SUSPICION_SIGNAL_HOOKS);
+
     private static final ModConfigSpec.IntValue ADMIN_STATUS_PERMISSION_LEVEL = BUILDER
             .comment(
                     "Minecraft permission level required to run /uas status.",
@@ -255,6 +322,14 @@ public class Config {
     public static boolean autoSettleExpiredAuctions;
     public static boolean auditRejectedBids;
     public static boolean auditStateTransitions;
+    public static boolean auditSuspiciousBidPatterns = DEFAULT_AUDIT_SUSPICIOUS_BID_PATTERNS;
+    public static boolean auditSellerSelfBidSignals = DEFAULT_AUDIT_SELLER_SELF_BID_SIGNALS;
+    public static boolean auditExternalSuspicionSignalHooks = DEFAULT_AUDIT_EXTERNAL_SUSPICION_SIGNAL_HOOKS;
+    public static int suspiciousRapidBidWindowSeconds = DEFAULT_SUSPICIOUS_RAPID_BID_WINDOW_SECONDS;
+    public static int suspiciousRapidBidCount = DEFAULT_SUSPICIOUS_RAPID_BID_COUNT;
+    public static int suspiciousRepeatedBidderPairCount = DEFAULT_SUSPICIOUS_REPEATED_BIDDER_PAIR_COUNT;
+    public static int suspiciousCancelWindowHours = DEFAULT_SUSPICIOUS_CANCEL_WINDOW_HOURS;
+    public static int suspiciousCancelCount = DEFAULT_SUSPICIOUS_CANCEL_COUNT;
     public static boolean allowSellerSelfBid;
     public static int adminStatusPermissionLevel;
     public static int autosaveIntervalTicks;
@@ -288,6 +363,14 @@ public class Config {
         autoSettleExpiredAuctions = readBoolean("settlement.autoSettleExpiredAuctions", AUTO_SETTLE_EXPIRED_AUCTIONS, DEFAULT_AUTO_SETTLE_EXPIRED_AUCTIONS);
         auditRejectedBids = readBoolean("audit.rejectedBids", AUDIT_REJECTED_BIDS, DEFAULT_AUDIT_REJECTED_BIDS);
         auditStateTransitions = readBoolean("audit.stateTransitions", AUDIT_STATE_TRANSITIONS, DEFAULT_AUDIT_STATE_TRANSITIONS);
+        auditSuspiciousBidPatterns = readBoolean("audit.suspiciousBidPatterns", AUDIT_SUSPICIOUS_BID_PATTERNS, DEFAULT_AUDIT_SUSPICIOUS_BID_PATTERNS);
+        suspiciousRapidBidWindowSeconds = readInt("audit.suspiciousRapidBidWindowSeconds", SUSPICIOUS_RAPID_BID_WINDOW_SECONDS, DEFAULT_SUSPICIOUS_RAPID_BID_WINDOW_SECONDS, 30, MAX_AUDIT_WINDOW_SECONDS);
+        suspiciousRapidBidCount = readInt("audit.suspiciousRapidBidCount", SUSPICIOUS_RAPID_BID_COUNT, DEFAULT_SUSPICIOUS_RAPID_BID_COUNT, 2, MAX_AUDIT_SIGNAL_COUNT);
+        suspiciousRepeatedBidderPairCount = readInt("audit.suspiciousRepeatedBidderPairCount", SUSPICIOUS_REPEATED_BIDDER_PAIR_COUNT, DEFAULT_SUSPICIOUS_REPEATED_BIDDER_PAIR_COUNT, 2, MAX_AUDIT_SIGNAL_COUNT);
+        suspiciousCancelWindowHours = readInt("audit.suspiciousCancelWindowHours", SUSPICIOUS_CANCEL_WINDOW_HOURS, DEFAULT_SUSPICIOUS_CANCEL_WINDOW_HOURS, 1, MAX_AUDIT_WINDOW_HOURS);
+        suspiciousCancelCount = readInt("audit.suspiciousCancelCount", SUSPICIOUS_CANCEL_COUNT, DEFAULT_SUSPICIOUS_CANCEL_COUNT, 2, MAX_AUDIT_SIGNAL_COUNT);
+        auditSellerSelfBidSignals = readBoolean("audit.sellerSelfBidSignals", AUDIT_SELLER_SELF_BID_SIGNALS, DEFAULT_AUDIT_SELLER_SELF_BID_SIGNALS);
+        auditExternalSuspicionSignalHooks = readBoolean("audit.externalSuspicionSignalHooks", AUDIT_EXTERNAL_SUSPICION_SIGNAL_HOOKS, DEFAULT_AUDIT_EXTERNAL_SUSPICION_SIGNAL_HOOKS);
         allowSellerSelfBid = readBoolean("bidding.allowSellerSelfBid", ALLOW_SELLER_SELF_BID, DEFAULT_ALLOW_SELLER_SELF_BID);
         adminStatusPermissionLevel = readInt("admin.statusPermissionLevel", ADMIN_STATUS_PERMISSION_LEVEL, DEFAULT_ADMIN_STATUS_PERMISSION_LEVEL, 0, MAX_PERMISSION_LEVEL);
         autosaveIntervalTicks = readInt("storage.autosaveIntervalTicks", AUTOSAVE_INTERVAL_TICKS, DEFAULT_AUTOSAVE_INTERVAL_TICKS, MIN_AUTOSAVE_INTERVAL_TICKS, MAX_AUTOSAVE_INTERVAL_TICKS);

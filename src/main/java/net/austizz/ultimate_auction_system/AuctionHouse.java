@@ -69,6 +69,7 @@ public class AuctionHouse {
     private final ConcurrentHashMap<UUID, AuctionItem> AuctionItems;
     private final ConcurrentHashMap<UUID, PendingAuctionListing> pendingListings = new ConcurrentHashMap<>();
     private final UasBankingService bankingService;
+    private final AuctionSuspicionAnalyzer suspicionAnalyzer = new AuctionSuspicionAnalyzer();
     private final AuctionSavedData savedData;
     private final boolean mutationsBlocked;
     private volatile AuctionStorageHealth storageHealth = AuctionStorageHealth.inMemoryOnly();
@@ -460,7 +461,7 @@ public class AuctionHouse {
         if (AuctionAdminSavedData.isBlocked(bidder.getServer(), bidder.getUUID(), AuctionBanAction.BID)) {
             return auctionBanFailure(AuctionBanAction.BID);
         }
-        return placeBidWithEscrow(bidder.getUUID(), auctionId, amount, true);
+        return placeBidWithEscrow(bidder.getUUID(), auctionId, amount, true, bidder.getServer());
     }
 
     AuctionActionResult placeBidWithEscrow(UUID bidderId, UUID auctionId, BigDecimal amount) {
@@ -468,6 +469,14 @@ public class AuctionHouse {
     }
 
     private AuctionActionResult placeBidWithEscrow(UUID bidderId, UUID auctionId, BigDecimal amount, boolean emitBidAlerts) {
+        return placeBidWithEscrow(bidderId, auctionId, amount, emitBidAlerts, ServerLifecycleHooks.getCurrentServer());
+    }
+
+    private AuctionActionResult placeBidWithEscrow(UUID bidderId,
+                                                   UUID auctionId,
+                                                   BigDecimal amount,
+                                                   boolean emitBidAlerts,
+                                                   MinecraftServer auditServer) {
         if (bidderId == null) {
             return AuctionActionResult.fail("Only players can place bids.");
         }
@@ -487,6 +496,7 @@ public class AuctionHouse {
                 return AuctionActionResult.fail("Auction already ended.");
             }
             if (!Config.allowSellerSelfBid && bidderId.equals(item.getPlayerId())) {
+                auditSellerSelfBidAttempt(item, bidderId, auditServer);
                 return AuctionActionResult.fail("You cannot bid on your own auction.");
             }
             BigDecimal safeAmount = safeMoney(amount);
@@ -552,6 +562,7 @@ public class AuctionHouse {
             }
 
             markChanged("Auction storage marked dirty after accepted bid.");
+            auditSuspiciousBidSignals(item, auditServer);
             boolean soldByBid = item.getState() == AuctionState.ENDED
                     && item.getBuyoutPrice().isPresent()
                     && safeAmount.compareTo(item.getBuyoutPrice().get()) >= 0;
@@ -585,10 +596,14 @@ public class AuctionHouse {
         if (AuctionAdminSavedData.isBlocked(bidder.getServer(), bidder.getUUID(), AuctionBanAction.BUYOUT)) {
             return auctionBanFailure(AuctionBanAction.BUYOUT);
         }
-        return buyout(bidder.getUUID(), auctionId);
+        return buyout(bidder.getUUID(), auctionId, bidder.getServer());
     }
 
     AuctionActionResult buyout(UUID bidderId, UUID auctionId) {
+        return buyout(bidderId, auctionId, ServerLifecycleHooks.getCurrentServer());
+    }
+
+    private AuctionActionResult buyout(UUID bidderId, UUID auctionId, MinecraftServer auditServer) {
         if (bidderId == null) {
             return AuctionActionResult.fail("Only players can buy out auctions.");
         }
@@ -608,6 +623,7 @@ public class AuctionHouse {
                 return AuctionActionResult.fail("Auction already ended.");
             }
             if (!Config.allowSellerSelfBid && bidderId.equals(item.getPlayerId())) {
+                auditSellerSelfBidAttempt(item, bidderId, auditServer);
                 return AuctionActionResult.fail("You cannot buy out your own auction.");
             }
             Optional<BigDecimal> buyout = item.getBuyoutPrice();
@@ -684,6 +700,7 @@ public class AuctionHouse {
                 return AuctionActionResult.fail(settlement.message());
             }
             markChanged("Auction storage marked dirty after accepted buyout.");
+            auditSuspiciousBidSignals(item, auditServer);
             notifyAuctionSold(item, bidderId, buyoutAmount);
             return AuctionActionResult.ok("Buyout accepted. Seller was paid; claim the item from My Bids.");
         }
@@ -716,6 +733,7 @@ public class AuctionHouse {
             }
             giveOrDeliver(seller, item.getContents(), deliveryData, auctionId, "Cancelled auction return");
             markChanged("Auction storage marked dirty after auction cancellation.");
+            auditSuspiciousCancellationSignals(seller.getUUID(), seller.getServer());
             notifyAuctionCancelled(item, seller.getUUID());
             return AuctionActionResult.ok("Auction cancelled and item returned.");
         }
@@ -1420,8 +1438,15 @@ public class AuctionHouse {
         if (viewer == null || viewer.getServer() == null) {
             return null;
         }
+        return adminSavedData(viewer.getServer());
+    }
+
+    private AuctionAdminSavedData adminSavedData(MinecraftServer server) {
+        if (server == null) {
+            return null;
+        }
         try {
-            return AuctionAdminSavedData.get(viewer.getServer());
+            return AuctionAdminSavedData.get(server);
         } catch (RuntimeException exception) {
             UltimateAuctionSystem.LOGGER.warn("[UAS] Admin dashboard saved data unavailable: {}", exception.getMessage());
             return null;
@@ -1439,6 +1464,7 @@ public class AuctionHouse {
         List<AuctionPlayerBan> bans = adminData == null ? List.of() : adminData.getBans();
         List<AuctionAdminAuditEntry> audit = adminData == null ? List.of() : adminData.getAuditLog().stream().limit(80).toList();
         List<AuctionRecoveryEntry> recoveryEntries = adminData == null ? List.of() : adminData.getRecoveryEntries().stream().limit(80).toList();
+        List<AuctionSuspicionSignal> suspicionSignals = buildSuspicionSignals().stream().limit(80).toList();
         List<AuctionAdminDashboardSnapshot.Player> players = adminPlayers(safeAll, adminData, bans);
         List<AuctionAdminDashboardSnapshot.BannedEntry> bannedEntries = adminBannedEntries(safeAll);
         List<AuctionListingSummary> restrictedListings = safeAll.stream()
@@ -1453,7 +1479,61 @@ public class AuctionHouse {
                 .sorted(Comparator.comparing(AuctionListingSummary::endsAt).reversed())
                 .limit(80)
                 .toList();
-        return new AuctionAdminDashboardSnapshot(stats, players, bans, audit, bannedEntries, recoveryEntries, restrictedListings, failedSettlements, LocalDateTime.now().toString());
+        return new AuctionAdminDashboardSnapshot(stats, players, bans, audit, bannedEntries, suspicionSignals, recoveryEntries, restrictedListings, failedSettlements, LocalDateTime.now().toString());
+    }
+
+    private List<AuctionSuspicionSignal> buildSuspicionSignals() {
+        AuctionSuspicionAnalyzer.Rules rules = AuctionSuspicionAnalyzer.Rules.fromConfig();
+        if (!rules.enabled()) {
+            return List.of();
+        }
+        ArrayList<AuctionSuspicionSignal> signals = new ArrayList<>();
+        for (AuctionItem item : AuctionItems.values()) {
+            signals.addAll(suspicionAnalyzer.analyze(item, rules, this::playerName));
+        }
+        signals.addAll(suspicionAnalyzer.repeatedCancellationSignals(AuctionItems.values(), rules, this::playerName));
+        return signals.stream()
+                .sorted(Comparator.comparing(AuctionSuspicionSignal::observedAt).reversed())
+                .toList();
+    }
+
+    private void auditSuspiciousBidSignals(AuctionItem item, MinecraftServer server) {
+        AuctionSuspicionAnalyzer.Rules rules = AuctionSuspicionAnalyzer.Rules.fromConfig();
+        if (item == null || !rules.enabled()) {
+            return;
+        }
+        for (AuctionSuspicionSignal signal : suspicionAnalyzer.analyze(item, rules, this::playerName)) {
+            auditSuspicionSignal(signal, server);
+        }
+    }
+
+    private void auditSellerSelfBidAttempt(AuctionItem item, UUID bidderId, MinecraftServer server) {
+        if (!Config.auditSuspiciousBidPatterns || !Config.auditSellerSelfBidSignals) {
+            return;
+        }
+        auditSuspicionSignal(suspicionAnalyzer.sellerSelfBidAttempt(item, bidderId, this::playerName), server);
+    }
+
+    private void auditSuspiciousCancellationSignals(UUID sellerId, MinecraftServer server) {
+        AuctionSuspicionAnalyzer.Rules rules = AuctionSuspicionAnalyzer.Rules.fromConfig();
+        if (sellerId == null || !rules.enabled()) {
+            return;
+        }
+        for (AuctionSuspicionSignal signal : suspicionAnalyzer.repeatedCancellationSignals(AuctionItems.values(), rules, this::playerName)) {
+            if (sellerId.equals(signal.primaryPlayerId())) {
+                auditSuspicionSignal(signal, server);
+            }
+        }
+    }
+
+    private void auditSuspicionSignal(AuctionSuspicionSignal signal, MinecraftServer server) {
+        AuctionAdminSavedData adminData = adminSavedData(server);
+        if (adminData == null || signal == null) {
+            return;
+        }
+        if (adminData.addSuspicion(signal)) {
+            UltimateAuctionSystem.LOGGER.warn("[UAS] Suspicious auction pattern {} target {}: {}", signal.type(), signal.auditTarget(), signal.auditMessage());
+        }
     }
 
     private AuctionAdminDashboardSnapshot.Stats adminStats(String label,
@@ -1685,10 +1765,15 @@ public class AuctionHouse {
     }
 
     public AuctionItem getAuctionItem(UUID id) {
-        if  (this.AuctionItems.containsKey(id)) {
-            return this.AuctionItems.get(id);
+        return id == null ? null : this.AuctionItems.get(id);
+    }
+
+    public List<AuctionSuspicionSignal> getSuspicionSignals(UUID auctionId) {
+        AuctionItem item = getAuctionItem(auctionId);
+        if (item == null) {
+            return List.of();
         }
-        return null;
+        return suspicionAnalyzer.analyze(item, AuctionSuspicionAnalyzer.Rules.fromConfig(), this::playerName);
     }
 
     public ConcurrentHashMap<UUID, AuctionItem> getAuctionItems() {
