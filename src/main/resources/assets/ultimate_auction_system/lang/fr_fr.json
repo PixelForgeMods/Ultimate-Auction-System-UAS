@@ -257,6 +257,7 @@
   "Delivery Storage": "Stockage de livraison",
   "Delivery item not found.": "Objet de livraison introuvable.",
   "Delivery item withdrawn.": "Objet de livraison retire.",
+  "Delivery storage {0} item(s)": "Stockage de livraison %1$s objet(s)",
   "Describe the auction": "Decris l'enchere",
   "Description": "Description",
   "Description: ": "Description : ",

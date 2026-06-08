@@ -1537,7 +1537,7 @@ public class AuctionHouse {
                 ? null
                 : getPendingListingPreview(viewerId).orElse(null);
         AuctionAdminDashboardSnapshot adminDashboard = resolvedAdminMode
-                ? buildAdminDashboard(all, adminSavedData(viewer))
+                ? buildAdminDashboard(all, adminSavedData(viewer), deliveryData)
                 : AuctionAdminDashboardSnapshot.empty();
         return new AuctionHouseSnapshot(browse, myBids, myAuctions, dashboardListings, deliveries, modFilters, accounts, primaryAccount, pendingListing, Config.listingFeeRate, message == null ? "" : message, success, resolvedAdminMode, adminDashboard);
     }
@@ -1610,7 +1610,8 @@ public class AuctionHouse {
     }
 
     private AuctionAdminDashboardSnapshot buildAdminDashboard(List<AuctionListingSummary> all,
-                                                             AuctionAdminSavedData adminData) {
+                                                             AuctionAdminSavedData adminData,
+                                                             AuctionDeliverySavedData deliveryData) {
         List<AuctionListingSummary> safeAll = all == null ? List.of() : all;
         List<AuctionAdminDashboardSnapshot.Stats> stats = List.of(
                 adminStats("24h", safeAll, LocalDateTime.now().minusHours(24)),
@@ -1622,7 +1623,7 @@ public class AuctionHouse {
         List<AuctionAdminAuditEntry> audit = adminData == null ? List.of() : adminData.getAuditLog().stream().limit(80).toList();
         List<AuctionRecoveryEntry> recoveryEntries = adminData == null ? List.of() : adminData.getRecoveryEntries().stream().limit(80).toList();
         List<AuctionSuspicionSignal> suspicionSignals = buildSuspicionSignals().stream().limit(80).toList();
-        List<AuctionAdminDashboardSnapshot.Player> players = adminPlayers(safeAll, adminData, bans);
+        List<AuctionAdminDashboardSnapshot.Player> players = adminPlayers(safeAll, adminData, bans, deliveryData);
         List<AuctionAdminDashboardSnapshot.BannedEntry> bannedEntries = adminBannedEntries(safeAll);
         List<AuctionListingSummary> restrictedListings = safeAll.stream()
                 .filter(summary -> summary.state() == AuctionState.ACTIVE)
@@ -1775,8 +1776,10 @@ public class AuctionHouse {
 
     private List<AuctionAdminDashboardSnapshot.Player> adminPlayers(List<AuctionListingSummary> all,
                                                                     AuctionAdminSavedData adminData,
-                                                                    List<AuctionPlayerBan> bans) {
+                                                                    List<AuctionPlayerBan> bans,
+                                                                    AuctionDeliverySavedData deliveryData) {
         Map<UUID, AdminPlayerAccumulator> players = new HashMap<>();
+        Map<UUID, List<AuctionDeliveryEntry>> deliveriesByPlayer = deliveryData == null ? Map.of() : deliveryData.getAllDeliveries();
         for (AuctionListingSummary summary : all) {
             if (summary == null) {
                 continue;
@@ -1817,18 +1820,25 @@ public class AuctionHouse {
                 banned.name = ban.playerName();
             }
         }
+        for (UUID playerId : deliveriesByPlayer.keySet()) {
+            if (playerId != null) {
+                players.computeIfAbsent(playerId, id -> new AdminPlayerAccumulator(id, playerName(id)));
+            }
+        }
 
         return players.values().stream()
                 .sorted(Comparator.comparingInt(AdminPlayerAccumulator::score).reversed().thenComparing(accumulator -> accumulator.name.toLowerCase(Locale.ROOT)))
                 .limit(80)
-                .map(accumulator -> toAdminPlayer(accumulator, adminData))
+                .map(accumulator -> toAdminPlayer(accumulator, adminData, deliveriesByPlayer.get(accumulator.playerId)))
                 .toList();
     }
 
     private AuctionAdminDashboardSnapshot.Player toAdminPlayer(AdminPlayerAccumulator accumulator,
-                                                               AuctionAdminSavedData adminData) {
+                                                               AuctionAdminSavedData adminData,
+                                                               List<AuctionDeliveryEntry> deliveries) {
         AuctionPlayerBan ban = adminData == null ? null : adminData.getBan(accumulator.playerId).orElse(null);
         boolean active = ban != null && ban.active();
+        List<AuctionDeliveryEntry> safeDeliveries = deliveries == null ? List.of() : deliveries;
         return new AuctionAdminDashboardSnapshot.Player(
                 accumulator.playerId,
                 accumulator.name,
@@ -1840,6 +1850,8 @@ public class AuctionHouse {
                 accumulator.cancelledCount,
                 moneyLabel(accumulator.bidVolume),
                 moneyLabel(accumulator.soldValue),
+                safeDeliveries.size(),
+                deliveryPreview(safeDeliveries),
                 active && ban.blockCreate(),
                 active && ban.blockBid(),
                 active && ban.blockBuyout(),
@@ -1848,6 +1860,36 @@ public class AuctionHouse {
                 active ? ban.expiresAt().map(LocalDateTime::toString).orElse("Never") : "",
                 active
         );
+    }
+
+    private String deliveryPreview(List<AuctionDeliveryEntry> deliveries) {
+        if (deliveries == null || deliveries.isEmpty()) {
+            return "";
+        }
+        return deliveries.stream()
+                .limit(3)
+                .map(entry -> {
+                    String item = deliveryItemLabel(entry);
+                    String reason = entry.reason() == null || entry.reason().isBlank() ? "" : entry.reason();
+                    return reason.isBlank() ? item : item + " (" + reason + ")";
+                })
+                .reduce((left, right) -> left + "; " + right)
+                .orElse("");
+    }
+
+    private String deliveryItemLabel(AuctionDeliveryEntry entry) {
+        if (entry == null || entry.items().isEmpty()) {
+            return "?";
+        }
+        ItemStack stack = entry.item();
+        if (entry.bundle()) {
+            String firstItem = stack.isEmpty() ? "?" : stack.getHoverName().getString();
+            return firstItem + " +" + Math.max(0, entry.items().size() - 1);
+        }
+        if (stack.isEmpty()) {
+            return "?";
+        }
+        return stack.getCount() + "x " + stack.getHoverName().getString();
     }
 
     private List<AuctionAdminDashboardSnapshot.BannedEntry> adminBannedEntries(List<AuctionListingSummary> all) {

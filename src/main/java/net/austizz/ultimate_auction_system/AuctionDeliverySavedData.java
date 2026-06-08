@@ -13,7 +13,9 @@ import net.minecraft.world.level.saveddata.SavedData;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
@@ -58,6 +60,19 @@ public final class AuctionDeliverySavedData extends SavedData {
         return deliveries.getOrDefault(playerId, List.of()).stream()
                 .map(AuctionDeliveryEntry::copy)
                 .toList();
+    }
+
+    public synchronized Map<UUID, List<AuctionDeliveryEntry>> getAllDeliveries() {
+        HashMap<UUID, List<AuctionDeliveryEntry>> copy = new HashMap<>();
+        for (Map.Entry<UUID, List<AuctionDeliveryEntry>> entry : deliveries.entrySet()) {
+            if (entry.getKey() == null || entry.getValue() == null || entry.getValue().isEmpty()) {
+                continue;
+            }
+            copy.put(entry.getKey(), entry.getValue().stream()
+                    .map(AuctionDeliveryEntry::copy)
+                    .toList());
+        }
+        return Map.copyOf(copy);
     }
 
     public synchronized void addDelivery(UUID playerId, UUID auctionId, ItemStack stack, String reason) {

@@ -257,6 +257,7 @@
   "Delivery Storage": "Bezorgopslag",
   "Delivery item not found.": "Bezorgitem niet gevonden.",
   "Delivery item withdrawn.": "Bezorgitem opgenomen.",
+  "Delivery storage {0} item(s)": "Bezorgopslag %1$s item(s)",
   "Describe the auction": "Beschrijf de veiling",
   "Description": "Beschrijving",
   "Description: ": "Beschrijving: ",

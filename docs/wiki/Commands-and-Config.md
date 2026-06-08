@@ -160,6 +160,7 @@ The dashboard includes:
 - Overview cards for auction, economy, settlement, and moderation health
 - Auction inspection, bid history, force-cancel, and failed-settlement retry tools
 - Player inspection with granular auction-house bans for create, bid, buyout, and notification actions
+- Player delivery storage counts and compact previews for recovery checks
 - Economy windows for 24h, 7d, and all-time auction activity
 - Moderation queues for failed settlements and active auctions matching banned item rules
 - Suspicion signals for rapid bid escalation, repeated bidder pairs, seller self-bids, and repeated cancellations

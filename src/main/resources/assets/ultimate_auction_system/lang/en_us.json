@@ -257,6 +257,7 @@
   "Delivery Storage": "Delivery Storage",
   "Delivery item not found.": "Delivery item not found.",
   "Delivery item withdrawn.": "Delivery item withdrawn.",
+  "Delivery storage {0} item(s)": "Delivery storage %1$s item(s)",
   "Describe the auction": "Describe the auction",
   "Description": "Description",
   "Description: ": "Description: ",

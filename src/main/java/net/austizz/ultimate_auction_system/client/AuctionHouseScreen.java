@@ -960,7 +960,7 @@ public class AuctionHouseScreen extends Screen {
         AuctionAdminDashboardPayload.Player selected = selectedAdminPlayer();
         if (selected != null) {
             int y = contentTop + 42;
-            int controlsY = y + 86;
+            int controlsY = y + 116;
             addAuctionButton(contentLeft, controlsY, 66, 20, adminBlockCreate ? "Create" : "- Create", adminBlockCreate ? AuctionButton.Style.GREEN : AuctionButton.Style.GRAY, button -> {
                 adminBlockCreate = !adminBlockCreate;
                 rebuildWidgets();
@@ -2320,14 +2320,18 @@ public class AuctionHouseScreen extends Screen {
         int y = adminPlayerListTop();
         AuctionAdminDashboardPayload.Player selected = selectedAdminPlayer();
         if (selected != null) {
-            renderAdminCard(graphics, contentLeft, contentTop + 38, contentWidth - 10, 202);
+            renderAdminCard(graphics, contentLeft, contentTop + 38, contentWidth - 10, 232);
             graphics.drawString(font, Component.translatable("Inspecting {0}", selected.playerName()).withStyle(ChatFormatting.BOLD), contentLeft + 10, contentTop + 48, 0xFFFFAA00, false);
             graphics.drawString(font, Component.translatable("Active {0}  Bids {1}  Sold {2}  Bought {3}", selected.activeListings(), selected.bidCount(), selected.soldCount(), selected.boughtCount()), contentLeft + 10, contentTop + 64, 0xFFE0E0E0, false);
             graphics.drawString(font, Component.translatable("Bid volume {0}  Sold value {1}", selected.bidVolume(), selected.soldValue()), contentLeft + 10, contentTop + 80, 0xFFBDBDBD, false);
             int maxListings = Math.max(1, selected.maxActiveListings());
             int limitColor = selected.activeListings() >= maxListings ? 0xFFFF6666 : selected.activeListings() >= Math.max(1, maxListings * 8 / 10) ? 0xFFFFD700 : 0xFF55FF55;
             graphics.drawString(font, Component.translatable("Listing limit {0} / {1} active", selected.activeListings(), maxListings), contentLeft + 10, contentTop + 96, limitColor, false);
-            graphics.drawString(font, Component.translatable("Blocked Actions"), contentLeft + 10, contentTop + 112, 0xFFBDBDBD, false);
+            graphics.drawString(font, Component.translatable("Delivery storage {0} item(s)", selected.deliveryCount()), contentLeft + 10, contentTop + 112, selected.deliveryCount() > 0 ? 0xFFFFD700 : 0xFFBDBDBD, false);
+            if (!selected.deliveryPreview().isBlank()) {
+                graphics.drawString(font, Component.literal(trimToWidth(selected.deliveryPreview(), contentWidth - 36)), contentLeft + 10, contentTop + 128, 0xFFE0E0E0, false);
+            }
+            graphics.drawString(font, Component.translatable("Blocked Actions"), contentLeft + 10, contentTop + 144, 0xFFBDBDBD, false);
         }
 
         List<AuctionAdminDashboardPayload.Player> players = filteredAdminPlayers();
@@ -3467,7 +3471,7 @@ public class AuctionHouseScreen extends Screen {
     }
 
     private int adminPlayerListTop() {
-        return selectedAdminPlayer() == null ? contentTop + 42 : contentTop + 252;
+        return selectedAdminPlayer() == null ? contentTop + 42 : contentTop + 282;
     }
 
     private int adminContentHeight() {

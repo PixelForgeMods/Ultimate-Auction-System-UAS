@@ -48,6 +48,8 @@ public record AuctionAdminDashboardSnapshot(
             int cancelledCount,
             String bidVolume,
             String soldValue,
+            int deliveryCount,
+            String deliveryPreview,
             boolean blockCreate,
             boolean blockBid,
             boolean blockBuyout,

@@ -231,6 +231,8 @@ public record AuctionAdminDashboardPayload(
             int cancelledCount,
             String bidVolume,
             String soldValue,
+            int deliveryCount,
+            String deliveryPreview,
             boolean blockCreate,
             boolean blockBid,
             boolean blockBuyout,
@@ -251,6 +253,8 @@ public record AuctionAdminDashboardPayload(
                     ByteBufCodecs.INT.encode(buf, player.cancelledCount());
                     ByteBufCodecs.STRING_UTF8.encode(buf, player.bidVolume());
                     ByteBufCodecs.STRING_UTF8.encode(buf, player.soldValue());
+                    ByteBufCodecs.INT.encode(buf, player.deliveryCount());
+                    ByteBufCodecs.STRING_UTF8.encode(buf, player.deliveryPreview());
                     ByteBufCodecs.BOOL.encode(buf, player.blockCreate());
                     ByteBufCodecs.BOOL.encode(buf, player.blockBid());
                     ByteBufCodecs.BOOL.encode(buf, player.blockBuyout());
@@ -269,6 +273,8 @@ public record AuctionAdminDashboardPayload(
                         ByteBufCodecs.INT.decode(buf),
                         ByteBufCodecs.INT.decode(buf),
                         ByteBufCodecs.STRING_UTF8.decode(buf),
+                        ByteBufCodecs.STRING_UTF8.decode(buf),
+                        ByteBufCodecs.INT.decode(buf),
                         ByteBufCodecs.STRING_UTF8.decode(buf),
                         ByteBufCodecs.BOOL.decode(buf),
                         ByteBufCodecs.BOOL.decode(buf),
@@ -292,6 +298,8 @@ public record AuctionAdminDashboardPayload(
                     player.cancelledCount(),
                     player.bidVolume(),
                     player.soldValue(),
+                    player.deliveryCount(),
+                    player.deliveryPreview(),
                     player.blockCreate(),
                     player.blockBid(),
                     player.blockBuyout(),
