@@ -1,13 +1,33 @@
 # Installation and UBS Dependency
 
-## Required Mods
+UAS is a NeoForge mod for Minecraft `1.21.1`. It requires Ultimate Banking System (UBS) because auction payments are settled through UBS accounts.
 
-Install both jars on the client and server:
+## Required Runtime Stack
 
-- `ultimate_auction_system`
-- `ultimatebankingsystem` version `1.2.0` or newer
+- Minecraft `1.21.1`
+- NeoForge `21.1.x`
+- Java `21`
+- UAS: `ultimate_auction_system`
+- UBS: `ultimatebankingsystem` version `1.2.0` or newer
 
-The UBS mod id is `ultimatebankingsystem`. UAS declares this as a required dependency in `neoforge.mods.toml` with this range:
+Install both UAS and UBS on the dedicated server and on every client that connects to it. In singleplayer, install both mods in the local client.
+
+## Basic Install
+
+1. Stop the server.
+2. Add the UAS jar to the `mods` folder.
+3. Add the UBS jar, version `1.2.0` or newer, to the same `mods` folder.
+4. Start the server once to generate config.
+5. Run `/uas status`.
+6. Confirm UBS and storage are healthy before players start using auctions.
+
+## Player Requirement
+
+Players need a usable UBS primary account before they can create listings, bid, buy out auctions, or receive payouts. If a player has no account, no primary account, a frozen account, or insufficient funds, UAS blocks the action and shows the reason.
+
+## Declared Mod Dependency
+
+UAS declares UBS as a required dependency in `neoforge.mods.toml`:
 
 ```toml
 [[dependencies."ultimate_auction_system"]]
@@ -19,11 +39,18 @@ ordering = "AFTER"
 side = "BOTH"
 ```
 
+If UBS is missing, NeoForge should stop the mod load before live auction logic starts.
+
 ## Startup Diagnostics
 
-During common setup, UAS checks that UBS is loaded and that the loaded UBS version is at least `1.2.0`. If the dependency is missing or too old, startup fails with a clear message.
+During setup, UAS checks that:
 
-After the server starts, UAS also logs whether the UBS API and server data layer are available. This catches cases where UBS loaded as a mod but its saved data or API provider is not ready.
+- UBS is loaded
+- The loaded UBS version is at least `1.2.0`
+- The UBS API version is available
+- The UBS server data layer is available after the world loads
+
+If UBS is missing or too old, UAS fails startup with a remediation message. If UBS loads but its server API is unavailable, `/uas status` reports that state so operators know payment actions are unsafe.
 
 ## Runtime Validation
 
@@ -43,4 +70,33 @@ UBS API version: 1.2.0
 UBS server available: yes
 ```
 
-If `UBS server available` is `no`, auctions may open but banking-backed actions such as creating auctions, placing bids, listing-fee withdrawal, buyout, settlement, and alerts can fail.
+Also check that config and storage are healthy. If storage reports skipped, repaired, or failed auction records, review the server log before allowing live auction activity.
+
+## First Config Review
+
+Before opening the auction house to players, review:
+
+- Listing fee and cancellation fee
+- Sales tax and optional tax destination account
+- Minimum bid increment
+- Minimum and maximum auction duration
+- Maximum active listings per player
+- Settlement retry settings
+- Rate limits
+- Banned auction entries
+- Admin permission level
+
+See [Commands and Config](Commands-and-Config.md) for the full reference.
+
+## Updating UAS Or UBS
+
+When updating either mod:
+
+1. Back up the world.
+2. Stop the server.
+3. Replace the jar files.
+4. Start the server.
+5. Run `/uas status`.
+6. Inspect the log for storage migration or UBS dependency warnings.
+
+Do not downgrade UBS below `1.2.0`; UAS requires that API range for auction settlement.

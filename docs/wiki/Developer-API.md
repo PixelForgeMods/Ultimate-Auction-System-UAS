@@ -1,6 +1,6 @@
 # Developer API
 
-UAS exposes a small Java API for other mods to query and create auctions without reaching into mutable auction storage.
+UAS exposes a small Java API for other mods to query and create auctions without reading mutable auction storage directly.
 
 ## Version
 
@@ -22,6 +22,39 @@ Optional<UasAuctionSnapshot> snapshot = api.getAuctionSnapshot(auctionId);
 
 `UasAuctionSnapshot` is immutable from the caller perspective. Item stacks returned from `contents()` and `displayItem()` are defensive copies, so integrations cannot mutate escrowed auction items.
 
+## Query Filters
+
+`UasAuctionQuery` supports:
+
+- Search text
+- `AuctionCategory`
+- Minimum price
+- Maximum price
+- Maximum hours left
+- `AuctionSort`
+- Mod id
+- Result limit
+
+Limits are clamped between `1` and `120`. The default query uses all categories, no price bounds, no mod filter, `ENDING_SOON` sort, and a limit of `120`.
+
+Categories:
+
+- `ALL`
+- `WEAPONS`
+- `ARMOR`
+- `TOOLS`
+- `CONSUMABLES`
+- `BLOCKS`
+- `MISC`
+
+Sorts:
+
+- `NEWEST`
+- `ENDING_SOON`
+- `HIGHEST_BID`
+- `LOWEST_PRICE`
+- `BUYOUT_PRICE`
+
 ## Create Listings
 
 ```java
@@ -37,7 +70,9 @@ UasCreateAuctionRequest request = new UasCreateAuctionRequest(
 UasAuctionResult result = UasAuctionApi.get().createListing(serverPlayer, request);
 ```
 
-The API uses the same server service as `/ah` and the GUI. It validates auction-house bans, item restrictions, UBS account state, listing fees, duration limits, bundle size, and escrow transfer before activating the auction.
+`inventorySlots` can contain one slot or multiple slots for a bundle listing. UAS normalizes null, duplicate, and negative slots before validation. The same server service used by the GUI validates auction-house bans, item restrictions, UBS account state, listing fees, duration limits, bundle size, and escrow transfer before activating the auction.
+
+`buyoutPrice` may be zero to create a normal bid-only auction. A positive buyout must satisfy the same validation as the GUI.
 
 ## Cancel Listings
 
@@ -45,7 +80,7 @@ The API uses the same server service as `/ah` and the GUI. It validates auction-
 UasAuctionResult result = UasAuctionApi.get().cancelListing(serverPlayer, auctionId);
 ```
 
-This uses the same ownership and delivery-storage path as `/ah cancel`. Normal validation failures are returned as result objects instead of being thrown.
+This uses the same ownership, no-bid, state, and delivery-storage path as `/ah cancel`. Normal validation failures are returned as result objects instead of being thrown.
 
 ## Physical UBS Cash Settlement
 
@@ -95,9 +130,9 @@ All mutating API calls return `UasAuctionResult`:
 
 - `success`: whether the action completed
 - `code`: stable machine-readable `UasAuctionResultCode`
-- `reason`: user/admin-readable reason text
+- `reason`: displayable reason text
 - `auctionId`: affected auction UUID when known
-- `balanceAfter`: optional UBS balance returned by a future payment-aware result
+- `balanceAfter`: optional UBS balance returned by a payment-aware result
 - `settlementReference`: optional UBS/UAS settlement reference
 - `auctionSnapshot()`: optional snapshot for status/create/cancel responses
 
@@ -121,7 +156,11 @@ Normal validation failures should be handled by checking `success` and `code`; i
 
 ## Auction Events
 
-UAS posts server-side NeoForge events under `net.austizz.ultimate_auction_system.api.event.UasAuctionEvents`.
+UAS posts server-side NeoForge events under:
+
+```text
+net.austizz.ultimate_auction_system.api.event.UasAuctionEvents
+```
 
 Available post-action events:
 
@@ -138,4 +177,13 @@ Each event carries an immutable `UasAuctionSnapshot` plus relevant UUIDs and amo
 
 Ordering is deterministic: UAS mutates the auction, marks storage dirty, then posts the event, then sends normal alerts/chat messages. Settlement-related events fire after the relevant UBS action succeeds or after the auction is moved into `FAILED_SETTLEMENT`.
 
-These phase-7 hooks are notification/audit hooks only. They are not cancellable pre-action hooks; integrations must not assume they can veto core listing, bidding, settlement, cancellation, or claim flows.
+These events are notification and audit hooks only. They are not cancellable pre-action hooks. Integrations must not assume they can veto core listing, bidding, settlement, cancellation, or claim flows.
+
+## Integration Guidance
+
+- Use `UasAuctionApi` for reads and listing creation.
+- Treat `UasAuctionSnapshot` as read-only.
+- Use result codes for control flow.
+- Do not read or write UAS SavedData directly.
+- Do not assume auction IDs imply state; inspect the current snapshot before acting.
+- Do not duplicate UBS transfers around UAS actions. UAS owns listing fees, escrow, refunds, buyouts, taxes, and payouts for its auctions.
