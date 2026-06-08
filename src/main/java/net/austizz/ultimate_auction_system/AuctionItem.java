@@ -43,6 +43,7 @@ public class AuctionItem {
     private final ArrayList<AuctionBidRecord> bidRecords;
     private final ArrayList<AuctionFinancialEvent> financialEvents;
     private final ConcurrentSkipListSet<UUID> notificationSubscribers;
+    private boolean endingSoonNotificationSent;
     private final AtomicReference<BigDecimal> highestBid = new AtomicReference<>(BigDecimal.ZERO);
     private final AtomicReference<UUID> highestBidderId = new AtomicReference<>();
     private AuctionState state;
@@ -108,7 +109,8 @@ public class AuctionItem {
                 new ArrayList<>(),
                 startingBidPrice,
                 null,
-                new ConcurrentSkipListSet<>()
+                new ConcurrentSkipListSet<>(),
+                false
         );
     }
 
@@ -133,7 +135,8 @@ public class AuctionItem {
                         List<AuctionFinancialEvent> financialEvents,
                         BigDecimal highestBid,
                         UUID highestBidderId,
-                        ConcurrentSkipListSet<UUID> notificationSubscribers) {
+                        ConcurrentSkipListSet<UUID> notificationSubscribers,
+                        boolean endingSoonNotificationSent) {
         this.contents = sanitizeContents(contents);
         this.item = this.contents.isEmpty() ? ItemStack.EMPTY : this.contents.getFirst().copy();
         this.title = title == null ? "" : title.trim();
@@ -151,6 +154,7 @@ public class AuctionItem {
         this.bidRecords = bidRecords == null ? new ArrayList<>() : new ArrayList<>(bidRecords);
         this.financialEvents = financialEvents == null ? new ArrayList<>() : new ArrayList<>(financialEvents);
         this.notificationSubscribers = notificationSubscribers == null ? new ConcurrentSkipListSet<>() : new ConcurrentSkipListSet<>(notificationSubscribers);
+        this.endingSoonNotificationSent = endingSoonNotificationSent;
         this.auctionId = auctionId == null ? UUID.randomUUID() : auctionId;
         this.playerId = playerId;
         this.sellerAccountId = sellerAccountId;
@@ -193,6 +197,7 @@ public class AuctionItem {
     public synchronized List<AuctionBidRecord> getBidRecords() { return List.copyOf(bidRecords); }
     public synchronized List<AuctionFinancialEvent> getFinancialEvents() { return List.copyOf(financialEvents); }
     public List<UUID> getNotificationSubscribers() { return List.copyOf(notificationSubscribers); }
+    public boolean isEndingSoonNotificationSent() { return endingSoonNotificationSent; }
     public AuctionState getState() { return state; }
 
     public boolean isNotificationSubscriber(UUID playerId) {
@@ -213,6 +218,24 @@ public class AuctionItem {
         }
         markChanged();
         return subscribed;
+    }
+
+    public synchronized boolean markEndingSoonNotificationSent() {
+        if (endingSoonNotificationSent) {
+            return false;
+        }
+        endingSoonNotificationSent = true;
+        markChanged();
+        return true;
+    }
+
+    public synchronized boolean clearNotificationSubscribers() {
+        if (notificationSubscribers.isEmpty()) {
+            return false;
+        }
+        notificationSubscribers.clear();
+        markChanged();
+        return true;
     }
 
     public synchronized Optional<AuctionBidRecord> getWinningBidRecord() {
@@ -649,6 +672,7 @@ public class AuctionItem {
             subscriberList.add(subscriberTag);
         }
         tag.put("notificationSubscribers", subscriberList);
+        tag.putBoolean("endingSoonNotificationSent", endingSoonNotificationSent);
         return tag;
     }
 
@@ -694,6 +718,7 @@ public class AuctionItem {
             List<AuctionBidRecord> bidRecords = loadBidRecords(tag, auctionId);
             List<AuctionFinancialEvent> financialEvents = loadFinancialEvents(tag, auctionId);
             ConcurrentSkipListSet<UUID> notificationSubscribers = loadNotificationSubscribers(tag);
+            boolean endingSoonNotificationSent = tag.getBoolean("endingSoonNotificationSent");
             List<ItemStack> contents = loadContents(tag, registries, item);
 
             AuctionItem auction = new AuctionItem(
@@ -718,7 +743,8 @@ public class AuctionItem {
                     financialEvents,
                     currentPrice,
                     highestBidderId,
-                    notificationSubscribers
+                    notificationSubscribers,
+                    endingSoonNotificationSent
             );
             if (auction.validateForPersistence().isPresent()) {
                 return Optional.empty();

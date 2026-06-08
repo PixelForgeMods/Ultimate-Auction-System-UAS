@@ -96,7 +96,7 @@ Command buyout flow:
 
 ## Watch Auctions
 
-Use Notify in the GUI to subscribe or unsubscribe from auction notifications. Watched listings appear on your Dashboard. Admins can block notification access for specific players if needed.
+Use Notify in the GUI to subscribe or unsubscribe from auction notifications on active auctions. Watched listings appear on your Dashboard. You receive alerts when watched auctions are updated, ending soon, sold, cancelled, or end without a buyer. Servers can limit how many active auctions each player watches, and admins can block notification access for specific players if needed.
 
 ## Claim Items
 

@@ -42,6 +42,7 @@ public final class AuctionPersistenceGameTests {
         auction.markEscrowed("GAME_TEST_ESCROW");
         auction.recordBid(bidderId, bidderAccountId, new BigDecimal("150"));
         auction.toggleNotificationSubscriber(subscriberId);
+        auction.markEndingSoonNotificationSent();
 
         AuctionSavedData savedData = new AuctionSavedData();
         savedData.getAuctions().put(auction.getAuctionId(), auction);
@@ -60,6 +61,7 @@ public final class AuctionPersistenceGameTests {
         helper.assertValueEqual("GAME_TEST_ESCROW", reloadedAuction.getEscrowSource(), "Escrow source should survive reload");
         helper.assertTrue(reloadedAuction.getBidRecords().size() == 1, "Bid history should survive reload");
         helper.assertTrue(reloadedAuction.isNotificationSubscriber(subscriberId), "Notification subscriber should survive reload");
+        helper.assertTrue(reloadedAuction.isEndingSoonNotificationSent(), "Ending-soon notification state should survive reload");
         helper.assertTrue(reloadedData.getSkippedRecords() == 0, "Reload should not skip valid records");
         helper.assertFalse(reloadedData.isMigrationFailed(), "Reload should not fail migration");
         helper.succeed();

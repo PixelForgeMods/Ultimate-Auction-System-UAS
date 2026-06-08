@@ -33,6 +33,8 @@ public class Config {
     public static final int DEFAULT_BUYOUT_COOLDOWN_SECONDS = 2;
     public static final int DEFAULT_CANCEL_COOLDOWN_SECONDS = 5;
     public static final int DEFAULT_SEARCH_COOLDOWN_SECONDS = 1;
+    public static final int DEFAULT_MAX_WATCHED_AUCTIONS_PER_PLAYER = 64;
+    public static final int DEFAULT_WATCH_ENDING_SOON_THRESHOLD_MINUTES = 60;
     public static final boolean DEFAULT_REQUIRE_UBS_FOR_LISTING = true;
     public static final boolean DEFAULT_AUTO_SETTLE_EXPIRED_AUCTIONS = true;
     public static final boolean DEFAULT_PHYSICAL_CASH_LISTING_FEES = false;
@@ -76,6 +78,8 @@ public class Config {
     private static final int MAX_AUDIT_WINDOW_HOURS = 24 * 30;
     private static final int MAX_AUDIT_SIGNAL_COUNT = 100;
     private static final int MAX_PERMISSION_LEVEL = 4;
+    private static final int MAX_WATCHED_AUCTIONS_PER_PLAYER = 1_000;
+    private static final int MAX_WATCH_ENDING_SOON_THRESHOLD_MINUTES = 24 * 60;
     private static final int MIN_AUTOSAVE_INTERVAL_TICKS = 20;
     private static final int MAX_AUTOSAVE_INTERVAL_TICKS = 72_000;
     private static final int MIN_PENDING_CONFIRMATION_SECONDS = 10;
@@ -197,6 +201,20 @@ public class Config {
                     "Admins with the UAS admin permission bypass rate limits. 0 disables this cooldown."
             )
             .defineInRange("rateLimits.searchCooldownSeconds", DEFAULT_SEARCH_COOLDOWN_SECONDS, 0, MAX_RATE_LIMIT_SECONDS);
+
+    private static final ModConfigSpec.IntValue MAX_WATCHED_AUCTIONS = BUILDER
+            .comment(
+                    "Maximum active auctions one player can watch for notifications at the same time.",
+                    "Runtime reload: applies when players watch new auctions. Existing watches can still be unwatched."
+            )
+            .defineInRange("notifications.maxWatchedAuctionsPerPlayer", DEFAULT_MAX_WATCHED_AUCTIONS_PER_PLAYER, 1, MAX_WATCHED_AUCTIONS_PER_PLAYER);
+
+    private static final ModConfigSpec.IntValue WATCH_ENDING_SOON_THRESHOLD_MINUTES = BUILDER
+            .comment(
+                    "Minutes before auction end when watched auctions send their one-time ending-soon notification.",
+                    "0 disables ending-soon watch notifications. Sold, cancelled, and bid-update notifications still work."
+            )
+            .defineInRange("notifications.endingSoonThresholdMinutes", DEFAULT_WATCH_ENDING_SOON_THRESHOLD_MINUTES, 0, MAX_WATCH_ENDING_SOON_THRESHOLD_MINUTES);
 
     private static final ModConfigSpec.BooleanValue REQUIRE_UBS_FOR_LISTING = BUILDER
             .comment(
@@ -412,6 +430,8 @@ public class Config {
     public static int buyoutCooldownSeconds = DEFAULT_BUYOUT_COOLDOWN_SECONDS;
     public static int cancelCooldownSeconds = DEFAULT_CANCEL_COOLDOWN_SECONDS;
     public static int searchCooldownSeconds = DEFAULT_SEARCH_COOLDOWN_SECONDS;
+    public static int maxWatchedAuctionsPerPlayer = DEFAULT_MAX_WATCHED_AUCTIONS_PER_PLAYER;
+    public static int watchEndingSoonThresholdMinutes = DEFAULT_WATCH_ENDING_SOON_THRESHOLD_MINUTES;
     public static boolean requireUbsForListing;
     public static boolean autoSettleExpiredAuctions;
     public static boolean physicalCashListingFees = DEFAULT_PHYSICAL_CASH_LISTING_FEES;
@@ -465,6 +485,8 @@ public class Config {
         buyoutCooldownSeconds = readInt("rateLimits.buyoutCooldownSeconds", BUYOUT_COOLDOWN_SECONDS, DEFAULT_BUYOUT_COOLDOWN_SECONDS, 0, MAX_RATE_LIMIT_SECONDS);
         cancelCooldownSeconds = readInt("rateLimits.cancelCooldownSeconds", CANCEL_COOLDOWN_SECONDS, DEFAULT_CANCEL_COOLDOWN_SECONDS, 0, MAX_RATE_LIMIT_SECONDS);
         searchCooldownSeconds = readInt("rateLimits.searchCooldownSeconds", SEARCH_COOLDOWN_SECONDS, DEFAULT_SEARCH_COOLDOWN_SECONDS, 0, MAX_RATE_LIMIT_SECONDS);
+        maxWatchedAuctionsPerPlayer = readInt("notifications.maxWatchedAuctionsPerPlayer", MAX_WATCHED_AUCTIONS, DEFAULT_MAX_WATCHED_AUCTIONS_PER_PLAYER, 1, MAX_WATCHED_AUCTIONS_PER_PLAYER);
+        watchEndingSoonThresholdMinutes = readInt("notifications.endingSoonThresholdMinutes", WATCH_ENDING_SOON_THRESHOLD_MINUTES, DEFAULT_WATCH_ENDING_SOON_THRESHOLD_MINUTES, 0, MAX_WATCH_ENDING_SOON_THRESHOLD_MINUTES);
         requireUbsForListing = readBoolean("settlement.requireUbsForListing", REQUIRE_UBS_FOR_LISTING, DEFAULT_REQUIRE_UBS_FOR_LISTING);
         autoSettleExpiredAuctions = readBoolean("settlement.autoSettleExpiredAuctions", AUTO_SETTLE_EXPIRED_AUCTIONS, DEFAULT_AUTO_SETTLE_EXPIRED_AUCTIONS);
         physicalCashListingFees = readBoolean("settlement.physicalCashListingFees", PHYSICAL_CASH_LISTING_FEES, DEFAULT_PHYSICAL_CASH_LISTING_FEES);

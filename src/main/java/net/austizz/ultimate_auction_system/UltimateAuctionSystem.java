@@ -76,9 +76,12 @@ public class UltimateAuctionSystem {
 
         house.pruneExpiredPendingListings();
         ticksSinceSettlementScan++;
-        if (Config.autoSettleExpiredAuctions && ticksSinceSettlementScan >= 20 && event.hasTime()) {
+        if (ticksSinceSettlementScan >= 20 && event.hasTime()) {
             ticksSinceSettlementScan = 0L;
-            house.settleExpiredAuctions();
+            house.notifyEndingSoonWatchlists();
+            if (Config.autoSettleExpiredAuctions) {
+                house.settleExpiredAuctions();
+            }
         }
 
         ticksSinceAuctionAutosave++;

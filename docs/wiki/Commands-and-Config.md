@@ -237,6 +237,11 @@ Settlement:
 - `settlement.retryAttempts`: automatic settlement retry attempts, default `3`
 - `settlement.retryDelaySeconds`: delay between automatic retry attempts, default `60`
 
+Notifications:
+
+- `notifications.maxWatchedAuctionsPerPlayer`: active watched auction limit per player, default `64`
+- `notifications.endingSoonThresholdMinutes`: one-time watched auction ending-soon alert threshold, default `60`; set `0` to disable ending-soon alerts
+
 Rate limits:
 
 - `rateLimits.createCooldownSeconds`: per-player cooldown for preparing listings, default `5`

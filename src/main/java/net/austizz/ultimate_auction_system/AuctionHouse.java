@@ -1147,9 +1147,27 @@ public class AuctionHouse {
         if (item == null) {
             return AuctionActionResult.fail("Auction not found.");
         }
+        boolean alreadySubscribed = item.isNotificationSubscriber(player.getUUID());
+        if (!alreadySubscribed && item.getState() != AuctionState.ACTIVE) {
+            return AuctionActionResult.fail("Auction is no longer active.");
+        }
+        if (!alreadySubscribed && watchedAuctionCount(player.getUUID()) >= Config.maxWatchedAuctionsPerPlayer) {
+            return AuctionActionResult.fail("Watchlist limit reached. Unwatch another auction first.");
+        }
         boolean subscribed = item.toggleNotificationSubscriber(player.getUUID());
         markChanged("Auction storage marked dirty after notification subscription change.");
         return AuctionActionResult.ok(subscribed ? "Auction notifications enabled." : "Auction notifications disabled.");
+    }
+
+    private long watchedAuctionCount(UUID playerId) {
+        if (playerId == null) {
+            return 0L;
+        }
+        return AuctionItems.values().stream()
+                .filter(item -> item != null
+                        && item.getState() == AuctionState.ACTIVE
+                        && item.isNotificationSubscriber(playerId))
+                .count();
     }
 
     public void sendActionAlert(ServerPlayer player, AuctionActionResult result) {
@@ -1214,14 +1232,23 @@ public class AuctionHouse {
         Set<UUID> excluded = exclusions(buyerId, sellerId);
         excluded.addAll(losingBidders);
         alertSubscribers(item, excluded, "Auction Sold", "Auction {0}: {1} sold for {2}.", "INFO", item.getAuctionId(), itemName, saleAmount);
+        clearCompletedWatchers(item);
     }
 
     private void notifyAuctionCancelled(AuctionItem item, UUID sellerId) {
         alertSubscribers(item, exclusions(sellerId), "Auction Cancelled", "Auction {0}: {1} was cancelled by the seller.", "WARNING", item.getAuctionId(), itemName(item));
+        clearCompletedWatchers(item);
     }
 
     private void notifyAuctionEndedUnsold(AuctionItem item, UUID sellerId) {
         alertSubscribers(item, exclusions(sellerId), "Auction Ended", "Auction {0}: {1} ended without a buyer.", "INFO", item.getAuctionId(), itemName(item));
+        clearCompletedWatchers(item);
+    }
+
+    private void clearCompletedWatchers(AuctionItem item) {
+        if (item != null && item.clearNotificationSubscribers()) {
+            markChanged("Auction storage marked dirty after completed auction watchlist cleanup.");
+        }
     }
 
     private void alertSubscribers(AuctionItem item, Set<UUID> excluded, String title, String message, String tone, Object... args) {
@@ -2287,6 +2314,42 @@ public class AuctionHouse {
                 item.transitionTo(AuctionState.ENDED, "auction expired during storage save");
             }
         }
+    }
+
+    public int notifyEndingSoonWatchlists() {
+        if (mutationsBlocked || Config.watchEndingSoonThresholdMinutes <= 0) {
+            return 0;
+        }
+        LocalDateTime now = LocalDateTime.now();
+        int notified = 0;
+        for (AuctionItem item : AuctionItems.values()) {
+            if (item == null
+                    || item.getState() != AuctionState.ACTIVE
+                    || item.isEndingSoonNotificationSent()
+                    || item.getNotificationSubscribers().isEmpty()
+                    || item.getDateOfEnd() == null) {
+                continue;
+            }
+            Duration remaining = Duration.between(now, item.getDateOfEnd());
+            if (remaining.isNegative() || remaining.isZero() || remaining.toMinutes() > Config.watchEndingSoonThresholdMinutes) {
+                continue;
+            }
+            alertSubscribers(
+                    item,
+                    Set.of(),
+                    "Auction Ending Soon",
+                    "Auction {0}: {1} ends within {2} minute(s).",
+                    "WARNING",
+                    item.getAuctionId(),
+                    itemName(item),
+                    Config.watchEndingSoonThresholdMinutes
+            );
+            if (item.markEndingSoonNotificationSent()) {
+                markChanged("Auction storage marked dirty after ending-soon watch notification.");
+                notified++;
+            }
+        }
+        return notified;
     }
 
     public void payoutAuctionItem(UUID id) {
