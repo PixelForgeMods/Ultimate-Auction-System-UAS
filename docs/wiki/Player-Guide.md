@@ -104,6 +104,24 @@ Command buyout flow:
 
 Use Notify in the GUI to subscribe or unsubscribe from auction notifications on active auctions. Watched listings appear on your Dashboard. You receive alerts when watched auctions are updated, ending soon, sold, cancelled, or end without a buyer. Servers can limit how many active auctions each player watches, and admins can block notification access for specific players if needed.
 
+## Auction Stats And Leaderboards
+
+View your own marketplace stats with:
+
+```text
+/ah stats
+```
+
+UAS tracks auctions listed, auctions won, gross sold value, gross spent value, and marketplace ranks by UUID, so name changes do not reset your history. Stats are updated from server-side auction listing and settlement events.
+
+Some servers enable a public leaderboard:
+
+```text
+/ah leaderboard
+```
+
+The leaderboard shows top sellers and buyers. Server owners can disable it for privacy or competitive balance, so `/ah stats` may work even when `/ah leaderboard` is unavailable.
+
 ## Claim Items
 
 Use Claim in the GUI or:

@@ -36,6 +36,7 @@ public class Config {
     public static final int DEFAULT_MAX_WATCHED_AUCTIONS_PER_PLAYER = 64;
     public static final int DEFAULT_WATCH_ENDING_SOON_THRESHOLD_MINUTES = 60;
     public static final int DEFAULT_MAX_SAVED_SEARCHES_PER_PLAYER = 12;
+    public static final boolean DEFAULT_MARKETPLACE_LEADERBOARDS_ENABLED = false;
     public static final boolean DEFAULT_REQUIRE_UBS_FOR_LISTING = true;
     public static final boolean DEFAULT_AUTO_SETTLE_EXPIRED_AUCTIONS = true;
     public static final boolean DEFAULT_PHYSICAL_CASH_LISTING_FEES = false;
@@ -224,6 +225,13 @@ public class Config {
                     "Runtime reload: applies when players create new saved searches."
             )
             .defineInRange("marketplace.maxSavedSearchesPerPlayer", DEFAULT_MAX_SAVED_SEARCHES_PER_PLAYER, 1, MAX_SAVED_SEARCHES_PER_PLAYER);
+
+    private static final ModConfigSpec.BooleanValue MARKETPLACE_LEADERBOARDS_ENABLED = BUILDER
+            .comment(
+                    "When true, /ah leaderboard shows public top seller and buyer rankings.",
+                    "Default false avoids exposing competitive marketplace stats unless the server owner opts in."
+            )
+            .define("marketplace.enableLeaderboards", DEFAULT_MARKETPLACE_LEADERBOARDS_ENABLED);
 
     private static final ModConfigSpec.BooleanValue REQUIRE_UBS_FOR_LISTING = BUILDER
             .comment(
@@ -442,6 +450,7 @@ public class Config {
     public static int maxWatchedAuctionsPerPlayer = DEFAULT_MAX_WATCHED_AUCTIONS_PER_PLAYER;
     public static int watchEndingSoonThresholdMinutes = DEFAULT_WATCH_ENDING_SOON_THRESHOLD_MINUTES;
     public static int maxSavedSearchesPerPlayer = DEFAULT_MAX_SAVED_SEARCHES_PER_PLAYER;
+    public static boolean marketplaceLeaderboardsEnabled = DEFAULT_MARKETPLACE_LEADERBOARDS_ENABLED;
     public static boolean requireUbsForListing;
     public static boolean autoSettleExpiredAuctions;
     public static boolean physicalCashListingFees = DEFAULT_PHYSICAL_CASH_LISTING_FEES;
@@ -498,6 +507,7 @@ public class Config {
         maxWatchedAuctionsPerPlayer = readInt("notifications.maxWatchedAuctionsPerPlayer", MAX_WATCHED_AUCTIONS, DEFAULT_MAX_WATCHED_AUCTIONS_PER_PLAYER, 1, MAX_WATCHED_AUCTIONS_PER_PLAYER);
         watchEndingSoonThresholdMinutes = readInt("notifications.endingSoonThresholdMinutes", WATCH_ENDING_SOON_THRESHOLD_MINUTES, DEFAULT_WATCH_ENDING_SOON_THRESHOLD_MINUTES, 0, MAX_WATCH_ENDING_SOON_THRESHOLD_MINUTES);
         maxSavedSearchesPerPlayer = readInt("marketplace.maxSavedSearchesPerPlayer", MAX_SAVED_SEARCHES, DEFAULT_MAX_SAVED_SEARCHES_PER_PLAYER, 1, MAX_SAVED_SEARCHES_PER_PLAYER);
+        marketplaceLeaderboardsEnabled = readBoolean("marketplace.enableLeaderboards", MARKETPLACE_LEADERBOARDS_ENABLED, DEFAULT_MARKETPLACE_LEADERBOARDS_ENABLED);
         requireUbsForListing = readBoolean("settlement.requireUbsForListing", REQUIRE_UBS_FOR_LISTING, DEFAULT_REQUIRE_UBS_FOR_LISTING);
         autoSettleExpiredAuctions = readBoolean("settlement.autoSettleExpiredAuctions", AUTO_SETTLE_EXPIRED_AUCTIONS, DEFAULT_AUTO_SETTLE_EXPIRED_AUCTIONS);
         physicalCashListingFees = readBoolean("settlement.physicalCashListingFees", PHYSICAL_CASH_LISTING_FEES, DEFAULT_PHYSICAL_CASH_LISTING_FEES);

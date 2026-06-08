@@ -1212,6 +1212,7 @@ public class AuctionHouse {
                 relisted.recordFinancialEvent(AuctionFinancialEvent.fromBanking(relistedAuctionId, EVENT_LISTING_FEE, Config.calculateListingFee(relistStartingBid), listingFeeReference, feeResult));
             }
             markChanged("Auction storage marked dirty after auction relist.");
+            recordListingStats(relisted, seller.getGameProfile().getName(), seller.getServer());
             postAuctionEvent(new UasAuctionEvents.ListingCreated(eventSnapshot(relisted), seller.getUUID()));
             sendAuctionCreatedMessage(seller, relisted);
             return AuctionActionResult.ok("Auction relisted: " + relistedAuctionId, relistedAuctionId);
@@ -1500,6 +1501,36 @@ public class AuctionHouse {
     private void postAuctionEvent(UasAuctionEvents.AuctionEvent event) {
         if (event != null) {
             NeoForge.EVENT_BUS.post(event);
+        }
+    }
+
+    private void recordListingStats(AuctionItem item, String sellerName, MinecraftServer server) {
+        if (item == null || item.getAuctionId() == null || item.getPlayerId() == null) {
+            return;
+        }
+        try {
+            AuctionPlayerStatsSavedData.get(server).recordListing(item.getAuctionId(), item.getPlayerId(), sellerName);
+        } catch (RuntimeException exception) {
+            UltimateAuctionSystem.LOGGER.warn("[UAS] Could not record listing stats for auction {}: {}", item.getAuctionId(), exception.getMessage());
+        }
+    }
+
+    private void recordSettlementStats(AuctionItem item, BigDecimal grossAmount) {
+        if (item == null || item.getAuctionId() == null || item.getPlayerId() == null || item.getHighestBidderId() == null) {
+            return;
+        }
+        MinecraftServer server = ServerLifecycleHooks.getCurrentServer();
+        try {
+            AuctionPlayerStatsSavedData.get(server).recordSale(
+                    item.getAuctionId(),
+                    item.getPlayerId(),
+                    playerName(item.getPlayerId()),
+                    item.getHighestBidderId(),
+                    playerName(item.getHighestBidderId()),
+                    grossAmount
+            );
+        } catch (RuntimeException exception) {
+            UltimateAuctionSystem.LOGGER.warn("[UAS] Could not record settlement stats for auction {}: {}", item.getAuctionId(), exception.getMessage());
         }
     }
 
@@ -2607,6 +2638,7 @@ public class AuctionHouse {
         attachMutationTracking(item);
         AuctionItems.put(item.getAuctionId(), item);
         markChanged("Auction storage marked dirty after listing creation.");
+        recordListingStats(item, player.getGameProfile().getName(), player.getServer());
         postAuctionEvent(new UasAuctionEvents.ListingCreated(eventSnapshot(item), player.getUUID()));
         sendAuctionCreatedMessage(player, item);
         return AuctionActionResult.ok("Auction created: " + item.getAuctionId(), item.getAuctionId());
@@ -2794,6 +2826,7 @@ public class AuctionHouse {
 
         BigDecimal fees = successfulFinancialEventAmount(item, EVENT_LISTING_FEE)
                 .add(successfulFinancialEventAmount(item, EVENT_CANCELLATION_FEE));
+        recordSettlementStats(item, gross);
         Object[] args = {item.getAuctionId(), itemName(item), moneyLabel(gross), moneyLabel(salesTax), moneyLabel(fees), moneyLabel(net)};
         sendAuctionAlert(item.getPlayerId(), "Auction Payout", "Auction {0}: {1} payout: gross {2}, tax {3}, fees {4}, net {5}.", "SUCCESS", args);
         sendAuctionChatMessage(item.getPlayerId(), "Auction {0}: {1} payout: gross {2}, tax {3}, fees {4}, net {5}.", ChatFormatting.GREEN, args, openAhAction(), myAuctionsAction());
@@ -2877,6 +2910,7 @@ public class AuctionHouse {
                 payoutReference,
                 UasBankingResult.ok(BigDecimal.ZERO, null, payoutReference)
         ));
+        recordSettlementStats(item, gross);
         BigDecimal fees = successfulFinancialEventAmount(item, EVENT_LISTING_FEE)
                 .add(successfulFinancialEventAmount(item, EVENT_CANCELLATION_FEE));
         Object[] args = {auctionId, itemName(item), moneyLabel(gross), moneyLabel(salesTax), moneyLabel(fees), cheque.referenceId().isBlank() ? payoutReference : cheque.referenceId()};

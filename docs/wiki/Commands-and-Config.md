@@ -33,6 +33,18 @@ Show your own auctions, optionally filtered and paged:
 /ah mine active 2
 ```
 
+Show your auction participation stats:
+
+```text
+/ah stats
+```
+
+Show the public marketplace leaderboard when the server owner enables it:
+
+```text
+/ah leaderboard
+```
+
 Create an auction from the item in your main hand:
 
 ```text
@@ -99,6 +111,8 @@ Bid and raise-bid modals use a two-step flow. The first action refreshes the UBS
 Create-auction supports one inventory slot or a bundle of up to 18 stacks. Bundle auctions show a bundle title and a contents preview. UAS validates the selected item contents again on confirm before escrow.
 
 Relist appears on expired unsold auctions owned by the current player. It reuses the old escrowed item contents and previous pricing fields, lets the seller edit the new price/date/description, charges the configured listing fee again, creates a fresh active auction, and keeps the original expired auction as an audited history entry.
+
+Auction stats track auctions listed, auctions won, gross sold value, gross spent value, and UUID-based marketplace ranks. Stats update from server-side listing activation and successful settlement events, not from client UI actions. `/ah stats` shows a player's own stats; `/ah leaderboard` shows top sellers and buyers only when enabled by config.
 
 The GUI account selector lists the player's UBS accounts with account type, bank UUID prefix, balance, primary flag, and frozen status. A selected account UUID is sent with create, relist, bid, and buyout actions, then UAS re-checks ownership and fetches a fresh UBS snapshot before taking listing fees, bid escrow, or buyout escrow. If UBS cannot return the selected account snapshot, the action fails with a clear message instead of falling back silently.
 
@@ -230,6 +244,7 @@ Bidding and limits:
 Marketplace:
 
 - `marketplace.maxSavedSearchesPerPlayer`: named Browse filter presets each player can save, default `12`
+- `marketplace.enableLeaderboards`: expose `/ah leaderboard` top seller/buyer rankings, default `false`
 
 Settlement:
 

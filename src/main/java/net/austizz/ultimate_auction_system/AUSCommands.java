@@ -81,6 +81,10 @@ public class AUSCommands {
                         .executes(AUSCommands::openAuctionGui)
                         .then(Commands.literal("list")
                                 .executes(AUSCommands::sendAuctionList))
+                        .then(Commands.literal("stats")
+                                .executes(AUSCommands::sendPlayerAuctionStats))
+                        .then(Commands.literal("leaderboard")
+                                .executes(AUSCommands::sendMarketplaceLeaderboard))
                         .then(Commands.literal("view")
                                 .then(Commands.argument("auctionId", StringArgumentType.word())
                                         .executes(AUSCommands::viewAuction)))
@@ -772,6 +776,76 @@ public class AUSCommands {
             return UasTranslations.literal("active, ").append(timeLeftComponent(item));
         }
         return UasTranslations.literal("expired without bids");
+    }
+
+    private static int sendPlayerAuctionStats(CommandContext<CommandSourceStack> context) {
+        CommandSourceStack source = context.getSource();
+        ServerPlayer player = source.getPlayer();
+        if (player == null) {
+            source.sendFailure(UasTranslations.tr("Only players can view auction stats."));
+            return 0;
+        }
+        AuctionPlayerStatsSavedData statsData;
+        try {
+            statsData = AuctionPlayerStatsSavedData.get(source.getServer());
+        } catch (RuntimeException exception) {
+            source.sendFailure(UasTranslations.tr("Auction stats are unavailable right now."));
+            return 0;
+        }
+
+        AuctionPlayerStats stats = statsData.statsFor(player.getUUID(), player.getGameProfile().getName());
+        source.sendSystemMessage(UasTranslations.tr("=== Your Auction Stats ===").withStyle(ChatFormatting.GOLD));
+        sendAuctionStatsLine(source, "Auctions listed", String.valueOf(stats.auctionsListed()), ChatFormatting.GREEN);
+        sendAuctionStatsLine(source, "Auctions won", String.valueOf(stats.auctionsWon()), ChatFormatting.GREEN);
+        sendAuctionStatsLine(source, "Gross sold value", UasMoneyFormatter.display(stats.grossSoldValue()), ChatFormatting.GOLD);
+        sendAuctionStatsLine(source, "Gross spent value", UasMoneyFormatter.display(stats.grossSpentValue()), ChatFormatting.YELLOW);
+        sendAuctionStatsLine(source, "Marketplace rank", rankLabel(statsData.marketplaceRank(player.getUUID())), ChatFormatting.AQUA);
+        sendAuctionStatsLine(source, "Seller rank", rankLabel(statsData.sellerRank(player.getUUID())), ChatFormatting.AQUA);
+        sendAuctionStatsLine(source, "Buyer rank", rankLabel(statsData.buyerRank(player.getUUID())), ChatFormatting.AQUA);
+        return Command.SINGLE_SUCCESS;
+    }
+
+    private static int sendMarketplaceLeaderboard(CommandContext<CommandSourceStack> context) {
+        CommandSourceStack source = context.getSource();
+        if (!Config.marketplaceLeaderboardsEnabled) {
+            source.sendFailure(UasTranslations.tr("Auction leaderboards are disabled on this server."));
+            return 0;
+        }
+        AuctionPlayerStatsSavedData statsData;
+        try {
+            statsData = AuctionPlayerStatsSavedData.get(source.getServer());
+        } catch (RuntimeException exception) {
+            source.sendFailure(UasTranslations.tr("Auction stats are unavailable right now."));
+            return 0;
+        }
+
+        source.sendSystemMessage(UasTranslations.tr("=== Auction Leaderboard ===").withStyle(ChatFormatting.GOLD));
+        sendLeaderboardRows(source, "Top sellers", statsData.topSellers(5), true);
+        sendLeaderboardRows(source, "Top buyers", statsData.topBuyers(5), false);
+        return Command.SINGLE_SUCCESS;
+    }
+
+    private static void sendAuctionStatsLine(CommandSourceStack source, String label, Object value, ChatFormatting valueColor) {
+        source.sendSystemMessage(UasTranslations.tr("{0}: {1}", UasTranslations.tr(label), value).withStyle(valueColor));
+    }
+
+    private static MutableComponent rankLabel(int rank) {
+        return rank <= 0 ? UasTranslations.tr("Unranked") : Component.literal("#" + rank);
+    }
+
+    private static void sendLeaderboardRows(CommandSourceStack source, String title, List<AuctionPlayerStats> rows, boolean sellers) {
+        source.sendSystemMessage(UasTranslations.tr(title).withStyle(ChatFormatting.GOLD));
+        if (rows == null || rows.isEmpty()) {
+            source.sendSystemMessage(UasTranslations.tr("- No stats yet").withStyle(ChatFormatting.GRAY));
+            return;
+        }
+        for (int index = 0; index < rows.size(); index++) {
+            AuctionPlayerStats stats = rows.get(index);
+            MutableComponent row = sellers
+                    ? UasTranslations.tr("#{0} {1}: {2} sold, {3} listed", index + 1, stats.playerName(), UasMoneyFormatter.display(stats.grossSoldValue()), stats.auctionsListed())
+                    : UasTranslations.tr("#{0} {1}: {2} spent, {3} won", index + 1, stats.playerName(), UasMoneyFormatter.display(stats.grossSpentValue()), stats.auctionsWon());
+            source.sendSystemMessage(row.withStyle(ChatFormatting.GRAY));
+        }
     }
 
     private static int sendSellerStats(CommandContext<CommandSourceStack> context) {
