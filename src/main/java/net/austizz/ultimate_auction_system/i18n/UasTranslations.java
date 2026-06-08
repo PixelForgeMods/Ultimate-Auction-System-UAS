@@ -40,6 +40,7 @@ public final class UasTranslations {
     private static final String[] LEADING_PREFIX_KEYS = {
             "Auction ",
             "Bid must be at least ",
+            "Sealed bid must be at least ",
             "Auction duration cannot be longer than ",
             "A bundled auction can include up to ",
             "Invalid banned auction entry: ",

@@ -53,14 +53,17 @@ The GUI is the recommended way to create auctions.
 5. Enter a starting bid.
 6. Optionally enter a buyout price.
 7. Optionally enter a hidden reserve price when the server enables reserve auctions.
-8. Pick an end date and time.
-9. Add a description.
-10. Review the listing fee, selected UBS account, and item preview.
-11. Confirm the listing.
+8. Optionally switch the auction format to sealed bids when the server enables sealed-bid auctions.
+9. Pick an end date and time.
+10. Add a description.
+11. Review the listing fee, selected UBS account, and item preview.
+12. Confirm the listing.
 
 Bundle auctions can include up to 18 item stacks. UAS escrows the selected item contents when the listing is confirmed, so players cannot sell an item and keep using it at the same time.
 
 Reserve prices are hidden from bidders. Auction rows still show whether the reserve has been met. A reserve must be at least the starting bid, and a positive buyout must be at least the reserve. If the auction ends below reserve, UAS refunds the held highest bid and the seller can claim the unsold item back.
+
+Sealed-bid auctions hide bid amounts from other players until the auction ends. The seller sees that sealed bids exist, but active bid amounts are not revealed in normal auction rows or bid history. Your own sealed bid is shown to you so you can raise it. When the auction closes, UAS selects the highest valid sealed bid; equal sealed bids keep the earliest accepted bid as winner.
 
 ## Create An Auction With Commands
 
@@ -90,6 +93,8 @@ Pending listing confirmations expire after the configured timeout, default `60` 
 ## Bid, Raise, And Buy Out
 
 Bids use whole-dollar UBS amounts. The first bid must meet the starting bid. Later bids must beat the current highest bid by at least the configured minimum increment, default `$1`.
+
+On sealed-bid auctions, other players cannot see your amount while the auction is active. Raising your own sealed bid replaces your previous held amount after UAS safely refunds that previous hold. If a sealed auction has a buyout price, a buyout can still end the auction immediately and UAS refunds all held sealed bids before committing the buyout.
 
 The bid modal uses a two-step review:
 
@@ -151,7 +156,7 @@ Relisting charges the normal configured listing fee again and creates a new acti
 
 ## Refunds And Failed Settlement
 
-UAS refunds losing bids automatically when a higher bid is accepted, when a buyout replaces a bid, when a reserve-price auction ends below reserve, or when an eligible admin force-cancel returns money. If UBS cannot safely refund, pay out, or reverse escrow, UAS marks the auction as failed settlement and blocks normal claim flow until an admin fixes the UBS/account problem and retries settlement.
+UAS refunds losing bids automatically when a higher bid is accepted, when a buyout replaces a bid, when losing sealed bids are settled or bought out, when a reserve-price auction ends below reserve, or when an eligible admin force-cancel returns money. If UBS cannot safely refund, pay out, or reverse escrow, UAS marks the auction as failed settlement and blocks normal claim flow until an admin fixes the UBS/account problem and retries settlement.
 
 ## Manage Your Auctions
 
@@ -174,6 +179,7 @@ You can cancel your own active auction only when it has no bids. If a bid exists
 - Your balance is too low for a listing fee, bid, or buyout
 - The auction ended, was claimed, was cancelled, or entered failed settlement
 - Your bid is below the minimum
+- The server disabled sealed-bid auctions and you tried to create one
 - You are trying to bid on or buy out your own auction while self-bids are disabled
 - The item is restricted by server auction rules
 - You hit a rate limit and need to wait a few seconds

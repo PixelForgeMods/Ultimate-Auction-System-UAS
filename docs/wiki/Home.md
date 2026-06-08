@@ -7,7 +7,7 @@ Ultimate Auction System (UAS) adds a full auction house to Minecraft `1.21.1` on
 - Open the auction house with `/ah`
 - Browse active listings with search, category, mod, price, time, and sort filters
 - List one item stack or a bundle of inventory stacks
-- Set a starting bid, optional buyout price, description, and end time
+- Set a starting bid, optional buyout price, optional sealed-bid format, description, and end time
 - Review listing fees before confirming an auction
 - Choose which UBS account pays listing fees, bids, and buyouts in the GUI
 - Bid, raise bids, or buy out auctions with fresh UBS account balance checks
@@ -20,6 +20,7 @@ Ultimate Auction System (UAS) adds a full auction house to Minecraft `1.21.1` on
 - Required UBS dependency checks at startup
 - Persistent auction, delivery, admin, audit, and recovery storage
 - Configurable listing fees, cancellation fees, sales tax, bid increments, duration limits, listing caps, and rate limits
+- Optional hidden reserve prices and sealed-bid auction format
 - Admin commands and an admin GUI for health, auctions, players, economy, moderation, suspicious activity, banned items, recovery, and audit history
 - Failed-settlement detection with automatic retries and manual admin retry tools
 - Banned auction entries for exact items, tags, or whole mods

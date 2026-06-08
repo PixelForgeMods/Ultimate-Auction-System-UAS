@@ -22,6 +22,9 @@ public record AuctionListingSummary(
         BigDecimal currentBid,
         BigDecimal buyoutPrice,
         BigDecimal reservePrice,
+        AuctionFormat format,
+        boolean sealedBidRevealed,
+        BigDecimal viewerBid,
         boolean reserveActive,
         boolean reservePriceVisible,
         boolean reserveMet,
@@ -46,6 +49,8 @@ public record AuctionListingSummary(
 ) {
     public AuctionListingSummary {
         reservePrice = reservePrice == null ? BigDecimal.ZERO : reservePrice;
+        format = format == null ? AuctionFormat.NORMAL : format;
+        viewerBid = viewerBid == null ? BigDecimal.ZERO : viewerBid;
         contents = contents == null || contents.isEmpty()
                 ? List.of(item == null ? ItemStack.EMPTY : item.copy())
                 : contents.stream()

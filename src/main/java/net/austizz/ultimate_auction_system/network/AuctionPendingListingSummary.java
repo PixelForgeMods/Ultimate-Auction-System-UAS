@@ -1,6 +1,7 @@
 package net.austizz.ultimate_auction_system.network;
 
 import net.austizz.ultimate_auction_system.AuctionListingPreview;
+import net.austizz.ultimate_auction_system.AuctionFormat;
 import net.austizz.ultimate_auction_system.banking.UasMoneyFormatter;
 import net.minecraft.network.RegistryFriendlyByteBuf;
 import net.minecraft.network.codec.ByteBufCodecs;
@@ -18,6 +19,8 @@ public record AuctionPendingListingSummary(
         String startingBid,
         String buyoutPrice,
         String reservePrice,
+        String format,
+        boolean sealedBid,
         String listingFee,
         String endsAt,
         String expiresAt,
@@ -34,6 +37,8 @@ public record AuctionPendingListingSummary(
             "0",
             "0",
             "0",
+            "normal",
+            false,
             "0",
             "",
             "",
@@ -44,6 +49,7 @@ public record AuctionPendingListingSummary(
     );
 
     public AuctionPendingListingSummary {
+        format = format == null || format.isBlank() ? AuctionFormat.NORMAL.serializedName() : format;
         contents = contents == null || contents.isEmpty()
                 ? List.of(item == null ? ItemStack.EMPTY : item.copy())
                 : contents.stream()
@@ -61,6 +67,8 @@ public record AuctionPendingListingSummary(
                 ByteBufCodecs.STRING_UTF8.encode(buf, summary.startingBid());
                 ByteBufCodecs.STRING_UTF8.encode(buf, summary.buyoutPrice());
                 ByteBufCodecs.STRING_UTF8.encode(buf, summary.reservePrice());
+                ByteBufCodecs.STRING_UTF8.encode(buf, summary.format());
+                ByteBufCodecs.BOOL.encode(buf, summary.sealedBid());
                 ByteBufCodecs.STRING_UTF8.encode(buf, summary.listingFee());
                 ByteBufCodecs.STRING_UTF8.encode(buf, summary.endsAt());
                 ByteBufCodecs.STRING_UTF8.encode(buf, summary.expiresAt());
@@ -77,6 +85,8 @@ public record AuctionPendingListingSummary(
                     ByteBufCodecs.STRING_UTF8.decode(buf),
                     ByteBufCodecs.STRING_UTF8.decode(buf),
                     ByteBufCodecs.STRING_UTF8.decode(buf),
+                    ByteBufCodecs.STRING_UTF8.decode(buf),
+                    ByteBufCodecs.BOOL.decode(buf),
                     ByteBufCodecs.STRING_UTF8.decode(buf),
                     ByteBufCodecs.STRING_UTF8.decode(buf),
                     ByteBufCodecs.STRING_UTF8.decode(buf),
@@ -99,6 +109,8 @@ public record AuctionPendingListingSummary(
                 UasMoneyFormatter.display(preview.startingBid()),
                 UasMoneyFormatter.display(preview.buyoutPrice()),
                 UasMoneyFormatter.display(preview.reservePrice()),
+                preview.format().serializedName(),
+                preview.format() == AuctionFormat.SEALED_BID,
                 UasMoneyFormatter.display(preview.listingFee()),
                 time(preview.endsAt()),
                 time(preview.expiresAt()),

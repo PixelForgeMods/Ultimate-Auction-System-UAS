@@ -926,6 +926,7 @@ public class AUSCommands {
         sendInspectLine(source, "Item", stack.getCount() + "x " + stack.getHoverName().getString(), ChatFormatting.WHITE);
         sendInspectLine(source, "Description", blankFallback(auction.getDescription(), "(empty)"), ChatFormatting.GRAY);
         sendInspectLine(source, "State", auction.getState().name(), colorForState(auction.getState()));
+        sendInspectLine(source, "Format", auction.getFormat().serializedName(), auction.isSealedBid() ? ChatFormatting.LIGHT_PURPLE : ChatFormatting.GRAY);
         sendInspectLine(source, "Seller player", String.valueOf(auction.getPlayerId()), ChatFormatting.GRAY);
         sendInspectLine(source, "Seller account", String.valueOf(auction.getSellerAccountId()), ChatFormatting.GRAY);
         sendInspectLine(source, "Starting price", UasMoneyFormatter.display(auction.getStartingBidPrice()), ChatFormatting.GOLD);

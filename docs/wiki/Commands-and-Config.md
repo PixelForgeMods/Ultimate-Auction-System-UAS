@@ -84,7 +84,7 @@ Claim a won item or an expired unsold seller return:
 /ah claim <auctionId>
 ```
 
-The GUI is preferred for most player workflows because it includes inventory slot selection, bundle creation, optional buyout, optional hidden reserve price, date/time picking, account selection, listing-fee preview, bid review, delivery storage, relisting expired unsold auctions, and validation before submission.
+The GUI is preferred for most player workflows because it includes inventory slot selection, bundle creation, optional buyout, optional hidden reserve price, optional sealed-bid format, date/time picking, account selection, listing-fee preview, bid review, delivery storage, relisting expired unsold auctions, and validation before submission.
 
 Server owners can place `ultimate_auction_system:auction_terminal` blocks in hubs or marketplaces. Interacting with a terminal opens the same Auction House GUI as `/ah`; disabling terminal access does not disable `/ah`.
 
@@ -112,7 +112,9 @@ Bid and raise-bid modals use a two-step flow. The first action refreshes the UBS
 
 Reserve-price auctions keep the reserve amount hidden from bidders, but auction rows show whether the reserve has been met. If an auction ends below reserve, UAS refunds the held highest bid and lets the seller claim the unsold item return.
 
-Create-auction supports one inventory slot or a bundle of up to 18 stacks. Bundle auctions show a bundle title and a contents preview. UAS validates the selected item contents again on confirm before escrow. When reserve prices are enabled, the reserve must be at least the starting bid, and any positive buyout must be at least the reserve.
+Sealed-bid auctions hide active bid amounts and bid history from non-admin players until the auction ends. A bidder can still see and raise their own sealed bid. At close, UAS chooses the highest valid sealed bid; equal sealed bids keep the earliest accepted bid as winner.
+
+Create-auction supports one inventory slot or a bundle of up to 18 stacks. Bundle auctions show a bundle title and a contents preview. UAS validates the selected item contents again on confirm before escrow. When reserve prices are enabled, the reserve must be at least the starting bid, and any positive buyout must be at least the reserve. When sealed-bid auctions are enabled, the create and relist modals can switch the listing format between normal and sealed bid.
 
 Relist appears on expired unsold auctions owned by the current player. It reuses the old escrowed item contents and previous pricing fields, including any visible reserve price, lets the seller edit the new price/date/description, charges the configured listing fee again, creates a fresh active auction, and keeps the original expired auction as an audited history entry.
 
@@ -252,6 +254,7 @@ Marketplace:
 - `marketplace.enableLeaderboards`: expose `/ah leaderboard` top seller/buyer rankings, default `false`
 - `marketplace.enableAuctionTerminal`: allow `ultimate_auction_system:auction_terminal` block interactions to open the Auction House GUI, default `true`
 - `marketplace.enableReservePrices`: allow sellers to set optional hidden reserve prices on new listings, default `true`
+- `marketplace.enableSealedBidAuctions`: allow sellers to create sealed-bid listings, default `true`
 
 Settlement:
 
@@ -329,6 +332,7 @@ UAS uses the selected UBS account in GUI flows and the player's UBS primary acco
 - When a higher bid is accepted, UAS refunds the previous highest bidder before committing the new bid.
 - If a previous-bid refund cannot complete safely, the new bid is rejected and the auction keeps the previous highest bidder.
 - Buyout immediately escrows buyer funds, refunds the previous highest bidder when needed, pays the seller net proceeds, and leaves the item claimable by the buyer.
+- Sealed bids escrow the full submitted amount. Raising a sealed bid refunds the bidder's previous held sealed amount before accepting the new amount. When a sealed auction ends, UAS refunds losing sealed bids before payout; if a buyout is accepted, UAS refunds all held sealed bids before committing the buyout.
 - Sales tax is deducted before seller payout.
 - Optional UBS cheque payouts are disabled by default. When enabled and the net seller payout is a qualifying whole-dollar amount, UAS asks UBS to issue a cheque from the configured payout source account and delivers that cheque to the seller instead of duplicating cheque redemption rules.
 - If tax deposit, seller payout, or escrow refund fails, the auction moves to `FAILED_SETTLEMENT` for admin recovery.

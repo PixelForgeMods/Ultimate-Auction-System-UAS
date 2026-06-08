@@ -151,6 +151,7 @@ public class AuctionHouseScreen extends Screen {
     private boolean bidReviewPending = false;
     private String bundleTitleDraft = "";
     private String descriptionDraft = "";
+    private boolean sealedBidDraft = false;
     private String selectedModId = "";
     private String pendingModId = "";
     private String modSearchDraft = "";
@@ -571,7 +572,7 @@ public class AuctionHouseScreen extends Screen {
 
         if (activeTab == Tab.BROWSE || activeTab == Tab.DASHBOARD) {
             if (entry.canBid()) {
-                actions.add(new RowAction(entry.viewerHasBid() ? "Raise Bid" : "Place Bid", AuctionButton.Style.GREEN, button -> openBid(entry)));
+                actions.add(new RowAction(bidActionLabel(entry), AuctionButton.Style.GREEN, button -> openBid(entry)));
             }
             if (entry.canBuyout()) {
                 actions.add(new RowAction("Buyout", AuctionButton.Style.GRAY, button -> sendAuctionAction("BUYOUT", entry, "", null)));
@@ -590,7 +591,7 @@ public class AuctionHouseScreen extends Screen {
             }
         } else if (activeTab == Tab.MY_BIDS) {
             if (entry.canBid()) {
-                actions.add(new RowAction("Raise Bid", AuctionButton.Style.GREEN, button -> openBid(entry)));
+                actions.add(new RowAction(bidActionLabel(entry), AuctionButton.Style.GREEN, button -> openBid(entry)));
             }
             if (isClaimed(entry)) {
                 actions.add(new RowAction("Claimed", AuctionButton.Style.CLAIMED, button -> {
@@ -788,8 +789,9 @@ public class AuctionHouseScreen extends Screen {
         int startingY = y + (compact ? 274 : 190) + bundleOffset - scroll;
         int buyoutY = y + (compact ? 322 : 190) + bundleOffset - scroll;
         int reserveY = y + (compact ? 370 : 190) + bundleOffset - scroll;
-        int endY = y + (compact ? 418 : 238) + bundleOffset - scroll;
-        int descriptionY = y + (compact ? 466 : 286) + bundleOffset - scroll;
+        int formatY = y + (compact ? 418 : 238) + bundleOffset - scroll;
+        int endY = y + (compact ? 466 : 286) + bundleOffset - scroll;
+        int descriptionY = y + (compact ? 514 : 334) + bundleOffset - scroll;
         int fieldW = compact ? modalW - 40 : 138;
 
         if (createSelectionIsBundle()) {
@@ -826,6 +828,12 @@ public class AuctionHouseScreen extends Screen {
         setVisibleInModalBody(reserveBox, bodyTop, bodyBottom);
         addRenderableWidget(reserveBox);
 
+        AuctionButton formatButton = addAuctionButton(x + 20, formatY, modalW - 40, 22, Component.literal(sealedBidToggleLabel()), sealedBidDraft ? AuctionButton.Style.GREEN : AuctionButton.Style.GRAY, button -> {
+            sealedBidDraft = !sealedBidDraft;
+            rebuildWidgets();
+        });
+        setVisibleInModalBody(formatButton, bodyTop, bodyBottom);
+
         AuctionButton endDateButton = addAuctionButton(x + 20, endY, modalW - 40, 22, Component.literal(endDateDisplay()), AuctionButton.Style.DARK, button -> {
             datePickerReturnModal = Modal.CREATE;
             modal = Modal.DATE_PICKER;
@@ -841,7 +849,7 @@ public class AuctionHouseScreen extends Screen {
         setVisibleInModalBody(descriptionBox, bodyTop, bodyBottom);
         addRenderableWidget(descriptionBox);
 
-        int feeY = y + (compact ? 514 : 334) + bundleOffset - scroll;
+        int feeY = y + (compact ? 562 : 382) + bundleOffset - scroll;
         AuctionButton accountButton = addAuctionButton(x + modalW - 128, feeY + 16, 104, 22, "Change", AuctionButton.Style.GRAY, button -> openAccountSelector());
         accountButton.active = !accountOptions().isEmpty();
         setVisibleInModalBody(accountButton, bodyTop, bodyBottom);
@@ -865,8 +873,9 @@ public class AuctionHouseScreen extends Screen {
         int startingY = y + (compact ? 190 : 166) - scroll;
         int buyoutY = y + (compact ? 238 : 166) - scroll;
         int reserveY = y + (compact ? 286 : 166) - scroll;
-        int endY = y + (compact ? 334 : 214) - scroll;
-        int descriptionY = y + (compact ? 382 : 262) - scroll;
+        int formatY = y + (compact ? 334 : 214) - scroll;
+        int endY = y + (compact ? 382 : 262) - scroll;
+        int descriptionY = y + (compact ? 430 : 310) - scroll;
         int fieldW = compact ? modalW - 40 : 138;
 
         startingBidBox = new AuctionEditBox(font, x + 20, startingY, fieldW, 22, Component.translatable("Starting Bid"));
@@ -893,6 +902,12 @@ public class AuctionHouseScreen extends Screen {
         setVisibleInModalBody(reserveBox, bodyTop, bodyBottom);
         addRenderableWidget(reserveBox);
 
+        AuctionButton formatButton = addAuctionButton(x + 20, formatY, modalW - 40, 22, Component.literal(sealedBidToggleLabel()), sealedBidDraft ? AuctionButton.Style.GREEN : AuctionButton.Style.GRAY, button -> {
+            sealedBidDraft = !sealedBidDraft;
+            rebuildWidgets();
+        });
+        setVisibleInModalBody(formatButton, bodyTop, bodyBottom);
+
         AuctionButton endDateButton = addAuctionButton(x + 20, endY, modalW - 40, 22, Component.literal(endDateDisplay()), AuctionButton.Style.DARK, button -> {
             datePickerReturnModal = Modal.RELIST;
             modal = Modal.DATE_PICKER;
@@ -908,7 +923,7 @@ public class AuctionHouseScreen extends Screen {
         setVisibleInModalBody(descriptionBox, bodyTop, bodyBottom);
         addRenderableWidget(descriptionBox);
 
-        int feeY = y + (compact ? 430 : 310) - scroll;
+        int feeY = y + (compact ? 478 : 358) - scroll;
         AuctionButton accountButton = addAuctionButton(x + modalW - 128, feeY + 16, 104, 22, "Change", AuctionButton.Style.GRAY, button -> openAccountSelector());
         accountButton.active = !accountOptions().isEmpty();
         setVisibleInModalBody(accountButton, bodyTop, bodyBottom);
@@ -1403,6 +1418,7 @@ public class AuctionHouseScreen extends Screen {
         reserveDraft = "";
         bundleTitleDraft = "";
         descriptionDraft = "";
+        sealedBidDraft = false;
         selectedEndDate = LocalDate.now().plusDays(1);
         selectedEndHour = 12;
         selectedEndMinute = 0;
@@ -1663,6 +1679,7 @@ public class AuctionHouseScreen extends Screen {
         reserveDraft = reserve.compareTo(BigDecimal.ZERO) <= 0 ? "" : reserve.stripTrailingZeros().toPlainString();
         bundleTitleDraft = entry != null && entry.bundle() ? entry.itemName() : "";
         descriptionDraft = entry == null ? "" : entry.description();
+        sealedBidDraft = entry != null && entry.sealedBid();
         LocalDateTime defaultEnd = LocalDateTime.now().plusDays(1);
         selectedEndDate = defaultEnd.toLocalDate();
         selectedEndHour = defaultEnd.getHour();
@@ -1948,6 +1965,7 @@ public class AuctionHouseScreen extends Screen {
                 startingBidDraft,
                 buyoutDraft,
                 reserveDraft,
+                sealedBidDraft ? "sealed_bid" : "normal",
                 Math.max(1, (int) Duration.between(LocalDateTime.now(), selectedEndDateTime()).toHours()),
                 selectedEndDateTime().toString(),
                 descriptionDraft,
@@ -1984,6 +2002,7 @@ public class AuctionHouseScreen extends Screen {
                 startingBidDraft,
                 buyoutDraft,
                 reserveDraft,
+                sealedBidDraft ? "sealed_bid" : "normal",
                 Math.max(1, (int) Duration.between(LocalDateTime.now(), selectedEndDateTime()).toHours()),
                 selectedEndDateTime().toString(),
                 descriptionDraft,
@@ -2009,6 +2028,7 @@ public class AuctionHouseScreen extends Screen {
                 List.of(),
                 "",
                 amount == null ? "" : sanitizeMoneyInput(amount),
+                "",
                 "",
                 "",
                 "",
@@ -2836,7 +2856,7 @@ public class AuctionHouseScreen extends Screen {
         String itemTitle = entry.bundle() ? entry.itemName() : (entry.item().getCount() > 1 ? entry.item().getCount() + "x " : "") + entry.itemName();
         graphics.drawString(font, Component.literal(trimToWidth(itemTitle, textW)), textX, y + 12, rarityColor, false);
         graphics.drawString(font, Component.literal(Component.translatable("Seller").getString() + ": " + trimToWidth(entry.sellerName(), textW - 40)), textX, y + 28, 0xFFBDBDBD, false);
-        graphics.drawString(font, Component.literal(Component.translatable("Bid").getString() + ": " + entry.currentBid()), textX, y + 44, 0xFFFFD966, false);
+        graphics.drawString(font, Component.literal(Component.translatable("Bid").getString() + ": " + currentBidText(entry)), textX, y + 44, 0xFFFFD966, false);
         int metaY = y + 44;
         if (textW >= 230) {
             graphics.drawString(font, Component.literal(Component.translatable("Time").getString() + ": " + timeLeft(entry.endsAt(), entry.state())), textX + 108, metaY, 0xFFA5D6A7, false);
@@ -2853,6 +2873,18 @@ public class AuctionHouseScreen extends Screen {
         if (entry.reserveActive()) {
             graphics.drawString(font, Component.literal(trimToWidth(reserveStatusText(entry), textW)), textX, descriptionY, reserveStatusColor(entry), false);
             descriptionY += 12;
+        }
+        if (entry.sealedBid()) {
+            String sealedText = entry.sealedBidRevealed()
+                    ? Component.translatable("Sealed bids revealed").getString()
+                    : Component.translatable("Sealed bids hidden until close").getString();
+            graphics.drawString(font, Component.literal(trimToWidth(sealedText, textW)), textX, descriptionY, entry.sealedBidRevealed() ? 0xFFBDBDBD : 0xFFE1BEE7, false);
+            descriptionY += 12;
+            if (!entry.sealedBidRevealed() && entry.viewerBid() != null && !entry.viewerBid().isBlank()) {
+                String viewerBid = Component.translatable("Your sealed bid: {0}", entry.viewerBid()).getString();
+                graphics.drawString(font, Component.literal(trimToWidth(viewerBid, textW)), textX, descriptionY, 0xFF55FF55, false);
+                descriptionY += 12;
+            }
         }
         if (entry.bundle()) {
             graphics.drawString(font, Component.translatable("Bundle - {0} stacks / {1} items", entry.contents().size(), entry.totalItemCount()), textX, descriptionY, 0xFF55FF55, false);
@@ -3012,7 +3044,10 @@ public class AuctionHouseScreen extends Screen {
         graphics.fill(x + 20, currentY, x + modalW - 20, currentY + accountPanelH, 0xFF000000);
         graphics.fill(x + 22, currentY + 2, x + modalW - 22, currentY + accountPanelH - 2, 0xFF191919);
         graphics.drawString(font, Component.translatable("Current Bid"), x + 34, currentY + 10, 0xFFBDBDBD, false);
-        graphics.drawString(font, Component.literal(selectedAuction.currentBid()).withStyle(ChatFormatting.BOLD), x + 34, currentY + 26, 0xFFFFD700, false);
+        graphics.drawString(font, Component.literal(currentBidText(selectedAuction)).withStyle(ChatFormatting.BOLD), x + 34, currentY + 26, 0xFFFFD700, false);
+        if (selectedAuction.sealedBid() && !selectedAuction.sealedBidRevealed() && selectedAuction.viewerBid() != null && !selectedAuction.viewerBid().isBlank()) {
+            graphics.drawString(font, Component.translatable("Your sealed bid: {0}", selectedAuction.viewerBid()), x + 128, currentY + 26, 0xFF55FF55, false);
+        }
         int accountX = x + modalW / 2;
         int accountW = x + modalW - 126 - accountX;
         AuctionAccountSummary account = selectedAccount();
@@ -3077,13 +3112,14 @@ public class AuctionHouseScreen extends Screen {
         }
         graphics.fill(detailX, summaryTop + 40, detailX + 84, summaryTop + 62, 0xFF000000);
         graphics.fill(detailX + 2, summaryTop + 42, detailX + 82, summaryTop + 60, 0xFF191919);
-        graphics.drawString(font, Component.literal(selectedAuction.currentBid()).withStyle(ChatFormatting.BOLD), detailX + 8, summaryTop + 48, 0xFFFFD700, false);
+        graphics.drawString(font, Component.literal(currentBidText(selectedAuction)).withStyle(ChatFormatting.BOLD), detailX + 8, summaryTop + 48, 0xFFFFD700, false);
         graphics.fill(detailX + 96, summaryTop + 40, detailX + 190, summaryTop + 62, 0xFF000000);
         graphics.fill(detailX + 98, summaryTop + 42, detailX + 188, summaryTop + 60, 0xFF191919);
         graphics.drawString(font, Component.literal(timeLeft(selectedAuction.endsAt(), selectedAuction.state())), detailX + 104, summaryTop + 48, 0xFFFF6666, false);
 
         int titleY = summaryTop + summaryH + 16;
-        graphics.drawString(font, Component.translatable("Bid History").append(Component.literal(" (" + bids.size() + ")")).withStyle(ChatFormatting.BOLD), x + 20, titleY, 0xFFFFFFFF, false);
+        int visibleBidCount = selectedAuction.sealedBid() && !selectedAuction.sealedBidRevealed() ? selectedAuction.bidCount() : bids.size();
+        graphics.drawString(font, Component.translatable(selectedAuction.sealedBid() ? "Sealed Bids" : "Bid History").append(Component.literal(" (" + visibleBidCount + ")")).withStyle(ChatFormatting.BOLD), x + 20, titleY, 0xFFFFFFFF, false);
 
         int listTop = titleY + 18;
         int listBottom = Math.max(listTop + 24, y + modalH - 58);
@@ -3091,7 +3127,14 @@ public class AuctionHouseScreen extends Screen {
         graphics.fill(x + 22, listTop + 2, x + modalW - 22, listBottom - 2, 0xFF191919);
 
         if (bids.isEmpty()) {
-            graphics.drawString(font, Component.translatable("No bids yet"), x + 34, listTop + 18, 0xFFBDBDBD, false);
+            if (selectedAuction.sealedBid() && !selectedAuction.sealedBidRevealed()) {
+                graphics.drawString(font, Component.translatable("Sealed bids are hidden until this auction ends."), x + 34, listTop + 18, 0xFFE1BEE7, false);
+                if (selectedAuction.viewerBid() != null && !selectedAuction.viewerBid().isBlank()) {
+                    graphics.drawString(font, Component.translatable("Your sealed bid: {0}", selectedAuction.viewerBid()), x + 34, listTop + 34, 0xFF55FF55, false);
+                }
+            } else {
+                graphics.drawString(font, Component.translatable("No bids yet"), x + 34, listTop + 18, 0xFFBDBDBD, false);
+            }
             return;
         }
 
@@ -3185,8 +3228,9 @@ public class AuctionHouseScreen extends Screen {
             drawCreateLabel(graphics, "Starting Bid (dollars)", x + 20, y + 262 + bundleOffset - scroll, modalW - 40);
             drawCreateLabel(graphics, "Buyout (dollars)", x + 20, y + 310 + bundleOffset - scroll, modalW - 40);
             drawCreateLabel(graphics, "Reserve (dollars)", x + 20, y + 358 + bundleOffset - scroll, modalW - 40);
-            drawCreateLabel(graphics, "Auction End Date & Time", x + 20, y + 406 + bundleOffset - scroll, modalW - 40);
-            drawCreateLabel(graphics, "Description", x + 20, y + 454 + bundleOffset - scroll, modalW - 40);
+            drawCreateLabel(graphics, "Auction Format", x + 20, y + 406 + bundleOffset - scroll, modalW - 40);
+            drawCreateLabel(graphics, "Auction End Date & Time", x + 20, y + 454 + bundleOffset - scroll, modalW - 40);
+            drawCreateLabel(graphics, "Description", x + 20, y + 502 + bundleOffset - scroll, modalW - 40);
         } else {
             renderSelectedItemPreview(graphics, x + 236, y + 72 - scroll, modalW - 256, 88);
             if (createSelectionIsBundle()) {
@@ -3195,11 +3239,12 @@ public class AuctionHouseScreen extends Screen {
             drawCreateLabel(graphics, "Starting Bid (dollars)", x + 20, y + 178 + bundleOffset - scroll, 138);
             drawCreateLabel(graphics, "Buyout (dollars)", x + 170, y + 178 + bundleOffset - scroll, 128);
             drawCreateLabel(graphics, "Reserve (dollars)", x + 310, y + 178 + bundleOffset - scroll, 128);
-            drawCreateLabel(graphics, "Auction End Date & Time", x + 20, y + 226 + bundleOffset - scroll, modalW - 40);
-            drawCreateLabel(graphics, "Description", x + 20, y + 274 + bundleOffset - scroll, modalW - 40);
+            drawCreateLabel(graphics, "Auction Format", x + 20, y + 226 + bundleOffset - scroll, modalW - 40);
+            drawCreateLabel(graphics, "Auction End Date & Time", x + 20, y + 274 + bundleOffset - scroll, modalW - 40);
+            drawCreateLabel(graphics, "Description", x + 20, y + 322 + bundleOffset - scroll, modalW - 40);
         }
 
-        int feeY = y + (compact ? 466 : 274) + bundleOffset - scroll;
+        int feeY = y + (compact ? 562 : 382) + bundleOffset - scroll;
         graphics.fill(x + 20, feeY, x + modalW - 20, feeY + 52, 0xFF000000);
         graphics.fill(x + 22, feeY + 2, x + modalW - 22, feeY + 50, 0xFF191919);
         graphics.drawString(font, Component.translatable("Listing Fee").append(Component.literal(" (" + listingFeeRateLabel() + "%)")), x + 34, feeY + 12, 0xFFE0E0E0, false);
@@ -3215,6 +3260,12 @@ public class AuctionHouseScreen extends Screen {
         graphics.drawString(font, Component.literal(label).withStyle(ChatFormatting.BOLD), x, y, 0xFFFFFFFF, false);
     }
 
+    private String sealedBidToggleLabel() {
+        return sealedBidDraft
+                ? Component.translatable("Sealed Bids: On").getString()
+                : Component.translatable("Sealed Bids: Off").getString();
+    }
+
     private void renderRelistModal(GuiGraphics graphics, int x, int y, int modalW) {
         int modalH = modalHeight();
         int bodyTop = modalBodyTop(y);
@@ -3228,17 +3279,19 @@ public class AuctionHouseScreen extends Screen {
             drawCreateLabel(graphics, "Starting Bid (dollars)", x + 20, y + 178 - scroll, modalW - 40);
             drawCreateLabel(graphics, "Buyout (dollars)", x + 20, y + 226 - scroll, modalW - 40);
             drawCreateLabel(graphics, "Reserve (dollars)", x + 20, y + 274 - scroll, modalW - 40);
-            drawCreateLabel(graphics, "Auction End Date & Time", x + 20, y + 322 - scroll, modalW - 40);
-            drawCreateLabel(graphics, "Description", x + 20, y + 370 - scroll, modalW - 40);
+            drawCreateLabel(graphics, "Auction Format", x + 20, y + 322 - scroll, modalW - 40);
+            drawCreateLabel(graphics, "Auction End Date & Time", x + 20, y + 370 - scroll, modalW - 40);
+            drawCreateLabel(graphics, "Description", x + 20, y + 418 - scroll, modalW - 40);
         } else {
             drawCreateLabel(graphics, "Starting Bid (dollars)", x + 20, y + 154 - scroll, 138);
             drawCreateLabel(graphics, "Buyout (dollars)", x + 170, y + 154 - scroll, 128);
             drawCreateLabel(graphics, "Reserve (dollars)", x + 310, y + 154 - scroll, 128);
-            drawCreateLabel(graphics, "Auction End Date & Time", x + 20, y + 202 - scroll, modalW - 40);
-            drawCreateLabel(graphics, "Description", x + 20, y + 250 - scroll, modalW - 40);
+            drawCreateLabel(graphics, "Auction Format", x + 20, y + 202 - scroll, modalW - 40);
+            drawCreateLabel(graphics, "Auction End Date & Time", x + 20, y + 250 - scroll, modalW - 40);
+            drawCreateLabel(graphics, "Description", x + 20, y + 298 - scroll, modalW - 40);
         }
 
-        int feeY = y + (compact ? 382 : 250) - scroll;
+        int feeY = y + (compact ? 478 : 358) - scroll;
         graphics.fill(x + 20, feeY, x + modalW - 20, feeY + 52, 0xFF000000);
         graphics.fill(x + 22, feeY + 2, x + modalW - 22, feeY + 50, 0xFF191919);
         graphics.drawString(font, Component.translatable("Listing Fee").append(Component.literal(" (" + listingFeeRateLabel() + "%)")), x + 34, feeY + 12, 0xFFE0E0E0, false);
@@ -3302,7 +3355,8 @@ public class AuctionHouseScreen extends Screen {
         String title = pending.bundle() ? pending.itemName() : (pending.itemCount() > 1 ? pending.itemCount() + "x " : "") + pending.itemName();
         graphics.drawString(font, Component.literal(trimToWidth(title, detailW)).withStyle(ChatFormatting.BOLD), detailX, previewTop + 14, rarityColor, false);
         graphics.drawString(font, Component.literal(trimToWidth(pending.sourceLabel(), detailW)), detailX, previewTop + 30, 0xFFBDBDBD, false);
-        int metadataY = previewTop + 46;
+        graphics.drawString(font, Component.translatable("Format: {0}", auctionFormatLabel(pending.sealedBid())), detailX, previewTop + 46, pending.sealedBid() ? 0xFFE1BEE7 : 0xFFBDBDBD, false);
+        int metadataY = previewTop + 60;
         if (pending.bundle()) {
             graphics.drawString(font, Component.translatable("Bundle - {0} stacks / {1} items", pending.contents().size(), pending.itemCount()), detailX, metadataY, 0xFF55FF55, false);
             metadataY += 12;
@@ -3557,9 +3611,9 @@ public class AuctionHouseScreen extends Screen {
 
     private int createContentHeight(int modalW) {
         if (modal == Modal.RELIST) {
-            return compactCreateModal(modalW) ? 482 : 366;
+            return compactCreateModal(modalW) ? 530 : 414;
         }
-        return (compactCreateModal(modalW) ? 526 : 346) + (createSelectionIsBundle() ? 48 : 0);
+        return (compactCreateModal(modalW) ? 574 : 394) + (createSelectionIsBundle() ? 48 : 0);
     }
 
     private int filterContentHeight() {
@@ -3908,6 +3962,7 @@ public class AuctionHouseScreen extends Screen {
                 "",
                 "",
                 "",
+                "",
                 0,
                 "",
                 "",
@@ -4232,7 +4287,7 @@ public class AuctionHouseScreen extends Screen {
 
     private String modalTitle() {
         return switch (modal) {
-            case BID -> selectedAuction != null && selectedAuction.viewerHasBid() ? "Raise Bid" : "Place Bid";
+            case BID -> bidActionLabel(selectedAuction);
             case CREATE -> "Create Auction";
             case RELIST -> "Relist Auction";
             case CONFIRM_CREATE -> "Confirm Auction";
@@ -4253,10 +4308,37 @@ public class AuctionHouseScreen extends Screen {
             return "";
         }
         try {
+            if (entry.sealedBid() && !entry.sealedBidRevealed()) {
+                BigDecimal base = entry.viewerBid() == null || entry.viewerBid().isBlank()
+                        ? moneyDraft(entry.startingBid())
+                        : moneyDraft(entry.viewerBid()).add(BigDecimal.ONE);
+                return base.stripTrailingZeros().toPlainString();
+            }
             return moneyDraft(entry.currentBid()).add(BigDecimal.ONE).stripTrailingZeros().toPlainString();
         } catch (RuntimeException ignored) {
             return "";
         }
+    }
+
+    private String bidActionLabel(AuctionEntrySummary entry) {
+        if (entry != null && entry.sealedBid()) {
+            return entry.viewerHasBid() ? "Raise Sealed Bid" : "Place Sealed Bid";
+        }
+        return entry != null && entry.viewerHasBid() ? "Raise Bid" : "Place Bid";
+    }
+
+    private String currentBidText(AuctionEntrySummary entry) {
+        if (entry == null) {
+            return "";
+        }
+        if (entry.sealedBid() && !entry.sealedBidRevealed()) {
+            return Component.translatable("Sealed").getString();
+        }
+        return entry.currentBid();
+    }
+
+    private String auctionFormatLabel(boolean sealedBid) {
+        return Component.translatable(sealedBid ? "Sealed Bid" : "Normal Auction").getString();
     }
 
     private String timeFilterLabel() {

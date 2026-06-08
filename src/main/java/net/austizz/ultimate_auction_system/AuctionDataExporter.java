@@ -216,6 +216,7 @@ public final class AuctionDataExporter {
         row.put("title", item.getDisplayTitle());
         row.put("description", item.getDescription());
         row.put("state", item.getState().name());
+        row.put("format", item.getFormat().serializedName());
         row.put("starting_bid", money(item.getStartingBidPrice()));
         row.put("current_bid", money(item.getHighestBid()));
         row.put("buyout_price", item.getBuyoutPrice().map(AuctionDataExporter::money).orElse(""));

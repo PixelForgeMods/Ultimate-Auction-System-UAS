@@ -28,6 +28,7 @@ Run the health check:
 5. Review economy settings before players create live auctions.
 6. Decide whether to configure banned auction entries before opening the auction house.
 7. Decide whether to allow hidden reserve prices with `marketplace.enableReservePrices`.
+8. Decide whether to allow sealed-bid auctions with `marketplace.enableSealedBidAuctions`.
 
 ## Admin Dashboard Sections
 
@@ -137,7 +138,7 @@ Admins can export persisted auction history for external economy analysis:
 /uas admin export csv custom-name.csv
 ```
 
-Exports are written under the server/world `uas_exports/` directory. UAS sanitizes custom filenames, runs the file write asynchronously, and records an `AUCTION_EXPORT` audit entry. Export rows include auction ids, item ids/names, prices, reserve price/status, states, timestamps, seller/winner UUIDs, bid counts, and settlement references.
+Exports are written under the server/world `uas_exports/` directory. UAS sanitizes custom filenames, runs the file write asynchronously, and records an `AUCTION_EXPORT` audit entry. Export rows include auction ids, item ids/names, format, prices, reserve price/status, states, timestamps, seller/winner UUIDs, bid counts, and settlement references.
 
 ## Reserve-Price Auctions
 
@@ -146,6 +147,14 @@ Reserve-price auctions are controlled by `marketplace.enableReservePrices`, defa
 If an auction ends below reserve, UAS deposits the held highest bid back to the bidder account using a `RESERVE_REFUND` financial event, clears the winning bidder from the auction, and leaves the escrowed item claimable by the seller. If that refund cannot be completed, the auction moves to `FAILED_SETTLEMENT` for admin recovery instead of silently ending.
 
 Admin inspect output shows the reserve amount and reserve-met status. Auction exports include `reserve_price` and `reserve_met` columns for offline review.
+
+## Sealed-Bid Auctions
+
+Sealed-bid auctions are controlled by `marketplace.enableSealedBidAuctions`, default `true`. Sellers can select the sealed-bid format in the create or relist GUI. Active sealed auctions hide bid amounts and bid history from normal players until the auction ends, while still showing each bidder their own held sealed bid.
+
+UAS escrows the full sealed bid amount immediately. If a bidder raises their own sealed bid, UAS refunds the previous held amount before accepting the replacement. At close, UAS selects the highest valid sealed bid; equal sealed bids keep the earliest accepted bid as winner. Losing sealed bids are refunded before seller payout. If a buyout is accepted on a sealed auction, UAS refunds all held sealed bids before committing the buyout.
+
+Admin inspect and auction exports expose the auction format and full bid audit data so moderators can review sealed-bid disputes. If any sealed-bid refund cannot complete safely, the auction moves to `FAILED_SETTLEMENT` for admin recovery instead of hiding the failure.
 
 ## Audit And Suspicion Signals
 

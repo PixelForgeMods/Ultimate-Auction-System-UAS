@@ -62,6 +62,8 @@ public class AuctionHouse {
     static final String EVENT_BUYOUT_ESCROW_REFUND = "BUYOUT_ESCROW_REFUND";
     static final String EVENT_OUTBID_REFUND = "OUTBID_REFUND";
     static final String EVENT_RESERVE_REFUND = "RESERVE_REFUND";
+    static final String EVENT_SEALED_BID_REFUND = "SEALED_BID_REFUND";
+    static final String EVENT_SEALED_BID_REPLACE_REFUND = "SEALED_BID_REPLACE_REFUND";
     static final String EVENT_AUCTION_PAYOUT = "AUCTION_PAYOUT";
     static final String EVENT_SALES_TAX = "SALES_TAX";
     static final String EVENT_ADMIN_FORCE_CANCEL_REFUND = "ADMIN_FORCE_CANCEL_REFUND";
@@ -290,6 +292,7 @@ public class AuctionHouse {
                 startingBidPrice,
                 buyoutPrice,
                 BigDecimal.ZERO,
+                AuctionFormat.NORMAL,
                 end,
                 description,
                 now,
@@ -356,7 +359,20 @@ public class AuctionHouse {
                                                                 LocalDateTime end,
                                                                 String description,
                                                                 UUID sellerAccountId) {
-        return prepareAuctionFromInventorySlotsInternal(player, slots, title, startingBidPrice, buyoutPrice, reservePrice, end, description, sellerAccountId);
+        return prepareAuctionFromInventorySlotsInternal(player, slots, title, startingBidPrice, buyoutPrice, reservePrice, AuctionFormat.NORMAL, end, description, sellerAccountId);
+    }
+
+    public AuctionActionResult prepareAuctionFromInventorySlots(ServerPlayer player,
+                                                                List<Integer> slots,
+                                                                String title,
+                                                                BigDecimal startingBidPrice,
+                                                                BigDecimal buyoutPrice,
+                                                                BigDecimal reservePrice,
+                                                                AuctionFormat format,
+                                                                LocalDateTime end,
+                                                                String description,
+                                                                UUID sellerAccountId) {
+        return prepareAuctionFromInventorySlotsInternal(player, slots, title, startingBidPrice, buyoutPrice, reservePrice, format, end, description, sellerAccountId);
     }
 
     public AuctionActionResult prepareAuctionFromInventorySlots(ServerPlayer player,
@@ -367,7 +383,7 @@ public class AuctionHouse {
                                                                 LocalDateTime end,
                                                                 String description,
                                                                 UUID sellerAccountId) {
-        return prepareAuctionFromInventorySlotsInternal(player, slots, title, startingBidPrice, buyoutPrice, BigDecimal.ZERO, end, description, sellerAccountId);
+        return prepareAuctionFromInventorySlotsInternal(player, slots, title, startingBidPrice, buyoutPrice, BigDecimal.ZERO, AuctionFormat.NORMAL, end, description, sellerAccountId);
     }
 
     private AuctionActionResult prepareAuctionFromInventorySlotsInternal(ServerPlayer player,
@@ -376,6 +392,7 @@ public class AuctionHouse {
                                                                          BigDecimal startingBidPrice,
                                                                          BigDecimal buyoutPrice,
                                                                          BigDecimal reservePrice,
+                                                                         AuctionFormat format,
                                                                          LocalDateTime end,
                                                                          String description,
                                                                          UUID sellerAccountId) {
@@ -407,7 +424,8 @@ public class AuctionHouse {
         }
 
         LocalDateTime now = LocalDateTime.now();
-        AuctionActionResult validation = validateListingRequest(player, snapshots, startingBidPrice, buyoutPrice, reservePrice, end, sellerAccountId);
+        AuctionFormat safeFormat = format == null ? AuctionFormat.NORMAL : format;
+        AuctionActionResult validation = validateListingRequest(player, snapshots, startingBidPrice, buyoutPrice, reservePrice, safeFormat, end, sellerAccountId);
         if (!validation.success()) {
             return validation;
         }
@@ -420,6 +438,7 @@ public class AuctionHouse {
                 startingBidPrice,
                 buyoutPrice,
                 reservePrice,
+                safeFormat,
                 end,
                 description,
                 now,
@@ -458,7 +477,7 @@ public class AuctionHouse {
         }
 
         UUID accountId = sellerAccountId == null ? pending.sellerAccountId() : sellerAccountId;
-        AuctionActionResult validation = validateListingRequest(player, pending.itemSnapshots(), pending.startingBid(), pending.buyoutPrice(), pending.reservePrice(), pending.endsAt(), accountId);
+        AuctionActionResult validation = validateListingRequest(player, pending.itemSnapshots(), pending.startingBid(), pending.buyoutPrice(), pending.reservePrice(), pending.format(), pending.endsAt(), accountId);
         if (!validation.success()) {
             return validation;
         }
@@ -496,6 +515,7 @@ public class AuctionHouse {
                 pending.startingBid(),
                 pending.buyoutPrice(),
                 pending.reservePrice(),
+                pending.format(),
                 sellerAccount.accountId(),
                 pending.isMainHand() ? "SELLER_MAIN_HAND" : pending.isBundle() ? "SELLER_INVENTORY_BUNDLE" : "SELLER_INVENTORY_SLOT_" + pending.slot()
         );
@@ -594,6 +614,9 @@ public class AuctionHouse {
             if (hasFractionalDollars(safeAmount)) {
                 return AuctionActionResult.fail("Bids must use whole dollars.");
             }
+            if (item.isSealedBid()) {
+                return placeSealedBidWithEscrow(item, bidderId, safeAmount, requestedBidderAccountId, emitBidAlerts, auditServer);
+            }
             BigDecimal minimum = minimumAcceptedBid(item);
             if (safeAmount.compareTo(minimum) < 0) {
                 return AuctionActionResult.fail("Bid must be at least " + moneyLabel(minimum) + ".");
@@ -687,6 +710,80 @@ public class AuctionHouse {
         }
     }
 
+    private AuctionActionResult placeSealedBidWithEscrow(AuctionItem item,
+                                                         UUID bidderId,
+                                                         BigDecimal safeAmount,
+                                                         UUID requestedBidderAccountId,
+                                                         boolean emitBidAlerts,
+                                                         MinecraftServer auditServer) {
+        BigDecimal previousOwnAmount = item.getBids().getOrDefault(bidderId, BigDecimal.ZERO);
+        BigDecimal minimum = previousOwnAmount.compareTo(BigDecimal.ZERO) > 0
+                ? previousOwnAmount.add(Config.minimumBidIncrementAmount())
+                : item.getStartingBidPrice();
+        if (safeAmount.compareTo(minimum) < 0) {
+            return AuctionActionResult.fail("Sealed bid must be at least " + moneyLabel(minimum) + ".");
+        }
+
+        AccountSelection bidderAccount = resolveBidderAccount(bidderId, requestedBidderAccountId);
+        if (!bidderAccount.success()) {
+            item.recordRejectedBid(bidderId, null, safeAmount, AuctionBidResult.REJECTED_NO_ACCOUNT, "Bidder has no UBS primary account.");
+            return AuctionActionResult.fail(bidderAccount.message());
+        }
+        UUID bidderAccountId = bidderAccount.accountId();
+        UasBankingResult canSend = bankingService.validateCanSend(bidderAccountId, safeAmount);
+        if (!canSend.success()) {
+            item.recordRejectedBid(bidderId, bidderAccountId, safeAmount, AuctionBidResult.REJECTED_ACCOUNT_UNAVAILABLE, canSend.reason());
+            return AuctionActionResult.fail("Your selected UBS account cannot pay this sealed bid: " + canSend.reason());
+        }
+
+        UUID previousAccountId = item.getCurrentBidRecordForBidder(bidderId)
+                .flatMap(AuctionBidRecord::getBidderAccountId)
+                .orElse(null);
+        String safeAmountToken = moneyReferenceToken(safeAmount);
+        String holdReference = auctionReference(EVENT_BID_ESCROW, item.getAuctionId()) + ":sealed:" + bidderId + ":" + safeAmountToken;
+        UasBankingResult hold = bankingService.withdraw(bidderAccountId, safeAmount, holdReference);
+        recordBankingEvent(item, EVENT_BID_ESCROW, safeAmount, holdReference, hold);
+        if (!hold.success()) {
+            item.recordRejectedBid(bidderId, bidderAccountId, safeAmount, AuctionBidResult.REJECTED_ACCOUNT_UNAVAILABLE, hold.reason());
+            return AuctionActionResult.fail("Your selected UBS account could not reserve the sealed bid: " + hold.reason());
+        }
+
+        if (previousOwnAmount.compareTo(BigDecimal.ZERO) > 0 && previousAccountId != null) {
+            String replaceReference = auctionReference(EVENT_SEALED_BID_REPLACE_REFUND, item.getAuctionId()) + ":" + bidderId + ":" + moneyReferenceToken(previousOwnAmount);
+            UasBankingResult replaceRefund = bankingService.deposit(previousAccountId, previousOwnAmount, replaceReference);
+            recordBankingEvent(item, EVENT_SEALED_BID_REPLACE_REFUND, previousOwnAmount, replaceReference, replaceRefund);
+            if (!replaceRefund.success()) {
+                String holdRefundReference = auctionReference(EVENT_BID_ESCROW_REFUND, item.getAuctionId()) + ":sealed:" + bidderId + ":" + safeAmountToken;
+                UasBankingResult holdRefund = bankingService.deposit(bidderAccountId, safeAmount, holdRefundReference);
+                recordBankingEvent(item, EVENT_BID_ESCROW_REFUND, safeAmount, holdRefundReference, holdRefund);
+                item.recordRejectedBid(bidderId, bidderAccountId, safeAmount, AuctionBidResult.REJECTED_ACCOUNT_UNAVAILABLE, "Previous sealed bid refund failed: " + replaceRefund.reason());
+                alertOnlineAdmins("Auction Refund Failed", "Sealed bid replacement refund failed for auction {0}: {1}", "ERROR", item.getAuctionId(), replaceRefund.reason());
+                return AuctionActionResult.fail("Could not safely refund your previous sealed bid. New bid was not accepted.");
+            }
+        }
+
+        AuctionBidRecord bidRecord = item.recordSealedBid(bidderId, bidderAccountId, safeAmount);
+        if (!bidRecord.isAccepted()) {
+            String refundReference = auctionReference(EVENT_BID_ESCROW_REFUND, item.getAuctionId()) + ":sealed:" + bidderId + ":" + safeAmountToken;
+            UasBankingResult refund = bankingService.deposit(bidderAccountId, safeAmount, refundReference);
+            recordBankingEvent(item, EVENT_BID_ESCROW_REFUND, safeAmount, refundReference, refund);
+            if (!refund.success()) {
+                item.transitionTo(AuctionState.FAILED_SETTLEMENT, "sealed bid escrow refund failed after rejected bid: " + refund.reason());
+                postSettlementFailedEvent(item, "Sealed bid escrow refund failed after rejected bid: " + refund.reason());
+                alertOnlineAdmins("Auction Settlement Failed", "Sealed bid escrow refund failed for auction {0}: {1}", "ERROR", item.getAuctionId(), refund.reason());
+            }
+            return AuctionActionResult.fail(bidRecord.getReason());
+        }
+
+        markChanged("Auction storage marked dirty after accepted sealed bid.");
+        auditSuspiciousBidSignals(item, auditServer);
+        postAuctionEvent(new UasAuctionEvents.BidAccepted(eventSnapshot(item), bidderId, safeAmount, null, BigDecimal.ZERO, false));
+        if (emitBidAlerts) {
+            notifySealedBidPlaced(item, bidderId, safeAmount, previousOwnAmount);
+        }
+        return AuctionActionResult.ok(previousOwnAmount.compareTo(BigDecimal.ZERO) > 0 ? "Sealed bid raised." : "Sealed bid placed.");
+    }
+
     public AuctionActionResult buyout(ServerPlayer bidder, UUID auctionId) {
         return buyout(bidder, auctionId, null);
     }
@@ -741,7 +838,7 @@ public class AuctionHouse {
                 return AuctionActionResult.fail("This auction has no buyout price.");
             }
             BigDecimal buyoutAmount = safeMoney(buyout.get());
-            if (item.getHighestBidderId() != null && item.getHighestBid().compareTo(buyoutAmount) >= 0) {
+            if (!item.isSealedBid() && item.getHighestBidderId() != null && item.getHighestBid().compareTo(buyoutAmount) >= 0) {
                 return AuctionActionResult.fail("The current bid already reached the buyout price.");
             }
 
@@ -771,7 +868,20 @@ public class AuctionHouse {
                 return AuctionActionResult.fail("Your selected UBS account could not reserve the buyout: " + hold.reason());
             }
 
-            if (previousBidderId != null && previousAccountId != null) {
+            if (item.isSealedBid()) {
+                AuctionActionResult sealedRefunds = refundSealedBidsExcept(item, Set.of(), EVENT_SEALED_BID_REFUND, "sealed bids refunded after buyout");
+                if (!sealedRefunds.success()) {
+                    String holdRefundReference = auctionReference(EVENT_BUYOUT_ESCROW_REFUND, item.getAuctionId());
+                    UasBankingResult holdRefund = bankingService.deposit(bidderAccountId, buyoutAmount, holdRefundReference);
+                    recordBankingEvent(item, EVENT_BUYOUT_ESCROW_REFUND, buyoutAmount, holdRefundReference, holdRefund);
+                    item.recordRejectedBid(bidderId, bidderAccountId, buyoutAmount, AuctionBidResult.REJECTED_ACCOUNT_UNAVAILABLE, sealedRefunds.message());
+                    return AuctionActionResult.fail("Could not safely refund sealed bids. Buyout was not accepted.");
+                }
+                previousBidderId = null;
+                previousAmount = BigDecimal.ZERO;
+                previousAccountId = null;
+                item.clearCurrentBidsAfterRefund();
+            } else if (previousBidderId != null && previousAccountId != null) {
                 String refundReference = auctionReference(EVENT_OUTBID_REFUND, item.getAuctionId());
                 UasBankingResult refund = bankingService.deposit(previousAccountId, previousAmount, refundReference);
                 recordBankingEvent(item, EVENT_OUTBID_REFUND, previousAmount, refundReference, refund);
@@ -909,7 +1019,12 @@ public class AuctionHouse {
                     .flatMap(AuctionBidRecord::getBidderAccountId)
                     .orElse(null);
             UUID winnerId = item.getHighestBidderId();
-            if (winnerId != null && winnerAccountId != null && item.getHighestBid().compareTo(BigDecimal.ZERO) > 0) {
+            if (item.isSealedBid()) {
+                AuctionActionResult sealedRefunds = refundSealedBidsExcept(item, Set.of(), EVENT_ADMIN_FORCE_CANCEL_REFUND, "admin force-cancel sealed bid refunds");
+                if (!sealedRefunds.success()) {
+                    return sealedRefunds;
+                }
+            } else if (winnerId != null && winnerAccountId != null && item.getHighestBid().compareTo(BigDecimal.ZERO) > 0) {
                 String refundReference = auctionReference(EVENT_ADMIN_FORCE_CANCEL_REFUND, item.getAuctionId());
                 UasBankingResult refund = bankingService.deposit(winnerAccountId, item.getHighestBid(), refundReference);
                 recordBankingEvent(item, EVENT_ADMIN_FORCE_CANCEL_REFUND, item.getHighestBid(), refundReference, refund);
@@ -1052,6 +1167,9 @@ public class AuctionHouse {
             if (item.getState() != AuctionState.FAILED_SETTLEMENT) {
                 return AuctionActionResult.fail("Only failed-settlement auctions can be retried.");
             }
+            if (item.isSealedBid()) {
+                item.selectWinningSealedBid();
+            }
             UUID winnerId = item.getHighestBidderId();
             if (winnerId == null) {
                 item.transitionTo(AuctionState.ENDED, "admin retry found no winning bidder");
@@ -1063,6 +1181,10 @@ public class AuctionHouse {
                 return reserveRefund.success()
                         ? AuctionActionResult.ok("Reserve price was not met. Highest bid refunded and auction ended without a buyer.")
                         : reserveRefund;
+            }
+            AuctionActionResult sealedRefunds = refundLosingSealedBids(item, "sealed loser refunds before admin settlement retry");
+            if (!sealedRefunds.success()) {
+                return sealedRefunds;
             }
             SettlementResult settlement = settleHeldBid(item);
             if (!settlement.success()) {
@@ -1113,6 +1235,9 @@ public class AuctionHouse {
                 item.transitionTo(AuctionState.ENDED, "auction expired before claim");
             }
 
+            if (item.isSealedBid()) {
+                item.selectWinningSealedBid();
+            }
             UUID winnerId = item.getHighestBidderId();
             if (winnerId != null && !item.isReserveMet()) {
                 AuctionActionResult reserveRefund = refundBelowReserveBid(item, "claim attempted below reserve");
@@ -1138,6 +1263,10 @@ public class AuctionHouse {
 
             if (!player.getUUID().equals(winnerId)) {
                 return AuctionActionResult.fail("Only the winning bidder can claim this auction.");
+            }
+            AuctionActionResult sealedRefunds = refundLosingSealedBids(item, "sealed loser refunds before winner claim");
+            if (!sealedRefunds.success()) {
+                return sealedRefunds;
             }
             SettlementResult settlement = settleHeldBid(item);
             if (!settlement.success()) {
@@ -1174,6 +1303,19 @@ public class AuctionHouse {
                                              BigDecimal startingBidPrice,
                                              BigDecimal buyoutPrice,
                                              BigDecimal reservePrice,
+                                             LocalDateTime end,
+                                             String description,
+                                             UUID sellerAccountId) {
+        return relistAuction(seller, sourceAuctionId, title, startingBidPrice, buyoutPrice, reservePrice, null, end, description, sellerAccountId);
+    }
+
+    public AuctionActionResult relistAuction(ServerPlayer seller,
+                                             UUID sourceAuctionId,
+                                             String title,
+                                             BigDecimal startingBidPrice,
+                                             BigDecimal buyoutPrice,
+                                             BigDecimal reservePrice,
+                                             AuctionFormat format,
                                              LocalDateTime end,
                                              String description,
                                              UUID sellerAccountId) {
@@ -1218,8 +1360,9 @@ public class AuctionHouse {
             BigDecimal relistStartingBid = safeMoney(startingBidPrice);
             BigDecimal relistBuyout = buyoutPrice == null ? BigDecimal.ZERO : buyoutPrice;
             BigDecimal relistReserve = reservePrice == null ? BigDecimal.ZERO : reservePrice;
+            AuctionFormat relistFormat = format == null ? source.getFormat() : format;
             UUID accountId = sellerAccountId == null ? source.getSellerAccountId() : sellerAccountId;
-            AuctionActionResult validation = validateListingRequest(seller, relistContents, relistStartingBid, relistBuyout, relistReserve, end, accountId);
+            AuctionActionResult validation = validateListingRequest(seller, relistContents, relistStartingBid, relistBuyout, relistReserve, relistFormat, end, accountId);
             if (!validation.success()) {
                 return validation;
             }
@@ -1251,7 +1394,8 @@ public class AuctionHouse {
                     seller.getUUID(),
                     sellerAccount.accountId(),
                     relistBuyout,
-                    relistReserve
+                    relistReserve,
+                    relistFormat
             );
             relisted.markEscrowed("RELISTED_FROM_" + source.getAuctionId());
             Optional<String> activationError = relisted.validateForActivation();
@@ -1367,6 +1511,30 @@ public class AuctionHouse {
         alertSubscribers(item, excluded, "Auction Updated", "Auction {0}: {1} bid {2} on {3}.", "INFO", item.getAuctionId(), bidderName, bidAmount, itemName);
     }
 
+    private void notifySealedBidPlaced(AuctionItem item, UUID bidderId, BigDecimal amount, BigDecimal previousAmount) {
+        String itemName = itemName(item);
+        String bidAmount = moneyLabel(amount);
+        UUID sellerId = item.getPlayerId();
+
+        if (previousAmount != null && previousAmount.compareTo(BigDecimal.ZERO) > 0) {
+            Object[] raiseArgs = {item.getAuctionId(), itemName, moneyLabel(previousAmount), bidAmount};
+            sendAuctionAlert(bidderId, "Sealed Bid Raised", "Auction {0}: Your sealed bid on {1} was raised from {2} to {3}.", "SUCCESS", raiseArgs);
+            sendAuctionChatMessage(bidderId, "Auction {0}: Your sealed bid on {1} was raised from {2} to {3}.", ChatFormatting.GREEN, raiseArgs, openAhAction());
+        } else {
+            Object[] bidderArgs = {item.getAuctionId(), itemName, bidAmount};
+            sendAuctionAlert(bidderId, "Sealed Bid Placed", "Auction {0}: Your sealed bid on {1} is {2}.", "SUCCESS", bidderArgs);
+            sendAuctionChatMessage(bidderId, "Auction {0}: Your sealed bid on {1} is {2}.", ChatFormatting.GREEN, bidderArgs, openAhAction());
+        }
+
+        if (sellerId != null && !sellerId.equals(bidderId)) {
+            Object[] sellerArgs = {item.getAuctionId(), itemName};
+            sendAuctionAlert(sellerId, "New Sealed Bid", "Auction {0}: A sealed bid was placed on {1}. Amount hidden until close.", "INFO", sellerArgs);
+            sendAuctionChatMessage(sellerId, "Auction {0}: A sealed bid was placed on {1}. Amount hidden until close.", ChatFormatting.AQUA, sellerArgs, openAhAction(), myAuctionsAction());
+        }
+
+        alertSubscribers(item, exclusions(bidderId, sellerId), "Auction Updated", "Auction {0}: {1} received a sealed bid.", "INFO", item.getAuctionId(), itemName);
+    }
+
     private void notifyAuctionSold(AuctionItem item, UUID buyerId, BigDecimal amount) {
         postAuctionEvent(new UasAuctionEvents.Sold(eventSnapshot(item), buyerId, amount));
         String itemName = itemName(item);
@@ -1421,6 +1589,26 @@ public class AuctionHouse {
             sendAuctionChatMessage(bidderId, "Auction {0}: Your bid of {2} on {1} was refunded because reserve was not met.", ChatFormatting.AQUA, bidderArgs, openAhAction());
         }
         alertSubscribers(item, exclusions(item.getPlayerId(), bidderId), "Reserve Not Met", "Auction {0}: {1} ended below reserve.", "INFO", item.getAuctionId(), itemName);
+        clearCompletedWatchers(item);
+    }
+
+    private void notifySealedReserveNotMet(AuctionItem item, Set<UUID> bidders) {
+        String itemName = itemName(item);
+        Object[] sellerArgs = {item.getAuctionId(), itemName};
+        sendAuctionAlert(item.getPlayerId(), "Reserve Not Met", "Auction {0}: {1} ended below reserve. Sealed bids were refunded; item can be claimed.", "INFO", sellerArgs);
+        sendAuctionChatMessage(item.getPlayerId(), "Auction {0}: {1} ended below reserve. Sealed bids were refunded; item can be claimed.", ChatFormatting.AQUA, sellerArgs, openAhAction(), myAuctionsAction());
+        Set<UUID> safeBidders = bidders == null ? Set.of() : bidders;
+        for (UUID bidderId : safeBidders) {
+            if (bidderId == null) {
+                continue;
+            }
+            Object[] bidderArgs = {item.getAuctionId(), itemName};
+            sendAuctionAlert(bidderId, "Reserve Not Met", "Auction {0}: Your sealed bid on {1} was refunded because reserve was not met.", "INFO", bidderArgs);
+            sendAuctionChatMessage(bidderId, "Auction {0}: Your sealed bid on {1} was refunded because reserve was not met.", ChatFormatting.AQUA, bidderArgs, openAhAction());
+        }
+        Set<UUID> excluded = exclusions(item.getPlayerId());
+        excluded.addAll(safeBidders);
+        alertSubscribers(item, excluded, "Reserve Not Met", "Auction {0}: {1} ended below reserve.", "INFO", item.getAuctionId(), itemName);
         clearCompletedWatchers(item);
     }
 
@@ -1565,6 +1753,10 @@ public class AuctionHouse {
                 ? "UNKNOWN"
                 : eventType.trim().toUpperCase(Locale.ROOT);
         return "UAS_" + normalized + ":" + (auctionId == null ? "unknown" : auctionId);
+    }
+
+    private static String moneyReferenceToken(BigDecimal amount) {
+        return safeMoney(amount).stripTrailingZeros().toPlainString().replace('.', '_');
     }
 
     private UasAuctionSnapshot eventSnapshot(AuctionItem item) {
@@ -2586,6 +2778,9 @@ public class AuctionHouse {
             return;
         }
 
+        if (item.isSealedBid()) {
+            item.selectWinningSealedBid();
+        }
         UUID winningBidderId = item.getHighestBidderId();
         if (winningBidderId == null) {
             UltimateAuctionSystem.LOGGER.info("Auction {} expired without bids; no UBS payout was created.", id);
@@ -2613,6 +2808,12 @@ public class AuctionHouse {
             sendAuctionChatMessage(item.getPlayerId(), "Auction {0}: {1} sold but UBS is unavailable for payout.", ChatFormatting.YELLOW, args, openAhAction(), myAuctionsAction());
             sendAuctionAlert(winningBidderId, "Auction Settlement Delayed", "Auction {0}: {1} is waiting for payment settlement.", "WARNING", args);
             sendAuctionChatMessage(winningBidderId, "Auction {0}: {1} is waiting for payment settlement.", ChatFormatting.YELLOW, args, openAhAction());
+            return;
+        }
+
+        AuctionActionResult sealedRefunds = refundLosingSealedBids(item, "sealed loser refunds before seller payout");
+        if (!sealedRefunds.success()) {
+            UltimateAuctionSystem.LOGGER.warn("Auction {} sealed loser refunds failed: {}", id, sealedRefunds.message());
             return;
         }
 
@@ -2693,12 +2894,13 @@ public class AuctionHouse {
                                                 String description,
                                                 LocalDateTime end,
                                                 LocalDateTime start,
-                                                BigDecimal startingBidPrice,
-                                                BigDecimal buyoutPrice,
-                                                BigDecimal reservePrice,
-                                                UUID sellerAccountId,
-                                                String escrowSource) {
-        return activateAuction(auctionId, player, List.of(escrowStack), "", description, end, start, startingBidPrice, buyoutPrice, reservePrice, sellerAccountId, escrowSource);
+                                                 BigDecimal startingBidPrice,
+                                                 BigDecimal buyoutPrice,
+                                                 BigDecimal reservePrice,
+                                                 AuctionFormat format,
+                                                 UUID sellerAccountId,
+                                                 String escrowSource) {
+        return activateAuction(auctionId, player, List.of(escrowStack), "", description, end, start, startingBidPrice, buyoutPrice, reservePrice, format, sellerAccountId, escrowSource);
     }
 
     private AuctionActionResult activateAuction(UUID auctionId,
@@ -2708,13 +2910,14 @@ public class AuctionHouse {
                                                 String description,
                                                 LocalDateTime end,
                                                 LocalDateTime start,
-                                                BigDecimal startingBidPrice,
-                                                BigDecimal buyoutPrice,
-                                                BigDecimal reservePrice,
-                                                UUID sellerAccountId,
-                                                String escrowSource) {
+                                                 BigDecimal startingBidPrice,
+                                                 BigDecimal buyoutPrice,
+                                                 BigDecimal reservePrice,
+                                                 AuctionFormat format,
+                                                 UUID sellerAccountId,
+                                                 String escrowSource) {
         List<ItemStack> safeStacks = safeItemStacks(escrowStacks);
-        AuctionItem item = new AuctionItem(auctionId, safeStacks, title, description, end, start, startingBidPrice, player.getUUID(), sellerAccountId, buyoutPrice, reservePrice);
+        AuctionItem item = new AuctionItem(auctionId, safeStacks, title, description, end, start, startingBidPrice, player.getUUID(), sellerAccountId, buyoutPrice, reservePrice, format);
         item.markEscrowed(escrowSource);
         Optional<String> activationError = item.validateForActivation();
         if (activationError.isPresent()) {
@@ -2736,7 +2939,7 @@ public class AuctionHouse {
                                                        BigDecimal startingBidPrice,
                                                        BigDecimal buyoutPrice,
                                                        LocalDateTime end) {
-        return validateListingRequest(player, stack == null || stack.isEmpty() ? List.of() : List.of(stack), startingBidPrice, buyoutPrice, BigDecimal.ZERO, end, null);
+        return validateListingRequest(player, stack == null || stack.isEmpty() ? List.of() : List.of(stack), startingBidPrice, buyoutPrice, BigDecimal.ZERO, AuctionFormat.NORMAL, end, null);
     }
 
     private AuctionActionResult validateListingRequest(ServerPlayer player,
@@ -2744,7 +2947,7 @@ public class AuctionHouse {
                                                        BigDecimal startingBidPrice,
                                                        BigDecimal buyoutPrice,
                                                        LocalDateTime end) {
-        return validateListingRequest(player, stacks, startingBidPrice, buyoutPrice, BigDecimal.ZERO, end, null);
+        return validateListingRequest(player, stacks, startingBidPrice, buyoutPrice, BigDecimal.ZERO, AuctionFormat.NORMAL, end, null);
     }
 
     private AuctionActionResult validateListingRequest(ServerPlayer player,
@@ -2752,6 +2955,7 @@ public class AuctionHouse {
                                                        BigDecimal startingBidPrice,
                                                        BigDecimal buyoutPrice,
                                                        BigDecimal reservePrice,
+                                                       AuctionFormat format,
                                                        LocalDateTime end,
                                                        UUID sellerAccountId) {
         if (mutationsBlocked) {
@@ -2779,8 +2983,12 @@ public class AuctionHouse {
             return AuctionActionResult.fail("Prices must use whole dollars.");
         }
         BigDecimal normalizedReserve = reservePrice == null ? BigDecimal.ZERO : reservePrice;
+        AuctionFormat safeFormat = format == null ? AuctionFormat.NORMAL : format;
         if (hasFractionalDollars(normalizedReserve)) {
             return AuctionActionResult.fail("Prices must use whole dollars.");
+        }
+        if (safeFormat == AuctionFormat.SEALED_BID && !Config.sealedBidAuctionsEnabled) {
+            return AuctionActionResult.fail("Sealed-bid auctions are disabled on this server.");
         }
         if (normalizedReserve.compareTo(BigDecimal.ZERO) > 0 && !Config.reservePricesEnabled) {
             return AuctionActionResult.fail("Reserve-price auctions are disabled on this server.");
@@ -2878,8 +3086,23 @@ public class AuctionHouse {
         if (item == null) {
             return AuctionActionResult.fail("Auction not found.");
         }
+        if (item.isSealedBid()) {
+            item.selectWinningSealedBid();
+        }
         if (item.isReserveMet() || item.getHighestBidderId() == null) {
             return AuctionActionResult.ok("");
+        }
+        if (item.isSealedBid()) {
+            Set<UUID> bidders = new HashSet<>(item.getBids().keySet());
+            AuctionActionResult refund = refundSealedBidsExcept(item, Set.of(), EVENT_RESERVE_REFUND, "sealed reserve refund");
+            if (!refund.success()) {
+                return refund;
+            }
+            item.clearWinningBidAfterReserveRefund();
+            item.transitionTo(AuctionState.ENDED, reason == null || reason.isBlank() ? "sealed reserve price not met; bids refunded" : reason);
+            markChanged("Auction storage marked dirty after sealed reserve refund.");
+            notifySealedReserveNotMet(item, bidders);
+            return AuctionActionResult.ok("Reserve price was not met. Sealed bids refunded and auction ended without a buyer.");
         }
         UUID bidderId = item.getHighestBidderId();
         BigDecimal amount = safeMoney(item.getHighestBid());
@@ -2920,6 +3143,61 @@ public class AuctionHouse {
         markChanged("Auction storage marked dirty after reserve refund.");
         notifyReserveNotMet(item, bidderId, amount);
         return AuctionActionResult.ok("Reserve price was not met. Highest bid refunded and auction ended without a buyer.");
+    }
+
+    private AuctionActionResult refundLosingSealedBids(AuctionItem item, String reason) {
+        if (item == null || !item.isSealedBid()) {
+            return AuctionActionResult.ok("");
+        }
+        item.selectWinningSealedBid();
+        UUID winnerId = item.getHighestBidderId();
+        if (winnerId == null) {
+            return AuctionActionResult.ok("");
+        }
+        return refundSealedBidsExcept(item, Set.of(winnerId), EVENT_SEALED_BID_REFUND, reason);
+    }
+
+    private AuctionActionResult refundSealedBidsExcept(AuctionItem item, Set<UUID> excludedBidders, String eventType, String reason) {
+        if (item == null) {
+            return AuctionActionResult.fail("Auction not found.");
+        }
+        Set<UUID> excluded = excludedBidders == null ? Set.of() : excludedBidders;
+        String safeEventType = eventType == null || eventType.isBlank() ? EVENT_SEALED_BID_REFUND : eventType;
+        for (Map.Entry<UUID, BigDecimal> entry : item.getBids().entrySet()) {
+            UUID bidderId = entry.getKey();
+            BigDecimal amount = safeMoney(entry.getValue());
+            if (bidderId == null || excluded.contains(bidderId) || amount.compareTo(BigDecimal.ZERO) <= 0) {
+                continue;
+            }
+            String refundReference = auctionReference(safeEventType, item.getAuctionId()) + ":" + bidderId;
+            if (item.hasSuccessfulFinancialEvent(safeEventType, refundReference)) {
+                continue;
+            }
+            UUID bidderAccountId = item.getCurrentBidRecordForBidder(bidderId)
+                    .flatMap(AuctionBidRecord::getBidderAccountId)
+                    .orElse(null);
+            if (bidderAccountId == null) {
+                item.transitionTo(AuctionState.FAILED_SETTLEMENT, "missing bidder account during sealed bid refund");
+                postSettlementFailedEvent(item, "Missing bidder account during sealed bid refund");
+                alertOnlineAdmins("Auction Settlement Failed", "Auction {0} is missing a bidder account for sealed bid refund.", "ERROR", item.getAuctionId());
+                return AuctionActionResult.fail("Auction settlement failed: missing bidder account for sealed bid refund.");
+            }
+            UasBankingResult refund = bankingService.deposit(bidderAccountId, amount, refundReference);
+            recordBankingEvent(item, safeEventType, amount, refundReference, refund);
+            if (!refund.success()) {
+                item.transitionTo(AuctionState.FAILED_SETTLEMENT, "sealed bid refund failed: " + refund.reason());
+                postSettlementFailedEvent(item, "Sealed bid refund failed: " + refund.reason());
+                Object[] args = {item.getAuctionId(), itemName(item), moneyLabel(amount), refund.reason()};
+                sendAuctionAlert(bidderId, "Auction Settlement Failed", "Auction {0}: Your sealed bid of {2} on {1} could not be refunded yet: {3}", "ERROR", args);
+                sendAuctionChatMessage(bidderId, "Auction {0}: Your sealed bid of {2} on {1} could not be refunded yet: {3}", ChatFormatting.RED, args, openAhAction());
+                alertOnlineAdmins("Auction Settlement Failed", "Auction {0} sealed bid refund failed: {1}", "ERROR", item.getAuctionId(), refund.reason());
+                return AuctionActionResult.fail("Auction sealed bid refund failed: " + refund.reason());
+            }
+            Object[] args = {item.getAuctionId(), itemName(item), moneyLabel(amount)};
+            sendAuctionAlert(bidderId, "Sealed Bid Refunded", "Auction {0}: Your sealed bid of {2} on {1} was refunded.", "INFO", args);
+            sendAuctionChatMessage(bidderId, "Auction {0}: Your sealed bid of {2} on {1} was refunded.", ChatFormatting.AQUA, args, openAhAction());
+        }
+        return AuctionActionResult.ok(reason == null || reason.isBlank() ? "Sealed bid refunds completed." : reason);
     }
 
     private SettlementResult settleHeldBid(AuctionItem item) {
@@ -3288,8 +3566,11 @@ public class AuctionHouse {
             }
         }
         boolean viewerIsSeller = viewerId != null && viewerId.equals(item.getPlayerId());
-        boolean viewerIsHighestBidder = viewerId != null && viewerId.equals(item.getHighestBidderId());
+        boolean sealedBid = item.isSealedBid();
+        boolean sealedBidRevealed = !sealedBid || adminMode || item.getState() != AuctionState.ACTIVE || item.isExpired();
+        boolean viewerIsHighestBidder = viewerId != null && viewerId.equals(item.getHighestBidderId()) && sealedBidRevealed;
         boolean viewerHasBid = viewerId != null && item.getBids().containsKey(viewerId);
+        BigDecimal viewerBid = viewerId == null ? BigDecimal.ZERO : item.getBids().getOrDefault(viewerId, BigDecimal.ZERO);
         boolean reserveActive = item.hasReservePrice();
         boolean reserveMet = item.isReserveMet();
         boolean reserveVisible = reserveActive && (viewerIsSeller || adminMode);
@@ -3298,8 +3579,10 @@ public class AuctionHouse {
         int notificationSubscriberCount = item.getNotificationSubscribers().size();
         boolean active = item.getState() == AuctionState.ACTIVE && !item.isExpired();
         boolean buyoutAvailable = item.getBuyoutPrice()
-                .map(price -> item.getHighestBidderId() == null || item.getHighestBid().compareTo(price) < 0)
+                .map(price -> sealedBid || item.getHighestBidderId() == null || item.getHighestBid().compareTo(price) < 0)
                 .orElse(false);
+        List<AuctionBidRecord> visibleBidRecords = sealedBid && !sealedBidRevealed ? List.of() : bidRecords;
+        BigDecimal visibleCurrentBid = sealedBid && !sealedBidRevealed ? item.getStartingBidPrice() : item.getHighestBid();
         boolean canClaim = viewerId != null && canViewerClaimAuction(
                 item.getState(),
                 item.isExpired(),
@@ -3318,9 +3601,12 @@ public class AuctionHouse {
                 stack.getRarity().name().toLowerCase(Locale.ROOT),
                 item.isExpired() && item.getState() == AuctionState.ACTIVE ? AuctionState.ENDED : item.getState(),
                 item.getStartingBidPrice(),
-                item.getHighestBid(),
+                visibleCurrentBid,
                 item.getBuyoutPrice().orElse(BigDecimal.ZERO),
                 item.getReservePrice().orElse(BigDecimal.ZERO),
+                item.getFormat(),
+                sealedBidRevealed,
+                viewerBid,
                 reserveActive,
                 reserveVisible,
                 reserveMet,
@@ -3337,7 +3623,7 @@ public class AuctionHouse {
                 active && (!viewerIsSeller || Config.allowSellerSelfBid) && buyoutAvailable,
                 active && viewerIsSeller && item.getHighestBidderId() == null,
                 canClaim,
-                bidRecords,
+                visibleBidRecords,
                 bidderNames,
                 contents,
                 item.isBundle(),

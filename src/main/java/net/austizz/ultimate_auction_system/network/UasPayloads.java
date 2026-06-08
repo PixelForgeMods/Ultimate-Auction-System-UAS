@@ -6,6 +6,7 @@ import net.austizz.ultimate_auction_system.AuctionCategory;
 import net.austizz.ultimate_auction_system.AuctionDeliverySavedData;
 import net.austizz.ultimate_auction_system.AuctionHouse;
 import net.austizz.ultimate_auction_system.AuctionHouseSnapshot;
+import net.austizz.ultimate_auction_system.AuctionFormat;
 import net.austizz.ultimate_auction_system.AuctionSavedSearchSavedData;
 import net.austizz.ultimate_auction_system.AuctionSort;
 import net.austizz.ultimate_auction_system.AuctionUiQuery;
@@ -86,6 +87,7 @@ public final class UasPayloads {
                         money(payload.startingBid()),
                         money(payload.buyoutPrice()),
                         money(payload.reservePrice()),
+                        AuctionFormat.fromSerializedName(payload.format()),
                         endDateTime(payload),
                         payload.description(),
                         payload.accountId()
@@ -106,6 +108,7 @@ public final class UasPayloads {
                         money(payload.startingBid()),
                         money(payload.buyoutPrice()),
                         money(payload.reservePrice()),
+                        AuctionFormat.fromSerializedName(payload.format()),
                         endDateTime(payload),
                         payload.description(),
                         payload.accountId()

@@ -75,7 +75,18 @@ class UasLanguageFileTest {
             "Reserve-price auctions are disabled on this server.",
             "Reserve price must be at least the starting bid.",
             "Buyout price must be at least the reserve price.",
-            "Auction {0}: Your bid of {2} on {1} was refunded because reserve was not met."
+            "Auction {0}: Your bid of {2} on {1} was refunded because reserve was not met.",
+            "Auction Format",
+            "Sealed Bid",
+            "Sealed Bids: On",
+            "Place Sealed Bid",
+            "Raise Sealed Bid",
+            "Sealed bids are hidden until this auction ends.",
+            "Your sealed bid: {0}",
+            "Sealed-bid auctions are disabled on this server.",
+            "Auction {0}: Your sealed bid on {1} is {2}.",
+            "Auction {0}: A sealed bid was placed on {1}. Amount hidden until close.",
+            "Auction {0}: Your sealed bid on {1} was refunded because reserve was not met."
     );
     private static final List<String> CRITICAL_TRANSLATED_AWAY_KEYS = List.of(
             "UAS ADMIN DASHBOARD",
@@ -117,7 +128,18 @@ class UasLanguageFileTest {
             "Reserve-price auctions are disabled on this server.",
             "Reserve price must be at least the starting bid.",
             "Buyout price must be at least the reserve price.",
-            "Auction {0}: Your bid of {2} on {1} was refunded because reserve was not met."
+            "Auction {0}: Your bid of {2} on {1} was refunded because reserve was not met.",
+            "Auction Format",
+            "Sealed Bid",
+            "Sealed Bids: On",
+            "Place Sealed Bid",
+            "Raise Sealed Bid",
+            "Sealed bids are hidden until this auction ends.",
+            "Your sealed bid: {0}",
+            "Sealed-bid auctions are disabled on this server.",
+            "Auction {0}: Your sealed bid on {1} is {2}.",
+            "Auction {0}: A sealed bid was placed on {1}. Amount hidden until close.",
+            "Auction {0}: Your sealed bid on {1} was refunded because reserve was not met."
     );
 
     @Test

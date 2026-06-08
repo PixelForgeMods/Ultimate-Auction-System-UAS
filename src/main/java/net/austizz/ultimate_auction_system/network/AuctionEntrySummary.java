@@ -1,6 +1,7 @@
 package net.austizz.ultimate_auction_system.network;
 
 import net.austizz.ultimate_auction_system.AuctionListingSummary;
+import net.austizz.ultimate_auction_system.AuctionFormat;
 import net.austizz.ultimate_auction_system.banking.UasMoneyFormatter;
 import net.minecraft.network.RegistryFriendlyByteBuf;
 import net.minecraft.network.codec.ByteBufCodecs;
@@ -25,6 +26,10 @@ public record AuctionEntrySummary(
         String currentBid,
         String buyoutPrice,
         String reservePrice,
+        String format,
+        boolean sealedBid,
+        boolean sealedBidRevealed,
+        String viewerBid,
         boolean reserveActive,
         boolean reservePriceVisible,
         boolean reserveMet,
@@ -46,6 +51,8 @@ public record AuctionEntrySummary(
 ) {
     public AuctionEntrySummary {
         reservePrice = reservePrice == null ? "" : reservePrice;
+        format = format == null || format.isBlank() ? "normal" : format;
+        viewerBid = viewerBid == null ? "" : viewerBid;
         contents = contents == null || contents.isEmpty()
                 ? List.of(item == null ? ItemStack.EMPTY : item.copy())
                 : contents.stream()
@@ -70,6 +77,10 @@ public record AuctionEntrySummary(
                 ByteBufCodecs.STRING_UTF8.encode(buf, summary.currentBid());
                 ByteBufCodecs.STRING_UTF8.encode(buf, summary.buyoutPrice());
                 ByteBufCodecs.STRING_UTF8.encode(buf, summary.reservePrice());
+                ByteBufCodecs.STRING_UTF8.encode(buf, summary.format());
+                ByteBufCodecs.BOOL.encode(buf, summary.sealedBid());
+                ByteBufCodecs.BOOL.encode(buf, summary.sealedBidRevealed());
+                ByteBufCodecs.STRING_UTF8.encode(buf, summary.viewerBid());
                 ByteBufCodecs.BOOL.encode(buf, summary.reserveActive());
                 ByteBufCodecs.BOOL.encode(buf, summary.reservePriceVisible());
                 ByteBufCodecs.BOOL.encode(buf, summary.reserveMet());
@@ -102,6 +113,10 @@ public record AuctionEntrySummary(
                     ByteBufCodecs.STRING_UTF8.decode(buf),
                     ByteBufCodecs.STRING_UTF8.decode(buf),
                     ByteBufCodecs.STRING_UTF8.decode(buf),
+                    ByteBufCodecs.STRING_UTF8.decode(buf),
+                    ByteBufCodecs.STRING_UTF8.decode(buf),
+                    ByteBufCodecs.BOOL.decode(buf),
+                    ByteBufCodecs.BOOL.decode(buf),
                     ByteBufCodecs.STRING_UTF8.decode(buf),
                     ByteBufCodecs.BOOL.decode(buf),
                     ByteBufCodecs.BOOL.decode(buf),
@@ -136,9 +151,13 @@ public record AuctionEntrySummary(
                 summary.rarity(),
                 summary.state().name(),
                 UasMoneyFormatter.display(summary.startingBid()),
-                UasMoneyFormatter.display(summary.currentBid()),
+                currentBidDisplay(summary),
                 UasMoneyFormatter.display(summary.buyoutPrice()),
                 summary.reservePriceVisible() ? UasMoneyFormatter.display(summary.reservePrice()) : "",
+                summary.format().serializedName(),
+                summary.format() == AuctionFormat.SEALED_BID,
+                summary.sealedBidRevealed(),
+                viewerBidDisplay(summary),
                 summary.reserveActive(),
                 summary.reservePriceVisible(),
                 summary.reserveMet(),
@@ -164,5 +183,19 @@ public record AuctionEntrySummary(
 
     private static String time(LocalDateTime time) {
         return time == null ? "" : time.toString();
+    }
+
+    private static String currentBidDisplay(AuctionListingSummary summary) {
+        if (summary.format() == AuctionFormat.SEALED_BID && !summary.sealedBidRevealed()) {
+            return "Sealed";
+        }
+        return UasMoneyFormatter.display(summary.currentBid());
+    }
+
+    private static String viewerBidDisplay(AuctionListingSummary summary) {
+        if (summary.viewerBid().compareTo(java.math.BigDecimal.ZERO) <= 0) {
+            return "";
+        }
+        return UasMoneyFormatter.display(summary.viewerBid());
     }
 }

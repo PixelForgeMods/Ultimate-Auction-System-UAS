@@ -81,6 +81,7 @@ public final class UasAuctionApi {
                 request.startingBid(),
                 request.buyoutPrice(),
                 request.reservePrice(),
+                request.format(),
                 request.endsAt(),
                 request.description(),
                 null

@@ -1,6 +1,7 @@
 package net.austizz.ultimate_auction_system.api;
 
 import net.austizz.ultimate_auction_system.AuctionItem;
+import net.austizz.ultimate_auction_system.AuctionFormat;
 import net.austizz.ultimate_auction_system.AuctionState;
 import net.minecraft.world.item.ItemStack;
 
@@ -15,6 +16,7 @@ public record UasAuctionSnapshot(
         String title,
         String description,
         AuctionState state,
+        AuctionFormat format,
         BigDecimal startingBid,
         BigDecimal currentBid,
         BigDecimal buyoutPrice,
@@ -49,6 +51,7 @@ public record UasAuctionSnapshot(
                 title,
                 description,
                 state,
+                AuctionFormat.NORMAL,
                 startingBid,
                 currentBid,
                 buyoutPrice,
@@ -68,6 +71,7 @@ public record UasAuctionSnapshot(
         title = title == null ? "" : title;
         description = description == null ? "" : description;
         state = state == null ? AuctionState.ACTIVE : state;
+        format = format == null ? AuctionFormat.NORMAL : format;
         startingBid = startingBid == null ? BigDecimal.ZERO : startingBid;
         currentBid = currentBid == null ? BigDecimal.ZERO : currentBid;
         buyoutPrice = buyoutPrice == null ? BigDecimal.ZERO : buyoutPrice;
@@ -94,6 +98,7 @@ public record UasAuctionSnapshot(
                 item.getDisplayTitle(),
                 item.getDescription(),
                 item.isExpired() && item.getState() == AuctionState.ACTIVE ? AuctionState.ENDED : item.getState(),
+                item.getFormat(),
                 item.getStartingBidPrice(),
                 item.getCurrentPrice(),
                 item.getBuyoutPrice().orElse(BigDecimal.ZERO),

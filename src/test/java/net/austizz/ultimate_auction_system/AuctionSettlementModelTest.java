@@ -20,6 +20,8 @@ class AuctionSettlementModelTest {
         assertEquals("UAS_SALES_TAX:" + auctionId, AuctionHouse.auctionReference(AuctionHouse.EVENT_SALES_TAX, auctionId));
         assertEquals("UAS_BID_ESCROW:" + auctionId, AuctionHouse.auctionReference(AuctionHouse.EVENT_BID_ESCROW, auctionId));
         assertEquals("UAS_RESERVE_REFUND:" + auctionId, AuctionHouse.auctionReference(AuctionHouse.EVENT_RESERVE_REFUND, auctionId));
+        assertEquals("UAS_SEALED_BID_REFUND:" + auctionId, AuctionHouse.auctionReference(AuctionHouse.EVENT_SEALED_BID_REFUND, auctionId));
+        assertEquals("UAS_SEALED_BID_REPLACE_REFUND:" + auctionId, AuctionHouse.auctionReference(AuctionHouse.EVENT_SEALED_BID_REPLACE_REFUND, auctionId));
     }
 
     @Test

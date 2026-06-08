@@ -14,6 +14,7 @@ public record AuctionListingPreview(
         BigDecimal startingBid,
         BigDecimal buyoutPrice,
         BigDecimal reservePrice,
+        AuctionFormat format,
         BigDecimal listingFee,
         LocalDateTime endsAt,
         LocalDateTime expiresAt,
@@ -28,6 +29,7 @@ public record AuctionListingPreview(
         startingBid = startingBid == null ? BigDecimal.ZERO : startingBid;
         buyoutPrice = buyoutPrice == null ? BigDecimal.ZERO : buyoutPrice;
         reservePrice = reservePrice == null ? BigDecimal.ZERO : reservePrice;
+        format = format == null ? AuctionFormat.NORMAL : format;
         listingFee = listingFee == null ? BigDecimal.ZERO : listingFee;
         description = description == null ? "" : description;
         sourceLabel = sourceLabel == null ? "" : sourceLabel;

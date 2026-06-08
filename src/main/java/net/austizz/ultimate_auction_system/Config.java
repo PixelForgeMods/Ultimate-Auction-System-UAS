@@ -39,6 +39,7 @@ public class Config {
     public static final boolean DEFAULT_MARKETPLACE_LEADERBOARDS_ENABLED = false;
     public static final boolean DEFAULT_AUCTION_TERMINAL_ENABLED = true;
     public static final boolean DEFAULT_RESERVE_PRICES_ENABLED = true;
+    public static final boolean DEFAULT_SEALED_BID_AUCTIONS_ENABLED = true;
     public static final boolean DEFAULT_REQUIRE_UBS_FOR_LISTING = true;
     public static final boolean DEFAULT_AUTO_SETTLE_EXPIRED_AUCTIONS = true;
     public static final boolean DEFAULT_PHYSICAL_CASH_LISTING_FEES = false;
@@ -249,6 +250,13 @@ public class Config {
                     "Bidders only see whether reserve has been met. Runtime reload: applies to new listings."
             )
             .define("marketplace.enableReservePrices", DEFAULT_RESERVE_PRICES_ENABLED);
+
+    private static final ModConfigSpec.BooleanValue SEALED_BID_AUCTIONS_ENABLED = BUILDER
+            .comment(
+                    "When true, sellers can create sealed-bid auctions.",
+                    "Sealed bid amounts stay hidden from non-admin viewers until the auction ends. Runtime reload: applies to new listings."
+            )
+            .define("marketplace.enableSealedBidAuctions", DEFAULT_SEALED_BID_AUCTIONS_ENABLED);
 
     private static final ModConfigSpec.BooleanValue REQUIRE_UBS_FOR_LISTING = BUILDER
             .comment(
@@ -475,6 +483,7 @@ public class Config {
     public static boolean marketplaceLeaderboardsEnabled = DEFAULT_MARKETPLACE_LEADERBOARDS_ENABLED;
     public static boolean auctionTerminalEnabled = DEFAULT_AUCTION_TERMINAL_ENABLED;
     public static boolean reservePricesEnabled = DEFAULT_RESERVE_PRICES_ENABLED;
+    public static boolean sealedBidAuctionsEnabled = DEFAULT_SEALED_BID_AUCTIONS_ENABLED;
     public static boolean requireUbsForListing;
     public static boolean autoSettleExpiredAuctions;
     public static boolean physicalCashListingFees = DEFAULT_PHYSICAL_CASH_LISTING_FEES;
@@ -535,6 +544,7 @@ public class Config {
         marketplaceLeaderboardsEnabled = readBoolean("marketplace.enableLeaderboards", MARKETPLACE_LEADERBOARDS_ENABLED, DEFAULT_MARKETPLACE_LEADERBOARDS_ENABLED);
         auctionTerminalEnabled = readBoolean("marketplace.enableAuctionTerminal", AUCTION_TERMINAL_ENABLED, DEFAULT_AUCTION_TERMINAL_ENABLED);
         reservePricesEnabled = readBoolean("marketplace.enableReservePrices", RESERVE_PRICES_ENABLED, DEFAULT_RESERVE_PRICES_ENABLED);
+        sealedBidAuctionsEnabled = readBoolean("marketplace.enableSealedBidAuctions", SEALED_BID_AUCTIONS_ENABLED, DEFAULT_SEALED_BID_AUCTIONS_ENABLED);
         requireUbsForListing = readBoolean("settlement.requireUbsForListing", REQUIRE_UBS_FOR_LISTING, DEFAULT_REQUIRE_UBS_FOR_LISTING);
         autoSettleExpiredAuctions = readBoolean("settlement.autoSettleExpiredAuctions", AUTO_SETTLE_EXPIRED_AUCTIONS, DEFAULT_AUTO_SETTLE_EXPIRED_AUCTIONS);
         physicalCashListingFees = readBoolean("settlement.physicalCashListingFees", PHYSICAL_CASH_LISTING_FEES, DEFAULT_PHYSICAL_CASH_LISTING_FEES);

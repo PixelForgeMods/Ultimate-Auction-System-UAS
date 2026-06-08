@@ -40,6 +40,7 @@ public class AuctionItem {
     private BigDecimal startingBidPrice;
     private BigDecimal buyoutPrice;
     private BigDecimal reservePrice;
+    private AuctionFormat format;
     private ConcurrentSkipListMap<UUID, BigDecimal> bids;
     private final ArrayList<AuctionBidRecord> bidRecords;
     private final ArrayList<AuctionFinancialEvent> financialEvents;
@@ -127,6 +128,21 @@ public class AuctionItem {
                 UUID sellerAccountId,
                 BigDecimal buyoutPrice,
                 BigDecimal reservePrice) {
+        this(auctionId, contents, title, description, dateOfEnd, dateOfStart, startingBidPrice, playerId, sellerAccountId, buyoutPrice, reservePrice, AuctionFormat.NORMAL);
+    }
+
+    AuctionItem(UUID auctionId,
+                List<ItemStack> contents,
+                String title,
+                String description,
+                LocalDateTime dateOfEnd,
+                LocalDateTime dateOfStart,
+                BigDecimal startingBidPrice,
+                UUID playerId,
+                UUID sellerAccountId,
+                BigDecimal buyoutPrice,
+                BigDecimal reservePrice,
+                AuctionFormat format) {
         this(
                 auctionId,
                 contents,
@@ -142,6 +158,7 @@ public class AuctionItem {
                 startingBidPrice,
                 buyoutPrice,
                 reservePrice,
+                format,
                 playerId,
                 sellerAccountId,
                 AuctionState.ACTIVE,
@@ -169,6 +186,7 @@ public class AuctionItem {
                         BigDecimal startingBidPrice,
                         BigDecimal buyoutPrice,
                         BigDecimal reservePrice,
+                        AuctionFormat format,
                         UUID playerId,
                         UUID sellerAccountId,
                         AuctionState state,
@@ -193,6 +211,7 @@ public class AuctionItem {
         this.startingBidPrice = startingBidPrice == null ? BigDecimal.ZERO : startingBidPrice;
         this.buyoutPrice = normalizeOptionalPrice(buyoutPrice);
         this.reservePrice = normalizeOptionalPrice(reservePrice);
+        this.format = format == null ? AuctionFormat.NORMAL : format;
         this.bids = bids == null ? new ConcurrentSkipListMap<>() : bids;
         this.bidRecords = bidRecords == null ? new ArrayList<>() : new ArrayList<>(bidRecords);
         this.financialEvents = financialEvents == null ? new ArrayList<>() : new ArrayList<>(financialEvents);
@@ -232,6 +251,8 @@ public class AuctionItem {
     public int getItemQuantity() { return item == null ? 0 : item.getCount(); }
     public Optional<BigDecimal> getBuyoutPrice() { return Optional.ofNullable(buyoutPrice); }
     public Optional<BigDecimal> getReservePrice() { return Optional.ofNullable(reservePrice); }
+    public AuctionFormat getFormat() { return format; }
+    public boolean isSealedBid() { return format == AuctionFormat.SEALED_BID; }
     public LocalDateTime getCreatedAt() { return createdAt; }
     public LocalDateTime getUpdatedAt() { return updatedAt; }
     public boolean isEscrowed() { return escrowed; }
@@ -338,6 +359,10 @@ public class AuctionItem {
     }
 
     public synchronized void clearWinningBidAfterReserveRefund() {
+        clearCurrentBidsAfterRefund();
+    }
+
+    public synchronized void clearCurrentBidsAfterRefund() {
         bids.clear();
         highestBid.set(startingBidPrice == null ? BigDecimal.ZERO : startingBidPrice);
         highestBidderId.set(null);
@@ -439,6 +464,80 @@ public class AuctionItem {
         return record;
     }
 
+    public synchronized AuctionBidRecord recordSealedBid(UUID bidderId, UUID bidderAccountId, BigDecimal bid) {
+        if (bidderId == null || bid == null || bid.compareTo(BigDecimal.ZERO) <= 0) {
+            return recordRejectedBid(bidderId, bidderAccountId, bid, AuctionBidResult.REJECTED_INVALID, "Missing bidder or positive bid amount.");
+        }
+        if (bidderAccountId == null) {
+            return recordRejectedBid(bidderId, null, bid, AuctionBidResult.REJECTED_NO_ACCOUNT, "Missing UBS bidder account ID.");
+        }
+        if (state != AuctionState.ACTIVE) {
+            return recordRejectedBid(bidderId, bidderAccountId, bid, AuctionBidResult.REJECTED_AUCTION_NOT_ACTIVE, "Auction is not active.");
+        }
+        if (LocalDateTime.now().isAfter(dateOfEnd)) {
+            transitionTo(AuctionState.ENDED, "sealed bid rejected after auction end time");
+            return recordRejectedBid(bidderId, bidderAccountId, bid, AuctionBidResult.REJECTED_AUCTION_ENDED, "Auction already ended.");
+        }
+        BigDecimal bidderCurrent = bids.get(bidderId);
+        BigDecimal minimum = bidderCurrent == null ? startingBidPrice : bidderCurrent.add(Config.minimumBidIncrementAmount());
+        if (bid.compareTo(minimum) < 0) {
+            return recordRejectedBid(bidderId, bidderAccountId, bid, AuctionBidResult.REJECTED_TOO_LOW, "Sealed bid must be higher than your current sealed bid.");
+        }
+
+        bids.put(bidderId, bid);
+        AuctionBidRecord record = AuctionBidRecord.accepted(auctionId, bidderId, bidderAccountId, bid);
+        bidRecords.add(record);
+        selectWinningSealedBid();
+        markChanged();
+        UltimateAuctionSystem.LOGGER.info("Sealed bid accepted for auction {}", auctionId);
+        return record;
+    }
+
+    public synchronized Optional<AuctionBidRecord> getCurrentBidRecordForBidder(UUID bidderId) {
+        if (bidderId == null) {
+            return Optional.empty();
+        }
+        BigDecimal currentAmount = bids.get(bidderId);
+        if (currentAmount == null) {
+            return Optional.empty();
+        }
+        for (int index = bidRecords.size() - 1; index >= 0; index--) {
+            AuctionBidRecord record = bidRecords.get(index);
+            if (record.isAccepted()
+                    && Objects.equals(record.getBidderId(), bidderId)
+                    && record.getAmount().compareTo(currentAmount) == 0) {
+                return Optional.of(record);
+            }
+        }
+        return Optional.empty();
+    }
+
+    public synchronized Optional<AuctionBidRecord> selectWinningSealedBid() {
+        AuctionBidRecord best = null;
+        for (AuctionBidRecord record : bidRecords) {
+            if (!record.isAccepted() || !record.isValidForAuction(auctionId)) {
+                continue;
+            }
+            BigDecimal currentAmount = bids.get(record.getBidderId());
+            if (currentAmount == null || currentAmount.compareTo(record.getAmount()) != 0) {
+                continue;
+            }
+            if (best == null || compareSealedWinner(record, best) < 0) {
+                best = record;
+            }
+        }
+        if (best == null) {
+            highestBid.set(startingBidPrice == null ? BigDecimal.ZERO : startingBidPrice);
+            highestBidderId.set(null);
+            markChanged();
+            return Optional.empty();
+        }
+        highestBid.set(best.getAmount());
+        highestBidderId.set(best.getBidderId());
+        markChanged();
+        return Optional.of(best);
+    }
+
     public synchronized AuctionBidRecord recordRejectedBid(UUID bidderId,
                                                            UUID bidderAccountId,
                                                            BigDecimal bid,
@@ -484,6 +583,16 @@ public class AuctionItem {
         String normalized = type == null ? "" : type.trim().toUpperCase(java.util.Locale.ROOT);
         return financialEvents.stream()
                 .anyMatch(event -> event != null && event.success() && normalized.equals(event.type()));
+    }
+
+    public synchronized boolean hasSuccessfulFinancialEvent(String type, String reference) {
+        String normalizedType = type == null ? "" : type.trim().toUpperCase(java.util.Locale.ROOT);
+        String normalizedReference = reference == null ? "" : reference.trim();
+        return financialEvents.stream()
+                .anyMatch(event -> event != null
+                        && event.success()
+                        && normalizedType.equals(event.type())
+                        && normalizedReference.equals(event.reference()));
     }
 
     public synchronized Optional<AuctionFinancialEvent> latestFailedFinancialEvent() {
@@ -695,6 +804,7 @@ public class AuctionItem {
         if (this.reservePrice != null) {
             tag.putString("reservePrice", this.reservePrice.toPlainString());
         }
+        tag.putString("format", this.format == null ? AuctionFormat.NORMAL.serializedName() : this.format.serializedName());
         if (this.title != null && !this.title.isBlank()) {
             tag.putString("title", this.title);
         }
@@ -791,6 +901,7 @@ public class AuctionItem {
             BigDecimal currentPrice = new BigDecimal(tag.getString("currentPrice"));
             BigDecimal buyoutPrice = tag.contains("buyoutPrice") ? new BigDecimal(tag.getString("buyoutPrice")) : null;
             BigDecimal reservePrice = tag.contains("reservePrice") ? new BigDecimal(tag.getString("reservePrice")) : null;
+            AuctionFormat format = AuctionFormat.fromSerializedName(tag.getString("format"));
             UUID highestBidderId = tag.contains("highestBidderId") ? tag.getUUID("highestBidderId") : null;
             ConcurrentSkipListMap<UUID, BigDecimal> bids = loadBids(tag);
             List<AuctionBidRecord> bidRecords = loadBidRecords(tag, auctionId);
@@ -814,6 +925,7 @@ public class AuctionItem {
                     startingBidPrice,
                     buyoutPrice,
                     reservePrice,
+                    format,
                     playerId,
                     sellerAccountId,
                     AuctionState.fromSerializedName(tag.getString("state")),
@@ -920,6 +1032,18 @@ public class AuctionItem {
                 .limit(MAX_BUNDLE_CONTENTS)
                 .map(ItemStack::copy)
                 .toList();
+    }
+
+    private static int compareSealedWinner(AuctionBidRecord left, AuctionBidRecord right) {
+        int amount = right.getAmount().compareTo(left.getAmount());
+        if (amount != 0) {
+            return amount;
+        }
+        int time = left.getTimestamp().compareTo(right.getTimestamp());
+        if (time != 0) {
+            return time;
+        }
+        return 0;
     }
 
     public static String generatedBundleTitle(List<ItemStack> contents) {
