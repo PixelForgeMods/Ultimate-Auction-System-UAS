@@ -9,6 +9,8 @@ import net.austizz.ultimate_auction_system.AuctionHouseSnapshot;
 import net.austizz.ultimate_auction_system.AuctionSort;
 import net.austizz.ultimate_auction_system.AuctionUiQuery;
 import net.austizz.ultimate_auction_system.UltimateAuctionSystem;
+import net.austizz.ultimate_auction_system.api.UasPermissionAction;
+import net.austizz.ultimate_auction_system.api.UasPermissions;
 import net.minecraft.server.level.ServerPlayer;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.common.EventBusSubscriber;
@@ -61,14 +63,21 @@ public final class UasPayloads {
                 return;
             }
             AuctionDeliverySavedData deliveryData = AuctionDeliverySavedData.get(player.getServer());
-            boolean adminMode = payload.adminMode() && player.hasPermissions(net.austizz.ultimate_auction_system.Config.adminStatusPermissionLevel);
-            AuctionActionResult rateLimit = rateLimit(player, safe(payload.action()), adminMode);
+            String action = safe(payload.action());
+            boolean adminMode = payload.adminMode() && UasPermissions.has(player, UasPermissionAction.ADMIN);
+            AuctionActionResult permission = permissionForAction(player, action);
+            if (!permission.success()) {
+                house.sendActionAlert(player, permission);
+                sendSnapshot(player, query, permission.message(), false, adminMode);
+                return;
+            }
+            AuctionActionResult rateLimit = rateLimit(player, action, adminMode);
             if (!rateLimit.success()) {
                 house.sendActionAlert(player, rateLimit);
                 sendSnapshot(player, query, rateLimit.message(), false, adminMode);
                 return;
             }
-            AuctionActionResult result = switch (safe(payload.action())) {
+            AuctionActionResult result = switch (action) {
                 case "PREPARE_CREATE" -> house.prepareAuctionFromInventorySlots(
                         player,
                         payload.selectedSlots(),
@@ -92,7 +101,7 @@ public final class UasPayloads {
                 case "WITHDRAW_DELIVERY" -> house.withdrawDelivery(player, payload.deliveryId(), deliveryData);
                 default -> AuctionActionResult.ok("");
             };
-            if (adminMode && "ADMIN_FORCE_CANCEL".equals(safe(payload.action()))) {
+            if (adminMode && "ADMIN_FORCE_CANCEL".equals(action)) {
                 AuctionAdminSavedData.get(player.getServer()).addAudit(
                         "ADMIN_FORCE_CANCEL",
                         player.getUUID(),
@@ -118,7 +127,7 @@ public final class UasPayloads {
                 sendSnapshot(player, AuctionUiQuery.defaults(), "Auction house is not initialized.", false, false);
                 return;
             }
-            boolean adminMode = player.hasPermissions(net.austizz.ultimate_auction_system.Config.adminStatusPermissionLevel);
+            boolean adminMode = UasPermissions.has(player, UasPermissionAction.ADMIN);
             if (!adminMode) {
                 sendSnapshot(player, AuctionUiQuery.defaults(), "You do not have permission to use auction admin tools.", false, false);
                 return;
@@ -322,6 +331,19 @@ public final class UasPayloads {
         return limitAction == null
                 ? AuctionActionResult.ok("")
                 : net.austizz.ultimate_auction_system.AuctionRateLimiter.checkAndMark(player, limitAction);
+    }
+
+    private static AuctionActionResult permissionForAction(ServerPlayer player, String action) {
+        UasPermissionAction permissionAction = switch (action) {
+            case "PREPARE_CREATE", "CONFIRM_CREATE" -> UasPermissionAction.LIST;
+            case "BID" -> UasPermissionAction.BID;
+            case "BUYOUT" -> UasPermissionAction.BUYOUT;
+            case "CANCEL" -> UasPermissionAction.CANCEL_OWN;
+            case "CLAIM" -> UasPermissionAction.CLAIM;
+            case "ADMIN_FORCE_CANCEL" -> UasPermissionAction.ADMIN;
+            default -> null;
+        };
+        return permissionAction == null ? AuctionActionResult.ok("") : UasPermissions.check(player, permissionAction);
     }
 
     private static BigDecimal money(String raw) {

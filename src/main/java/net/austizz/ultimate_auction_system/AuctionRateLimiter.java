@@ -1,5 +1,7 @@
 package net.austizz.ultimate_auction_system;
 
+import net.austizz.ultimate_auction_system.api.UasPermissionAction;
+import net.austizz.ultimate_auction_system.api.UasPermissions;
 import net.minecraft.server.level.ServerPlayer;
 
 import java.util.EnumMap;
@@ -24,7 +26,7 @@ public final class AuctionRateLimiter {
         if (player == null) {
             return AuctionActionResult.ok("");
         }
-        boolean bypass = player.hasPermissions(Config.adminStatusPermissionLevel);
+        boolean bypass = UasPermissions.has(player, UasPermissionAction.ADMIN);
         return checkAndMark(player.getUUID(), bypass, action, System.currentTimeMillis());
     }
 

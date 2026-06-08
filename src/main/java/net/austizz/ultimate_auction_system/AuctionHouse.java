@@ -2,6 +2,8 @@ package net.austizz.ultimate_auction_system;
 
 import net.austizz.ultimate_auction_system.api.UasAuctionSnapshot;
 import net.austizz.ultimate_auction_system.api.event.UasAuctionEvents;
+import net.austizz.ultimate_auction_system.api.UasPermissionAction;
+import net.austizz.ultimate_auction_system.api.UasPermissions;
 import net.austizz.ultimate_auction_system.banking.UasAlertResult;
 import net.austizz.ultimate_auction_system.banking.UasBankingResult;
 import net.austizz.ultimate_auction_system.banking.UasBankingService;
@@ -264,6 +266,10 @@ public class AuctionHouse {
         if (player == null) {
             return AuctionActionResult.fail("Only players can create auctions.");
         }
+        AuctionActionResult permission = UasPermissions.check(player, UasPermissionAction.LIST);
+        if (!permission.success()) {
+            return permission;
+        }
         ItemStack itemInHand = player.getMainHandItem();
         if (itemInHand.isEmpty()) {
             return AuctionActionResult.fail("Hold the item you want to auction in your main hand.");
@@ -350,6 +356,10 @@ public class AuctionHouse {
         if (player == null) {
             return AuctionActionResult.fail("Only players can create auctions.");
         }
+        AuctionActionResult permission = UasPermissions.check(player, UasPermissionAction.LIST);
+        if (!permission.success()) {
+            return permission;
+        }
         List<Integer> safeSlots = sanitizeSelectedSlots(slots);
         if (safeSlots.isEmpty()) {
             return AuctionActionResult.fail("Select at least one inventory item.");
@@ -401,6 +411,10 @@ public class AuctionHouse {
     public AuctionActionResult confirmPendingAuction(ServerPlayer player, UUID sellerAccountId) {
         if (player == null) {
             return AuctionActionResult.fail("Only players can create auctions.");
+        }
+        AuctionActionResult permission = UasPermissions.check(player, UasPermissionAction.LIST);
+        if (!permission.success()) {
+            return permission;
         }
         PendingAuctionListing pending = pendingListings.get(player.getUUID());
         if (pending == null) {
@@ -497,6 +511,10 @@ public class AuctionHouse {
     public AuctionActionResult placeBidWithEscrow(ServerPlayer bidder, UUID auctionId, BigDecimal amount, UUID bidderAccountId) {
         if (bidder == null) {
             return AuctionActionResult.fail("Only players can place bids.");
+        }
+        AuctionActionResult permission = UasPermissions.check(bidder, UasPermissionAction.BID);
+        if (!permission.success()) {
+            return permission;
         }
         if (AuctionAdminSavedData.isBlocked(bidder.getServer(), bidder.getUUID(), AuctionBanAction.BID)) {
             return auctionBanFailure(AuctionBanAction.BID);
@@ -647,7 +665,11 @@ public class AuctionHouse {
 
     public AuctionActionResult buyout(ServerPlayer bidder, UUID auctionId, UUID bidderAccountId) {
         if (bidder == null) {
-            return AuctionActionResult.fail("Only players can place bids.");
+            return AuctionActionResult.fail("Only players can buy out auctions.");
+        }
+        AuctionActionResult permission = UasPermissions.check(bidder, UasPermissionAction.BUYOUT);
+        if (!permission.success()) {
+            return permission;
         }
         if (AuctionAdminSavedData.isBlocked(bidder.getServer(), bidder.getUUID(), AuctionBanAction.BUYOUT)) {
             return auctionBanFailure(AuctionBanAction.BUYOUT);
@@ -777,6 +799,10 @@ public class AuctionHouse {
         if (seller == null) {
             return AuctionActionResult.fail("Only players can cancel auctions.");
         }
+        AuctionActionResult permission = UasPermissions.check(seller, UasPermissionAction.CANCEL_OWN);
+        if (!permission.success()) {
+            return permission;
+        }
         AuctionItem item = getAuctionItem(auctionId);
         if (item == null) {
             return AuctionActionResult.fail("Auction not found.");
@@ -814,7 +840,7 @@ public class AuctionHouse {
         return adminForceCancel(
                 admin.getUUID(),
                 admin.getGameProfile().getName(),
-                admin.hasPermissions(Config.adminStatusPermissionLevel),
+                UasPermissions.has(admin, UasPermissionAction.ADMIN),
                 auctionId,
                 deliveryData,
                 admin.getServer() == null ? null : AuctionAdminSavedData.get(admin.getServer()),
@@ -914,7 +940,7 @@ public class AuctionHouse {
         return adminReleaseRecovery(
                 admin.getUUID(),
                 admin.getGameProfile().getName(),
-                admin.hasPermissions(Config.adminStatusPermissionLevel),
+                UasPermissions.has(admin, UasPermissionAction.ADMIN),
                 recoveryId,
                 deliveryData,
                 adminData,
@@ -958,7 +984,8 @@ public class AuctionHouse {
         if (admin == null) {
             return AuctionActionResult.fail("Only admins can retry auction settlement.");
         }
-        if (!admin.hasPermissions(Config.adminStatusPermissionLevel)) {
+        AuctionActionResult permission = UasPermissions.check(admin, UasPermissionAction.ADMIN);
+        if (!permission.success()) {
             return AuctionActionResult.fail("You do not have permission to retry auction settlement.");
         }
         return adminRetrySettlement(admin.getUUID(), admin.getGameProfile().getName(), true, auctionId, deliveryData);
@@ -1029,6 +1056,10 @@ public class AuctionHouse {
     public AuctionActionResult claimAuction(ServerPlayer player, UUID auctionId, AuctionDeliverySavedData deliveryData) {
         if (player == null) {
             return AuctionActionResult.fail("Only players can claim auction items.");
+        }
+        AuctionActionResult permission = UasPermissions.check(player, UasPermissionAction.CLAIM);
+        if (!permission.success()) {
+            return permission;
         }
         AuctionItem item = getAuctionItem(auctionId);
         if (item == null) {
@@ -1423,7 +1454,7 @@ public class AuctionHouse {
             return;
         }
         for (ServerPlayer player : server.getPlayerList().getPlayers()) {
-            if (player != null && player.hasPermissions(Config.adminStatusPermissionLevel)) {
+            if (player != null && UasPermissions.has(player, UasPermissionAction.ADMIN)) {
                 sendAuctionAlert(player.getUUID(), title, message, tone, args);
             }
         }
@@ -1445,7 +1476,7 @@ public class AuctionHouse {
                                                boolean adminMode) {
         pruneExpiredPendingListings();
         UUID viewerId = viewer == null ? null : viewer.getUUID();
-        boolean resolvedAdminMode = adminMode && viewer != null && viewer.hasPermissions(Config.adminStatusPermissionLevel);
+        boolean resolvedAdminMode = adminMode && viewer != null && UasPermissions.has(viewer, UasPermissionAction.ADMIN);
         AuctionUiQuery safeQuery = query == null ? AuctionUiQuery.defaults() : query;
         List<AuctionListingSummary> all = getAuctionItems().values().stream()
                 .map(item -> toSummary(item, viewer))

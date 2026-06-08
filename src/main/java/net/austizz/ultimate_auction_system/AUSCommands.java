@@ -9,6 +9,8 @@ import com.mojang.brigadier.exceptions.SimpleCommandExceptionType;
 import net.austizz.ultimate_auction_system.banking.UasBankingService;
 import net.austizz.ultimate_auction_system.banking.UasMoneyFormatter;
 import net.austizz.ultimate_auction_system.banking.UbsBankingService;
+import net.austizz.ultimate_auction_system.api.UasPermissionAction;
+import net.austizz.ultimate_auction_system.api.UasPermissions;
 import net.austizz.ultimate_auction_system.i18n.UasTranslations;
 import net.austizz.ultimate_auction_system.network.UasPayloads;
 import net.minecraft.ChatFormatting;
@@ -123,11 +125,11 @@ public class AUSCommands {
         event.getDispatcher().register(
                 Commands.literal("uas")
                         .then(Commands.literal("status")
-                                .requires(source -> source.hasPermission(Config.adminStatusPermissionLevel))
+                                .requires(source -> UasPermissions.has(source, UasPermissionAction.ADMIN))
                                 .executes(AUSCommands::sendStatus)
                         )
                         .then(Commands.literal("admin")
-                                .requires(source -> source.hasPermission(Config.adminStatusPermissionLevel))
+                                .requires(source -> UasPermissions.has(source, UasPermissionAction.ADMIN))
                                 .executes(AUSCommands::openAdminAuctionGui)
                                 .then(Commands.literal("gui")
                                         .executes(AUSCommands::openAdminAuctionGui))
@@ -203,6 +205,11 @@ public class AUSCommands {
             context.getSource().sendFailure(UasTranslations.literal("Auction house is not initialized."));
             return 0;
         }
+        AuctionActionResult permission = UasPermissions.check(player, UasPermissionAction.LIST);
+        if (!permission.success()) {
+            sendResult(context.getSource(), permission);
+            return 0;
+        }
         AuctionActionResult rateLimit = AuctionRateLimiter.checkAndMark(player, AuctionRateLimiter.Action.CREATE);
         if (!rateLimit.success()) {
             sendResult(context.getSource(), rateLimit);
@@ -233,6 +240,11 @@ public class AUSCommands {
             context.getSource().sendFailure(UasTranslations.literal("Only players can create auctions."));
             return 0;
         }
+        AuctionActionResult permission = UasPermissions.check(player, UasPermissionAction.LIST);
+        if (!permission.success()) {
+            sendResult(context.getSource(), permission);
+            return 0;
+        }
         AuctionActionResult result = auctionHouse.confirmPendingAuction(player);
         sendResult(context.getSource(), result);
         return result.success() ? Command.SINGLE_SUCCESS : 0;
@@ -253,6 +265,12 @@ public class AUSCommands {
         ServerPlayer player = context.getSource().getPlayer();
         if (player == null || auctionHouse == null) {
             context.getSource().sendFailure(UasTranslations.literal("Only players can cancel auctions."));
+            return 0;
+        }
+        AuctionActionResult permission = UasPermissions.check(player, UasPermissionAction.CANCEL_OWN);
+        if (!permission.success()) {
+            auctionHouse.sendActionAlert(player, permission);
+            sendResult(context.getSource(), permission);
             return 0;
         }
         UUID auctionId = parseAuctionId(context.getSource(), StringArgumentType.getString(context, "auctionId"));
@@ -277,6 +295,12 @@ public class AUSCommands {
             context.getSource().sendFailure(UasTranslations.literal("Only players can claim auction items."));
             return 0;
         }
+        AuctionActionResult permission = UasPermissions.check(player, UasPermissionAction.CLAIM);
+        if (!permission.success()) {
+            auctionHouse.sendActionAlert(player, permission);
+            sendResult(context.getSource(), permission);
+            return 0;
+        }
         UUID auctionId = parseAuctionId(context.getSource(), StringArgumentType.getString(context, "auctionId"));
         if (auctionId == null) {
             return 0;
@@ -291,6 +315,12 @@ public class AUSCommands {
         ServerPlayer player = context.getSource().getPlayer();
         if (player == null || auctionHouse == null) {
             context.getSource().sendFailure(UasTranslations.literal("Only players can bid on auctions."));
+            return 0;
+        }
+        AuctionActionResult permission = UasPermissions.check(player, UasPermissionAction.BID);
+        if (!permission.success()) {
+            auctionHouse.sendActionAlert(player, permission);
+            sendResult(context.getSource(), permission);
             return 0;
         }
         UUID auctionId = parseAuctionId(context.getSource(), StringArgumentType.getString(context, "auctionId"));
@@ -345,6 +375,12 @@ public class AUSCommands {
             context.getSource().sendFailure(UasTranslations.literal("Only players can buy out auctions."));
             return 0;
         }
+        AuctionActionResult permission = UasPermissions.check(player, UasPermissionAction.BUYOUT);
+        if (!permission.success()) {
+            auctionHouse.sendActionAlert(player, permission);
+            sendResult(context.getSource(), permission);
+            return 0;
+        }
         UUID auctionId = parseAuctionId(context.getSource(), StringArgumentType.getString(context, "auctionId"));
         if (auctionId == null) {
             return 0;
@@ -377,6 +413,12 @@ public class AUSCommands {
         ServerPlayer player = context.getSource().getPlayer();
         if (player == null || auctionHouse == null) {
             context.getSource().sendFailure(UasTranslations.literal("Only players can buy out auctions."));
+            return 0;
+        }
+        AuctionActionResult permission = UasPermissions.check(player, UasPermissionAction.BUYOUT);
+        if (!permission.success()) {
+            auctionHouse.sendActionAlert(player, permission);
+            sendResult(context.getSource(), permission);
             return 0;
         }
         UUID auctionId = parseAuctionId(context.getSource(), StringArgumentType.getString(context, "auctionId"));
@@ -427,7 +469,7 @@ public class AUSCommands {
         AuctionActionResult result = house.adminRetrySettlement(
                 adminId,
                 adminName,
-                source.hasPermission(Config.adminStatusPermissionLevel),
+                UasPermissions.has(source, UasPermissionAction.ADMIN),
                 auctionId,
                 AuctionDeliverySavedData.get(source.getServer())
         );
@@ -463,7 +505,7 @@ public class AUSCommands {
         AuctionActionResult result = house.adminForceCancel(
                 adminId,
                 adminName,
-                source.hasPermission(Config.adminStatusPermissionLevel),
+                UasPermissions.has(source, UasPermissionAction.ADMIN),
                 auctionId,
                 AuctionDeliverySavedData.get(source.getServer()),
                 adminData,

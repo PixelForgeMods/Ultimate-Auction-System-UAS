@@ -177,6 +177,20 @@ admin.statusPermissionLevel
 
 Default: `2`.
 
+## Player Action Permissions
+
+Player actions use separate Minecraft permission-level checks:
+
+- `permissions.listPermissionLevel`: create/confirm auction listings, default `0`
+- `permissions.bidPermissionLevel`: place bids, default `0`
+- `permissions.buyoutPermissionLevel`: buy out auctions, default `0`
+- `permissions.cancelOwnPermissionLevel`: cancel your own no-bid auction, default `0`
+- `permissions.claimPermissionLevel`: claim won or unsold auction items, default `0`
+
+`0` keeps the current everyone-can-use behavior. Higher values use standard Minecraft permission levels. Commands, GUI payloads, and public API player methods all call the same server-side checks. Admin and automation code paths that do not have a player must pass an explicit permitted/bypass flag.
+
+Other mods can install a UAS permission hook through the Java API to override the config-backed permission-level check without bypassing UAS validation, settlement, or storage rules.
+
 ## Important Config Values
 
 Config is generated in `ultimate_auction_system-common.toml`.
@@ -232,6 +246,15 @@ Audit and moderation:
 - `audit.suspiciousCancelCount`: cancelled listing count before a signal, default `3`
 - `audit.sellerSelfBidSignals`: log seller self-bid attempts and accepted self-bids as suspicion signals, default `true`
 - `audit.externalSuspicionSignalHooks`: reserved opt-in hook for future privacy-reviewed integrations, default `false`
+
+Permissions:
+
+- `permissions.listPermissionLevel`: permission level required to create listings, default `0`
+- `permissions.bidPermissionLevel`: permission level required to bid, default `0`
+- `permissions.buyoutPermissionLevel`: permission level required to buy out auctions, default `0`
+- `permissions.cancelOwnPermissionLevel`: permission level required to cancel own no-bid auctions, default `0`
+- `permissions.claimPermissionLevel`: permission level required to claim auction items, default `0`
+- `admin.statusPermissionLevel`: permission level required for admin commands and dashboard tools, default `2`
 
 Storage:
 

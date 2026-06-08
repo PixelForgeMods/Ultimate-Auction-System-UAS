@@ -51,6 +51,11 @@ public class Config {
     public static final int DEFAULT_SUSPICIOUS_CANCEL_WINDOW_HOURS = 24;
     public static final int DEFAULT_SUSPICIOUS_CANCEL_COUNT = 3;
     public static final boolean DEFAULT_ALLOW_SELLER_SELF_BID = false;
+    public static final int DEFAULT_LIST_PERMISSION_LEVEL = 0;
+    public static final int DEFAULT_BID_PERMISSION_LEVEL = 0;
+    public static final int DEFAULT_BUYOUT_PERMISSION_LEVEL = 0;
+    public static final int DEFAULT_CANCEL_OWN_PERMISSION_LEVEL = 0;
+    public static final int DEFAULT_CLAIM_PERMISSION_LEVEL = 0;
     public static final int DEFAULT_ADMIN_STATUS_PERMISSION_LEVEL = 2;
     public static final int DEFAULT_AUTOSAVE_INTERVAL_TICKS = 6000;
     public static final int DEFAULT_PENDING_LISTING_CONFIRMATION_SECONDS = 60;
@@ -326,9 +331,34 @@ public class Config {
             )
             .define("audit.externalSuspicionSignalHooks", DEFAULT_AUDIT_EXTERNAL_SUSPICION_SIGNAL_HOOKS);
 
+    private static final ModConfigSpec.IntValue LIST_PERMISSION_LEVEL = permissionLevel(
+            "permissions.listPermissionLevel",
+            "Minecraft permission level required to create auction listings. 0 allows everyone."
+    );
+
+    private static final ModConfigSpec.IntValue BID_PERMISSION_LEVEL = permissionLevel(
+            "permissions.bidPermissionLevel",
+            "Minecraft permission level required to place normal bids. 0 allows everyone."
+    );
+
+    private static final ModConfigSpec.IntValue BUYOUT_PERMISSION_LEVEL = permissionLevel(
+            "permissions.buyoutPermissionLevel",
+            "Minecraft permission level required to buy out auctions. 0 allows everyone."
+    );
+
+    private static final ModConfigSpec.IntValue CANCEL_OWN_PERMISSION_LEVEL = permissionLevel(
+            "permissions.cancelOwnPermissionLevel",
+            "Minecraft permission level required for sellers to cancel their own no-bid auctions. 0 allows everyone."
+    );
+
+    private static final ModConfigSpec.IntValue CLAIM_PERMISSION_LEVEL = permissionLevel(
+            "permissions.claimPermissionLevel",
+            "Minecraft permission level required to claim won or unsold auction items. 0 allows everyone."
+    );
+
     private static final ModConfigSpec.IntValue ADMIN_STATUS_PERMISSION_LEVEL = BUILDER
             .comment(
-                    "Minecraft permission level required to run /uas status.",
+                    "Minecraft permission level required to run UAS admin commands and admin dashboard tools.",
                     "0 allows everyone; 2 matches normal operator command access; 4 restricts to server owner level."
             )
             .defineInRange("admin.statusPermissionLevel", DEFAULT_ADMIN_STATUS_PERMISSION_LEVEL, 0, MAX_PERMISSION_LEVEL);
@@ -357,6 +387,15 @@ public class Config {
             .defineListAllowEmpty("limits.bannedAuctionEntries", DEFAULT_BANNED_AUCTION_ENTRIES, () -> "", Config::validateAuctionRestriction);
 
     static final ModConfigSpec SPEC = BUILDER.build();
+
+    private static ModConfigSpec.IntValue permissionLevel(String path, String description) {
+        return BUILDER
+                .comment(
+                        description,
+                        "Uses standard Minecraft permission levels from 0 to 4. Future permission integrations can override these checks through the UAS permission hook."
+                )
+                .defineInRange(path, 0, 0, MAX_PERMISSION_LEVEL);
+    }
 
     public static double listingFeeRate;
     public static double cancellationFeeRate = DEFAULT_CANCELLATION_FEE_RATE;
@@ -393,7 +432,12 @@ public class Config {
     public static int suspiciousCancelWindowHours = DEFAULT_SUSPICIOUS_CANCEL_WINDOW_HOURS;
     public static int suspiciousCancelCount = DEFAULT_SUSPICIOUS_CANCEL_COUNT;
     public static boolean allowSellerSelfBid;
-    public static int adminStatusPermissionLevel;
+    public static int listPermissionLevel = DEFAULT_LIST_PERMISSION_LEVEL;
+    public static int bidPermissionLevel = DEFAULT_BID_PERMISSION_LEVEL;
+    public static int buyoutPermissionLevel = DEFAULT_BUYOUT_PERMISSION_LEVEL;
+    public static int cancelOwnPermissionLevel = DEFAULT_CANCEL_OWN_PERMISSION_LEVEL;
+    public static int claimPermissionLevel = DEFAULT_CLAIM_PERMISSION_LEVEL;
+    public static int adminStatusPermissionLevel = DEFAULT_ADMIN_STATUS_PERMISSION_LEVEL;
     public static int autosaveIntervalTicks;
     public static int pendingListingConfirmationSeconds = DEFAULT_PENDING_LISTING_CONFIRMATION_SECONDS;
     public static List<String> bannedAuctionEntries = new ArrayList<>();
@@ -441,6 +485,11 @@ public class Config {
         auditSellerSelfBidSignals = readBoolean("audit.sellerSelfBidSignals", AUDIT_SELLER_SELF_BID_SIGNALS, DEFAULT_AUDIT_SELLER_SELF_BID_SIGNALS);
         auditExternalSuspicionSignalHooks = readBoolean("audit.externalSuspicionSignalHooks", AUDIT_EXTERNAL_SUSPICION_SIGNAL_HOOKS, DEFAULT_AUDIT_EXTERNAL_SUSPICION_SIGNAL_HOOKS);
         allowSellerSelfBid = readBoolean("bidding.allowSellerSelfBid", ALLOW_SELLER_SELF_BID, DEFAULT_ALLOW_SELLER_SELF_BID);
+        listPermissionLevel = readInt("permissions.listPermissionLevel", LIST_PERMISSION_LEVEL, DEFAULT_LIST_PERMISSION_LEVEL, 0, MAX_PERMISSION_LEVEL);
+        bidPermissionLevel = readInt("permissions.bidPermissionLevel", BID_PERMISSION_LEVEL, DEFAULT_BID_PERMISSION_LEVEL, 0, MAX_PERMISSION_LEVEL);
+        buyoutPermissionLevel = readInt("permissions.buyoutPermissionLevel", BUYOUT_PERMISSION_LEVEL, DEFAULT_BUYOUT_PERMISSION_LEVEL, 0, MAX_PERMISSION_LEVEL);
+        cancelOwnPermissionLevel = readInt("permissions.cancelOwnPermissionLevel", CANCEL_OWN_PERMISSION_LEVEL, DEFAULT_CANCEL_OWN_PERMISSION_LEVEL, 0, MAX_PERMISSION_LEVEL);
+        claimPermissionLevel = readInt("permissions.claimPermissionLevel", CLAIM_PERMISSION_LEVEL, DEFAULT_CLAIM_PERMISSION_LEVEL, 0, MAX_PERMISSION_LEVEL);
         adminStatusPermissionLevel = readInt("admin.statusPermissionLevel", ADMIN_STATUS_PERMISSION_LEVEL, DEFAULT_ADMIN_STATUS_PERMISSION_LEVEL, 0, MAX_PERMISSION_LEVEL);
         autosaveIntervalTicks = readInt("storage.autosaveIntervalTicks", AUTOSAVE_INTERVAL_TICKS, DEFAULT_AUTOSAVE_INTERVAL_TICKS, MIN_AUTOSAVE_INTERVAL_TICKS, MAX_AUTOSAVE_INTERVAL_TICKS);
         pendingListingConfirmationSeconds = readInt("limits.pendingListingConfirmationSeconds", PENDING_LISTING_CONFIRMATION_SECONDS, DEFAULT_PENDING_LISTING_CONFIRMATION_SECONDS, MIN_PENDING_CONFIRMATION_SECONDS, MAX_PENDING_CONFIRMATION_SECONDS);
