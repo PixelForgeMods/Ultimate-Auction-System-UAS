@@ -180,6 +180,11 @@ public class AUSCommands {
             context.getSource().sendFailure(UasTranslations.literal("Auction house is not initialized."));
             return 0;
         }
+        AuctionActionResult rateLimit = AuctionRateLimiter.checkAndMark(player, AuctionRateLimiter.Action.CREATE);
+        if (!rateLimit.success()) {
+            sendResult(context.getSource(), rateLimit);
+            return 0;
+        }
         BigDecimal startingBid = parseMoney(StringArgumentType.getString(context, "Starting Price"));
         BigDecimal buyout = hasBuyout ? parseMoney(StringArgumentType.getString(context, "Buyout Price")) : BigDecimal.ZERO;
         if (startingBid == null || buyout == null) {
@@ -231,6 +236,12 @@ public class AUSCommands {
         if (auctionId == null) {
             return 0;
         }
+        AuctionActionResult rateLimit = AuctionRateLimiter.checkAndMark(player, AuctionRateLimiter.Action.CANCEL);
+        if (!rateLimit.success()) {
+            auctionHouse.sendActionAlert(player, rateLimit);
+            sendResult(context.getSource(), rateLimit);
+            return 0;
+        }
         AuctionActionResult result = auctionHouse.cancelOwnAuction(player, auctionId, AuctionDeliverySavedData.get(player.getServer()));
         auctionHouse.sendActionAlert(player, result);
         sendResult(context.getSource(), result);
@@ -268,6 +279,12 @@ public class AUSCommands {
             context.getSource().sendFailure(UasTranslations.literal("Incorrect number format. Use whole dollars only, for example 50."));
             return 0;
         }
+        AuctionActionResult rateLimit = AuctionRateLimiter.checkAndMark(player, AuctionRateLimiter.Action.BID);
+        if (!rateLimit.success()) {
+            auctionHouse.sendActionAlert(player, rateLimit);
+            sendResult(context.getSource(), rateLimit);
+            return 0;
+        }
         AuctionActionResult result = auctionHouse.placeBidWithEscrow(player, auctionId, amount);
         auctionHouse.sendActionAlert(player, result);
         sendResult(context.getSource(), result);
@@ -278,6 +295,12 @@ public class AUSCommands {
         CommandSourceStack source = context.getSource();
         if (auctionHouse == null) {
             source.sendFailure(UasTranslations.literal("Auction house is not initialized."));
+            return 0;
+        }
+        ServerPlayer player = source.getPlayer();
+        AuctionActionResult rateLimit = AuctionRateLimiter.checkAndMark(player, AuctionRateLimiter.Action.SEARCH);
+        if (!rateLimit.success()) {
+            sendResult(source, rateLimit);
             return 0;
         }
         UUID auctionId = parseAuctionId(source, StringArgumentType.getString(context, "auctionId"));
@@ -344,6 +367,12 @@ public class AUSCommands {
                     .append(UasTranslations.literal(" first to preview and confirm this buyout.")));
             return 0;
         }
+        AuctionActionResult rateLimit = AuctionRateLimiter.checkAndMark(player, AuctionRateLimiter.Action.BUYOUT);
+        if (!rateLimit.success()) {
+            auctionHouse.sendActionAlert(player, rateLimit);
+            sendResult(context.getSource(), rateLimit);
+            return 0;
+        }
         PENDING_BUYOUTS.remove(player.getUUID());
         AuctionActionResult result = auctionHouse.buyout(player, auctionId);
         auctionHouse.sendActionAlert(player, result);
@@ -393,6 +422,12 @@ public class AUSCommands {
     }
 
     private static int sendAuctionList(CommandContext<CommandSourceStack> context) {
+        ServerPlayer player = context.getSource().getPlayer();
+        AuctionActionResult rateLimit = AuctionRateLimiter.checkAndMark(player, AuctionRateLimiter.Action.SEARCH);
+        if (!rateLimit.success()) {
+            sendResult(context.getSource(), rateLimit);
+            return 0;
+        }
         Component header = Component.literal("\n=== [ ")
                 .withStyle(ChatFormatting.GOLD)
                 .append(UasTranslations.literal("ACTIVE AUCTIONS").withStyle(ChatFormatting.YELLOW, ChatFormatting.BOLD))
@@ -512,6 +547,11 @@ public class AUSCommands {
         ServerPlayer player = context.getSource().getPlayer();
         if (player == null) {
             context.getSource().sendFailure(UasTranslations.literal("Only players can view their auction listings."));
+            return 0;
+        }
+        AuctionActionResult rateLimit = AuctionRateLimiter.checkAndMark(player, AuctionRateLimiter.Action.SEARCH);
+        if (!rateLimit.success()) {
+            sendResult(context.getSource(), rateLimit);
             return 0;
         }
         AuctionHouse house = auctionHouse;

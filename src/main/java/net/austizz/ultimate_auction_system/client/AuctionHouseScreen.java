@@ -1744,7 +1744,7 @@ public class AuctionHouseScreen extends Screen {
             graphics.drawString(font, Component.translatable("No UBS account"), panelLeft + 18, accountY, 0xFFFF5555, false);
         }
         if (!payload.message().isBlank()) {
-            String message = trimToWidth(Component.translatable(payload.message()).getString(), panelWidth - 36);
+            String message = trimToWidth(net.austizz.ultimate_auction_system.i18n.UasTranslations.literal(payload.message()).getString(), panelWidth - 36);
             graphics.drawString(font, Component.literal(message), panelLeft + 18, contentTop - 12, payload.success() ? 0xFF55FF55 : 0xFFFF5555, false);
         }
     }
@@ -1768,7 +1768,7 @@ public class AuctionHouseScreen extends Screen {
         String generated = adminDashboard().generatedAt().isBlank() ? "" : Component.translatable("Updated {0}", readableDateTime(adminDashboard().generatedAt())).getString();
         graphics.drawString(font, Component.literal(trimToWidth(generated, Math.max(80, panelWidth / 3))), panelLeft + Math.max(210, panelWidth / 3), panelTop + 40, 0xFF9E9E9E, false);
         if (!payload.message().isBlank()) {
-            String message = trimToWidth(Component.translatable(payload.message()).getString(), panelWidth - 40);
+            String message = trimToWidth(net.austizz.ultimate_auction_system.i18n.UasTranslations.literal(payload.message()).getString(), panelWidth - 40);
             graphics.drawString(font, Component.literal(message), panelLeft + 22, contentTop - 12, payload.success() ? 0xFF55FF55 : 0xFFFF5555, false);
         }
     }

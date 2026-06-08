@@ -62,6 +62,12 @@ public final class UasPayloads {
             }
             AuctionDeliverySavedData deliveryData = AuctionDeliverySavedData.get(player.getServer());
             boolean adminMode = payload.adminMode() && player.hasPermissions(net.austizz.ultimate_auction_system.Config.adminStatusPermissionLevel);
+            AuctionActionResult rateLimit = rateLimit(player, safe(payload.action()), adminMode);
+            if (!rateLimit.success()) {
+                house.sendActionAlert(player, rateLimit);
+                sendSnapshot(player, query, rateLimit.message(), false, adminMode);
+                return;
+            }
             AuctionActionResult result = switch (safe(payload.action())) {
                 case "PREPARE_CREATE" -> house.prepareAuctionFromInventorySlots(
                         player,
@@ -281,6 +287,23 @@ public final class UasPayloads {
                 AuctionSort.fromToken(payload.sort()),
                 payload.modId()
         );
+    }
+
+    private static AuctionActionResult rateLimit(ServerPlayer player, String action, boolean adminMode) {
+        if (adminMode) {
+            return AuctionActionResult.ok("");
+        }
+        net.austizz.ultimate_auction_system.AuctionRateLimiter.Action limitAction = switch (action) {
+            case "PREPARE_CREATE" -> net.austizz.ultimate_auction_system.AuctionRateLimiter.Action.CREATE;
+            case "BID" -> net.austizz.ultimate_auction_system.AuctionRateLimiter.Action.BID;
+            case "BUYOUT" -> net.austizz.ultimate_auction_system.AuctionRateLimiter.Action.BUYOUT;
+            case "CANCEL" -> net.austizz.ultimate_auction_system.AuctionRateLimiter.Action.CANCEL;
+            case "REFRESH" -> net.austizz.ultimate_auction_system.AuctionRateLimiter.Action.SEARCH;
+            default -> null;
+        };
+        return limitAction == null
+                ? AuctionActionResult.ok("")
+                : net.austizz.ultimate_auction_system.AuctionRateLimiter.checkAndMark(player, limitAction);
     }
 
     private static BigDecimal money(String raw) {

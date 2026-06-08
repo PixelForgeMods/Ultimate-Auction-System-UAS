@@ -190,6 +190,41 @@ class AuctionUiModelTest {
     }
 
     @Test
+    void rateLimiterReportsRemainingCooldownAndAllowsAfterWindow() {
+        int previousBidCooldown = Config.bidCooldownSeconds;
+        UUID playerId = UUID.randomUUID();
+        try {
+            Config.bidCooldownSeconds = 2;
+            AuctionRateLimiter.clearForTesting();
+
+            assertTrue(AuctionRateLimiter.checkAndMark(playerId, false, AuctionRateLimiter.Action.BID, 1_000L).success());
+            AuctionActionResult rejected = AuctionRateLimiter.checkAndMark(playerId, false, AuctionRateLimiter.Action.BID, 1_500L);
+            assertFalse(rejected.success());
+            assertEquals("Rate limited. Try again in 2 seconds.", rejected.message());
+            assertTrue(AuctionRateLimiter.checkAndMark(playerId, false, AuctionRateLimiter.Action.BID, 3_000L).success());
+        } finally {
+            Config.bidCooldownSeconds = previousBidCooldown;
+            AuctionRateLimiter.clearForTesting();
+        }
+    }
+
+    @Test
+    void rateLimiterAllowsAdminBypass() {
+        int previousCancelCooldown = Config.cancelCooldownSeconds;
+        UUID playerId = UUID.randomUUID();
+        try {
+            Config.cancelCooldownSeconds = 60;
+            AuctionRateLimiter.clearForTesting();
+
+            assertTrue(AuctionRateLimiter.checkAndMark(playerId, false, AuctionRateLimiter.Action.CANCEL, 1_000L).success());
+            assertTrue(AuctionRateLimiter.checkAndMark(playerId, true, AuctionRateLimiter.Action.CANCEL, 1_001L).success());
+        } finally {
+            Config.cancelCooldownSeconds = previousCancelCooldown;
+            AuctionRateLimiter.clearForTesting();
+        }
+    }
+
+    @Test
     void fakeBankingServiceRecordsUiAlerts() {
         FakeUasBankingService banking = new FakeUasBankingService();
         UUID playerId = UUID.randomUUID();

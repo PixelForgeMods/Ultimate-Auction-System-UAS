@@ -25,6 +25,11 @@ public class Config {
     public static final int DEFAULT_MAX_AUCTION_DURATION_HOURS = 168;
     public static final int DEFAULT_SETTLEMENT_RETRY_ATTEMPTS = 3;
     public static final int DEFAULT_SETTLEMENT_RETRY_DELAY_SECONDS = 60;
+    public static final int DEFAULT_CREATE_COOLDOWN_SECONDS = 5;
+    public static final int DEFAULT_BID_COOLDOWN_SECONDS = 2;
+    public static final int DEFAULT_BUYOUT_COOLDOWN_SECONDS = 2;
+    public static final int DEFAULT_CANCEL_COOLDOWN_SECONDS = 5;
+    public static final int DEFAULT_SEARCH_COOLDOWN_SECONDS = 1;
     public static final boolean DEFAULT_REQUIRE_UBS_FOR_LISTING = true;
     public static final boolean DEFAULT_AUTO_SETTLE_EXPIRED_AUCTIONS = true;
     public static final boolean DEFAULT_AUDIT_REJECTED_BIDS = true;
@@ -45,6 +50,7 @@ public class Config {
     private static final int MAX_DURATION_MINUTES = MAX_DURATION_HOURS * 60;
     private static final int MAX_SETTLEMENT_RETRY_ATTEMPTS = 20;
     private static final int MAX_SETTLEMENT_RETRY_DELAY_SECONDS = 86_400;
+    private static final int MAX_RATE_LIMIT_SECONDS = 3_600;
     private static final int MAX_PERMISSION_LEVEL = 4;
     private static final int MIN_AUTOSAVE_INTERVAL_TICKS = 20;
     private static final int MAX_AUTOSAVE_INTERVAL_TICKS = 72_000;
@@ -125,6 +131,41 @@ public class Config {
             )
             .defineInRange("settlement.retryDelaySeconds", DEFAULT_SETTLEMENT_RETRY_DELAY_SECONDS, 1, MAX_SETTLEMENT_RETRY_DELAY_SECONDS);
 
+    private static final ModConfigSpec.IntValue CREATE_COOLDOWN_SECONDS = BUILDER
+            .comment(
+                    "Per-player cooldown for creating auction listings, in seconds.",
+                    "Admins with the UAS admin permission bypass rate limits. 0 disables this cooldown."
+            )
+            .defineInRange("rateLimits.createCooldownSeconds", DEFAULT_CREATE_COOLDOWN_SECONDS, 0, MAX_RATE_LIMIT_SECONDS);
+
+    private static final ModConfigSpec.IntValue BID_COOLDOWN_SECONDS = BUILDER
+            .comment(
+                    "Per-player cooldown for placing bids, in seconds.",
+                    "Admins with the UAS admin permission bypass rate limits. 0 disables this cooldown."
+            )
+            .defineInRange("rateLimits.bidCooldownSeconds", DEFAULT_BID_COOLDOWN_SECONDS, 0, MAX_RATE_LIMIT_SECONDS);
+
+    private static final ModConfigSpec.IntValue BUYOUT_COOLDOWN_SECONDS = BUILDER
+            .comment(
+                    "Per-player cooldown for buyout actions, in seconds.",
+                    "Admins with the UAS admin permission bypass rate limits. 0 disables this cooldown."
+            )
+            .defineInRange("rateLimits.buyoutCooldownSeconds", DEFAULT_BUYOUT_COOLDOWN_SECONDS, 0, MAX_RATE_LIMIT_SECONDS);
+
+    private static final ModConfigSpec.IntValue CANCEL_COOLDOWN_SECONDS = BUILDER
+            .comment(
+                    "Per-player cooldown for seller cancellation actions, in seconds.",
+                    "Admins with the UAS admin permission bypass rate limits. 0 disables this cooldown."
+            )
+            .defineInRange("rateLimits.cancelCooldownSeconds", DEFAULT_CANCEL_COOLDOWN_SECONDS, 0, MAX_RATE_LIMIT_SECONDS);
+
+    private static final ModConfigSpec.IntValue SEARCH_COOLDOWN_SECONDS = BUILDER
+            .comment(
+                    "Per-player cooldown for auction search/list refresh actions, in seconds.",
+                    "Admins with the UAS admin permission bypass rate limits. 0 disables this cooldown."
+            )
+            .defineInRange("rateLimits.searchCooldownSeconds", DEFAULT_SEARCH_COOLDOWN_SECONDS, 0, MAX_RATE_LIMIT_SECONDS);
+
     private static final ModConfigSpec.BooleanValue REQUIRE_UBS_FOR_LISTING = BUILDER
             .comment(
                     "When true, sellers must have a usable UBS primary account before creating listings.",
@@ -194,6 +235,11 @@ public class Config {
     public static int maxAuctionDurationHours;
     public static int settlementRetryAttempts;
     public static int settlementRetryDelaySeconds;
+    public static int createCooldownSeconds = DEFAULT_CREATE_COOLDOWN_SECONDS;
+    public static int bidCooldownSeconds = DEFAULT_BID_COOLDOWN_SECONDS;
+    public static int buyoutCooldownSeconds = DEFAULT_BUYOUT_COOLDOWN_SECONDS;
+    public static int cancelCooldownSeconds = DEFAULT_CANCEL_COOLDOWN_SECONDS;
+    public static int searchCooldownSeconds = DEFAULT_SEARCH_COOLDOWN_SECONDS;
     public static boolean requireUbsForListing;
     public static boolean autoSettleExpiredAuctions;
     public static boolean auditRejectedBids;
@@ -221,6 +267,11 @@ public class Config {
         maxAuctionDurationHours = Math.max((int) Math.ceil(minAuctionDurationMinutes / 60.0D), configuredMaxHours);
         settlementRetryAttempts = readInt("settlement.retryAttempts", SETTLEMENT_RETRY_ATTEMPTS, DEFAULT_SETTLEMENT_RETRY_ATTEMPTS, 0, MAX_SETTLEMENT_RETRY_ATTEMPTS);
         settlementRetryDelaySeconds = readInt("settlement.retryDelaySeconds", SETTLEMENT_RETRY_DELAY_SECONDS, DEFAULT_SETTLEMENT_RETRY_DELAY_SECONDS, 1, MAX_SETTLEMENT_RETRY_DELAY_SECONDS);
+        createCooldownSeconds = readInt("rateLimits.createCooldownSeconds", CREATE_COOLDOWN_SECONDS, DEFAULT_CREATE_COOLDOWN_SECONDS, 0, MAX_RATE_LIMIT_SECONDS);
+        bidCooldownSeconds = readInt("rateLimits.bidCooldownSeconds", BID_COOLDOWN_SECONDS, DEFAULT_BID_COOLDOWN_SECONDS, 0, MAX_RATE_LIMIT_SECONDS);
+        buyoutCooldownSeconds = readInt("rateLimits.buyoutCooldownSeconds", BUYOUT_COOLDOWN_SECONDS, DEFAULT_BUYOUT_COOLDOWN_SECONDS, 0, MAX_RATE_LIMIT_SECONDS);
+        cancelCooldownSeconds = readInt("rateLimits.cancelCooldownSeconds", CANCEL_COOLDOWN_SECONDS, DEFAULT_CANCEL_COOLDOWN_SECONDS, 0, MAX_RATE_LIMIT_SECONDS);
+        searchCooldownSeconds = readInt("rateLimits.searchCooldownSeconds", SEARCH_COOLDOWN_SECONDS, DEFAULT_SEARCH_COOLDOWN_SECONDS, 0, MAX_RATE_LIMIT_SECONDS);
         requireUbsForListing = readBoolean("settlement.requireUbsForListing", REQUIRE_UBS_FOR_LISTING, DEFAULT_REQUIRE_UBS_FOR_LISTING);
         autoSettleExpiredAuctions = readBoolean("settlement.autoSettleExpiredAuctions", AUTO_SETTLE_EXPIRED_AUCTIONS, DEFAULT_AUTO_SETTLE_EXPIRED_AUCTIONS);
         auditRejectedBids = readBoolean("audit.rejectedBids", AUDIT_REJECTED_BIDS, DEFAULT_AUDIT_REJECTED_BIDS);

@@ -133,6 +133,13 @@ The inspect command prints:
 - `auditRejectedBids`: whether rejected bid attempts are stored in bid history
 - `auditStateTransitions`: whether lifecycle transitions are logged
 - `bannedAuctionEntries`: item, tag, or mod restrictions for future auction listings
+- `rateLimits.createCooldownSeconds`: per-player cooldown for preparing auction listings
+- `rateLimits.bidCooldownSeconds`: per-player cooldown for bids
+- `rateLimits.buyoutCooldownSeconds`: per-player cooldown for buyouts
+- `rateLimits.cancelCooldownSeconds`: per-player cooldown for seller cancellations
+- `rateLimits.searchCooldownSeconds`: per-player cooldown for listing/search refreshes
+
+Admins with the configured UAS admin permission bypass player rate limits. Claims, delivery withdrawals, settlement recovery, and admin recovery tools are not rate-limited.
 
 ## UBS Bidding and Settlement Policy
 

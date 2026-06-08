@@ -50,7 +50,8 @@ public final class UasTranslations {
             "Pending auction created. Confirm within ",
             "Your UBS primary account cannot pay the ",
             "Previous failure: ",
-            "Proposed action: "
+            "Proposed action: ",
+            "Rate limited. Try again in "
     };
     private static final String[] DELIMITERS = {
             "\n",

@@ -49,7 +49,9 @@ class UasLanguageFileTest {
             "Contents",
             "CLAIMED",
             "{0} Primary Account: {1}",
-            "Player banned"
+            "Player banned",
+            "Rate limited. Try again in ",
+            " seconds."
     );
     private static final List<String> CRITICAL_TRANSLATED_AWAY_KEYS = List.of(
             "UAS ADMIN DASHBOARD",
@@ -65,7 +67,9 @@ class UasLanguageFileTest {
             "Contents",
             "CLAIMED",
             "{0} Primary Account: {1}",
-            "Player banned"
+            "Player banned",
+            "Rate limited. Try again in ",
+            " seconds."
     );
 
     @Test
@@ -138,6 +142,7 @@ class UasLanguageFileTest {
         assertEquals("2Std 30Min uebrig", UasTranslations.formatPlain("de_de", "{0}h {1}m left", 2, 30));
         assertEquals("2h 30m restantes", UasTranslations.formatPlain("fr_fr", "{0}h {1}m left", 2, 30));
         assertEquals("Compte principal de Dev : $10", UasTranslations.formatPlain("fr_fr", "{0} Primary Account: {1}", "Dev", "$10"));
+        assertEquals("Te snel. Probeer opnieuw over 2 seconden.", UasTranslations.formatPlain("nl_nl", "Rate limited. Try again in 2 seconds."));
     }
 
     @Test
