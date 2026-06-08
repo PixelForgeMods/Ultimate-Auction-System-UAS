@@ -2,6 +2,7 @@ package net.austizz.ultimate_auction_system;
 
 import net.austizz.ultimate_auction_system.banking.FakeUasBankingService;
 import net.austizz.ultimate_auction_system.banking.UasBankingResult;
+import net.austizz.ultimate_auction_system.banking.UasItemResult;
 import org.junit.jupiter.api.Test;
 
 import java.math.BigDecimal;
@@ -47,6 +48,35 @@ class AuctionSettlementModelTest {
             assertTrue(Config.salesTaxDestinationAccountId().isEmpty());
         } finally {
             Config.salesTaxDestinationAccountUuid = previousDestination;
+        }
+    }
+
+    @Test
+    void chequePayoutConfigRequiresEnabledWholeDollarPayouts() {
+        boolean previousEnabled = Config.chequePayouts;
+        long previousMinimum = Config.chequePayoutMinimumDollars;
+        String previousSource = Config.chequePayoutSourceAccountUuid;
+        String previousIssuer = Config.chequePayoutIssuerPlayerUuid;
+        UUID sourceAccount = UUID.randomUUID();
+        UUID issuer = UUID.randomUUID();
+        try {
+            Config.chequePayouts = false;
+            Config.chequePayoutMinimumDollars = 100L;
+            Config.chequePayoutSourceAccountUuid = sourceAccount.toString();
+            Config.chequePayoutIssuerPlayerUuid = issuer.toString();
+            assertTrue(Config.chequePayoutSourceAccountId().isPresent());
+            assertEquals(issuer, Config.chequePayoutIssuerPlayerId().orElseThrow());
+            assertTrue(!Config.chequePayoutApplies(new BigDecimal("150")));
+
+            Config.chequePayouts = true;
+            assertTrue(!Config.chequePayoutApplies(new BigDecimal("99")));
+            assertTrue(!Config.chequePayoutApplies(new BigDecimal("150.50")));
+            assertTrue(Config.chequePayoutApplies(new BigDecimal("150")));
+        } finally {
+            Config.chequePayouts = previousEnabled;
+            Config.chequePayoutMinimumDollars = previousMinimum;
+            Config.chequePayoutSourceAccountUuid = previousSource;
+            Config.chequePayoutIssuerPlayerUuid = previousIssuer;
         }
     }
 
@@ -97,5 +127,29 @@ class AuctionSettlementModelTest {
         assertTrue(banking.playerOwnsAccount(playerId, primary));
         assertTrue(banking.playerOwnsAccount(playerId, savings));
         assertTrue(!banking.playerOwnsAccount(playerId, other));
+    }
+
+    @Test
+    void fakeBankingServiceRecordsChequeIssuerRecipientAndDebitsSource() {
+        FakeUasBankingService banking = new FakeUasBankingService();
+        UUID issuerId = UUID.randomUUID();
+        UUID sellerId = UUID.randomUUID();
+        UUID sourceAccountId = banking.createPrimaryAccount(issuerId, new BigDecimal("500"));
+
+        UasItemResult cheque = banking.issueCheque(
+                sourceAccountId,
+                sellerId,
+                125L,
+                issuerId,
+                "Auction Treasury",
+                "Seller"
+        );
+
+        assertTrue(cheque.success());
+        assertEquals(new BigDecimal("375"), banking.getBalance(sourceAccountId).balanceAfter());
+        assertEquals(1, banking.cheques().size());
+        assertEquals(sellerId, banking.cheques().getFirst().recipientPlayerId());
+        assertEquals("Auction Treasury", banking.cheques().getFirst().issuerName());
+        assertEquals("Seller", banking.cheques().getFirst().recipientName());
     }
 }

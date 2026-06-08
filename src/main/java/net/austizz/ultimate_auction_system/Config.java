@@ -37,6 +37,9 @@ public class Config {
     public static final boolean DEFAULT_AUTO_SETTLE_EXPIRED_AUCTIONS = true;
     public static final boolean DEFAULT_PHYSICAL_CASH_LISTING_FEES = false;
     public static final boolean DEFAULT_PHYSICAL_CASH_BUYOUTS = false;
+    public static final boolean DEFAULT_CHEQUE_PAYOUTS = false;
+    public static final long DEFAULT_CHEQUE_PAYOUT_MINIMUM_DOLLARS = 0L;
+    public static final String DEFAULT_CHEQUE_PAYOUT_ISSUER_NAME = "Auction House";
     public static final boolean DEFAULT_AUDIT_REJECTED_BIDS = true;
     public static final boolean DEFAULT_AUDIT_STATE_TRANSITIONS = true;
     public static final boolean DEFAULT_AUDIT_SUSPICIOUS_BID_PATTERNS = true;
@@ -218,6 +221,41 @@ public class Config {
             )
             .define("settlement.physicalCashBuyouts", DEFAULT_PHYSICAL_CASH_BUYOUTS);
 
+    private static final ModConfigSpec.BooleanValue CHEQUE_PAYOUTS = BUILDER
+            .comment(
+                    "When true, seller payouts at or above settlement.chequePayoutMinimumDollars are issued as UBS cheques when possible.",
+                    "Requires settlement.chequePayoutSourceAccountUuid. Default false keeps direct UBS account deposits as the payout path."
+            )
+            .define("settlement.chequePayouts", DEFAULT_CHEQUE_PAYOUTS);
+
+    private static final ModConfigSpec.ConfigValue<String> CHEQUE_PAYOUT_SOURCE_ACCOUNT_UUID = BUILDER
+            .comment(
+                    "UBS account UUID debited when UAS issues seller payout cheques.",
+                    "Leave blank unless settlement.chequePayouts is enabled. Runtime reload: applies to future settlements."
+            )
+            .define("settlement.chequePayoutSourceAccountUuid", "");
+
+    private static final ModConfigSpec.LongValue CHEQUE_PAYOUT_MINIMUM_DOLLARS = BUILDER
+            .comment(
+                    "Minimum whole-dollar net seller payout that uses UBS cheque payout when settlement.chequePayouts is enabled.",
+                    "Set 0 to cheque every whole-dollar seller payout. Fractional-dollar payouts continue through normal account deposit."
+            )
+            .defineInRange("settlement.chequePayoutMinimumDollars", DEFAULT_CHEQUE_PAYOUT_MINIMUM_DOLLARS, 0L, MAX_MONEY_DOLLARS);
+
+    private static final ModConfigSpec.ConfigValue<String> CHEQUE_PAYOUT_ISSUER_PLAYER_UUID = BUILDER
+            .comment(
+                    "Optional player UUID stored as the UBS cheque writer.",
+                    "Leave blank to issue cheques with only settlement.chequePayoutIssuerName as the writer identity."
+            )
+            .define("settlement.chequePayoutIssuerPlayerUuid", "");
+
+    private static final ModConfigSpec.ConfigValue<String> CHEQUE_PAYOUT_ISSUER_NAME = BUILDER
+            .comment(
+                    "Display name stored as the UBS cheque writer when UAS issues seller payout cheques.",
+                    "Runtime reload: applies to future cheque payouts."
+            )
+            .define("settlement.chequePayoutIssuerName", DEFAULT_CHEQUE_PAYOUT_ISSUER_NAME);
+
     private static final ModConfigSpec.BooleanValue AUDIT_REJECTED_BIDS = BUILDER
             .comment(
                     "When true, rejected bid attempts are persisted with reason codes for admin audit flows.",
@@ -339,6 +377,11 @@ public class Config {
     public static boolean autoSettleExpiredAuctions;
     public static boolean physicalCashListingFees = DEFAULT_PHYSICAL_CASH_LISTING_FEES;
     public static boolean physicalCashBuyouts = DEFAULT_PHYSICAL_CASH_BUYOUTS;
+    public static boolean chequePayouts = DEFAULT_CHEQUE_PAYOUTS;
+    public static String chequePayoutSourceAccountUuid = "";
+    public static long chequePayoutMinimumDollars = DEFAULT_CHEQUE_PAYOUT_MINIMUM_DOLLARS;
+    public static String chequePayoutIssuerPlayerUuid = "";
+    public static String chequePayoutIssuerName = DEFAULT_CHEQUE_PAYOUT_ISSUER_NAME;
     public static boolean auditRejectedBids;
     public static boolean auditStateTransitions;
     public static boolean auditSuspiciousBidPatterns = DEFAULT_AUDIT_SUSPICIOUS_BID_PATTERNS;
@@ -382,6 +425,11 @@ public class Config {
         autoSettleExpiredAuctions = readBoolean("settlement.autoSettleExpiredAuctions", AUTO_SETTLE_EXPIRED_AUCTIONS, DEFAULT_AUTO_SETTLE_EXPIRED_AUCTIONS);
         physicalCashListingFees = readBoolean("settlement.physicalCashListingFees", PHYSICAL_CASH_LISTING_FEES, DEFAULT_PHYSICAL_CASH_LISTING_FEES);
         physicalCashBuyouts = readBoolean("settlement.physicalCashBuyouts", PHYSICAL_CASH_BUYOUTS, DEFAULT_PHYSICAL_CASH_BUYOUTS);
+        chequePayouts = readBoolean("settlement.chequePayouts", CHEQUE_PAYOUTS, DEFAULT_CHEQUE_PAYOUTS);
+        chequePayoutSourceAccountUuid = readOptionalUuid("settlement.chequePayoutSourceAccountUuid", CHEQUE_PAYOUT_SOURCE_ACCOUNT_UUID);
+        chequePayoutMinimumDollars = readLong("settlement.chequePayoutMinimumDollars", CHEQUE_PAYOUT_MINIMUM_DOLLARS, DEFAULT_CHEQUE_PAYOUT_MINIMUM_DOLLARS, 0L, MAX_MONEY_DOLLARS);
+        chequePayoutIssuerPlayerUuid = readOptionalUuid("settlement.chequePayoutIssuerPlayerUuid", CHEQUE_PAYOUT_ISSUER_PLAYER_UUID);
+        chequePayoutIssuerName = readString("settlement.chequePayoutIssuerName", CHEQUE_PAYOUT_ISSUER_NAME, DEFAULT_CHEQUE_PAYOUT_ISSUER_NAME);
         auditRejectedBids = readBoolean("audit.rejectedBids", AUDIT_REJECTED_BIDS, DEFAULT_AUDIT_REJECTED_BIDS);
         auditStateTransitions = readBoolean("audit.stateTransitions", AUDIT_STATE_TRANSITIONS, DEFAULT_AUDIT_STATE_TRANSITIONS);
         auditSuspiciousBidPatterns = readBoolean("audit.suspiciousBidPatterns", AUDIT_SUSPICIOUS_BID_PATTERNS, DEFAULT_AUDIT_SUSPICIOUS_BID_PATTERNS);
@@ -446,6 +494,29 @@ public class Config {
             return Optional.of(UUID.fromString(value));
         } catch (IllegalArgumentException ignored) {
             return Optional.empty();
+        }
+    }
+
+    public static Optional<UUID> chequePayoutSourceAccountId() {
+        return parseUuid(chequePayoutSourceAccountUuid);
+    }
+
+    public static Optional<UUID> chequePayoutIssuerPlayerId() {
+        return parseUuid(chequePayoutIssuerPlayerUuid);
+    }
+
+    public static boolean chequePayoutApplies(BigDecimal netPayout) {
+        if (!chequePayouts || netPayout == null || netPayout.compareTo(BigDecimal.ZERO) <= 0) {
+            return false;
+        }
+        if (netPayout.compareTo(BigDecimal.valueOf(Math.max(0L, chequePayoutMinimumDollars))) < 0) {
+            return false;
+        }
+        try {
+            netPayout.setScale(0, RoundingMode.UNNECESSARY).longValueExact();
+            return true;
+        } catch (ArithmeticException exception) {
+            return false;
         }
     }
 
@@ -581,6 +652,51 @@ public class Config {
             lastConfigLoadMessage = "Invalid config value for economy.salesTaxDestinationAccountUuid; using blank money-sink tax destination.";
             SALES_TAX_DESTINATION_ACCOUNT_UUID.set("");
             return "";
+        }
+    }
+
+    private static String readOptionalUuid(String path, ModConfigSpec.ConfigValue<String> value) {
+        try {
+            String raw = value.get();
+            String normalized = raw == null ? "" : raw.trim();
+            if (normalized.isBlank()) {
+                return "";
+            }
+            UUID.fromString(normalized);
+            return normalized;
+        } catch (RuntimeException exception) {
+            lastConfigLoadHealthy = false;
+            lastConfigLoadMessage = "Invalid config value for " + path + "; using blank UUID.";
+            value.set("");
+            return "";
+        }
+    }
+
+    private static String readString(String path, ModConfigSpec.ConfigValue<String> value, String fallback) {
+        try {
+            String resolved = value.get();
+            if (resolved == null || resolved.isBlank()) {
+                value.set(fallback);
+                return fallback;
+            }
+            return resolved.trim();
+        } catch (RuntimeException exception) {
+            lastConfigLoadHealthy = false;
+            lastConfigLoadMessage = "Invalid config value for " + path + "; using safe default.";
+            value.set(fallback);
+            return fallback;
+        }
+    }
+
+    private static Optional<UUID> parseUuid(String raw) {
+        String value = raw == null ? "" : raw.trim();
+        if (value.isBlank()) {
+            return Optional.empty();
+        }
+        try {
+            return Optional.of(UUID.fromString(value));
+        } catch (IllegalArgumentException ignored) {
+            return Optional.empty();
         }
     }
 

@@ -204,6 +204,11 @@ Settlement:
 - `settlement.autoSettleExpiredAuctions`: settle expired auctions automatically, default `true`
 - `settlement.physicalCashListingFees`: allow future command/API paths to pay listing fees with exact UBS bills/coins, default `false`
 - `settlement.physicalCashBuyouts`: allow future command/API paths to pay buyouts with exact UBS bills/coins, default `false`
+- `settlement.chequePayouts`: issue qualifying seller payouts as UBS cheques instead of direct account deposits, default `false`
+- `settlement.chequePayoutSourceAccountUuid`: UBS account debited when UAS creates seller payout cheques, default blank
+- `settlement.chequePayoutMinimumDollars`: minimum whole-dollar net payout that uses cheque payout, default `0`
+- `settlement.chequePayoutIssuerPlayerUuid`: optional UBS cheque writer UUID, default blank
+- `settlement.chequePayoutIssuerName`: display name stored as the UBS cheque writer, default `Auction House`
 - `settlement.retryAttempts`: automatic settlement retry attempts, default `3`
 - `settlement.retryDelaySeconds`: delay between automatic retry attempts, default `60`
 
@@ -255,6 +260,7 @@ UAS uses the selected UBS account in GUI flows and the player's UBS primary acco
 - If a previous-bid refund cannot complete safely, the new bid is rejected and the auction keeps the previous highest bidder.
 - Buyout immediately escrows buyer funds, refunds the previous highest bidder when needed, pays the seller net proceeds, and leaves the item claimable by the buyer.
 - Sales tax is deducted before seller payout.
+- Optional UBS cheque payouts are disabled by default. When enabled and the net seller payout is a qualifying whole-dollar amount, UAS asks UBS to issue a cheque from the configured payout source account and delivers that cheque to the seller instead of duplicating cheque redemption rules.
 - If tax deposit, seller payout, or escrow refund fails, the auction moves to `FAILED_SETTLEMENT` for admin recovery.
 
 ## UBS Reference Format
@@ -286,6 +292,8 @@ Current event types:
 UAS displays money in dollars. UBS remains the source of truth for account balances and settlement.
 
 Optional physical cash settlement support is available for future command/API paths, but it is disabled by default. When enabled for listing fees or buyouts, UAS validates exact UBS bill and coin denominations/counts server-side and calls UBS cash APIs instead of introducing UAS currency items. The normal `/ah` GUI and existing account-based settlement remain the required MVP path.
+
+Optional UBS cheque payouts are also disabled by default. They only apply to whole-dollar net seller payouts at or above `settlement.chequePayoutMinimumDollars`, and require `settlement.chequePayoutSourceAccountUuid` so UAS can debit a real UBS source account. Cheques carry UBS recipient/writer data plus UAS auction reference metadata. If UBS cannot create the cheque or UAS cannot deliver it, the auction moves to `FAILED_SETTLEMENT` for admin recovery instead of silently losing the payout.
 
 ## Developer API
 

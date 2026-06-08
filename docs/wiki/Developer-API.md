@@ -75,6 +75,20 @@ Cash settlement is gated by config:
 
 Both are `false` by default. Existing GUI, command, and API listing/bid/buyout flows continue to use UBS accounts unless a future path explicitly calls the cash settlement service.
 
+## UBS Cheque Payouts
+
+UAS can optionally request UBS cheque issuance for seller payouts. This is a server-owner settlement setting, not a separate public command path:
+
+- `settlement.chequePayouts`
+- `settlement.chequePayoutSourceAccountUuid`
+- `settlement.chequePayoutMinimumDollars`
+- `settlement.chequePayoutIssuerPlayerUuid`
+- `settlement.chequePayoutIssuerName`
+
+The default remains direct account deposit. Cheque payout only applies when enabled, the configured source account UUID is present, and the net seller payout is a whole-dollar amount at or above the configured minimum. UAS passes seller recipient data, amount, issuer identity, and recipient name to UBS, then annotates the returned cheque item with the UAS auction id/reference before delivering it through normal inventory or delivery storage.
+
+Failed cheque creation or failed cheque delivery moves the auction to `FAILED_SETTLEMENT`, records an `AUCTION_PAYOUT` financial event, and keeps the auction available for admin settlement recovery. Cheque loss, redemption, and paper-instrument rules stay owned by UBS.
+
 ## Result Codes
 
 All mutating API calls return `UasAuctionResult`:

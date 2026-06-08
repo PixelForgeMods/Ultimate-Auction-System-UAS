@@ -68,6 +68,13 @@ public interface UasBankingService {
 
     UasCashResult takeCashCoins(UUID playerId, int denominationCents, int coinCount);
 
+    UasItemResult issueCheque(UUID sourceAccountId,
+                              UUID recipientPlayerId,
+                              long amountDollars,
+                              UUID issuerPlayerId,
+                              String issuerName,
+                              String recipientName);
+
     UasAlertResult sendSuccessAlert(UUID playerId, String title, String message, int durationMs);
 
     UasAlertResult sendErrorAlert(UUID playerId, String title, String message, int durationMs);

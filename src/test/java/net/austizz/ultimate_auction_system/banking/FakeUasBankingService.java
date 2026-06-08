@@ -18,6 +18,15 @@ public final class FakeUasBankingService implements UasBankingService {
     public record CashMutation(UUID playerId, UasCashKind kind, int denomination, int count, String type, boolean success) {
     }
 
+    public record Cheque(UUID sourceAccountId,
+                         UUID recipientPlayerId,
+                         long amountDollars,
+                         UUID issuerPlayerId,
+                         String issuerName,
+                         String recipientName,
+                         boolean success) {
+    }
+
     private final Map<UUID, UUID> primaryAccounts = new HashMap<>();
     private final Map<UUID, UasAccountSnapshot> accounts = new HashMap<>();
     private final Map<UUID, Map<Integer, Integer>> cashBills = new HashMap<>();
@@ -25,12 +34,14 @@ public final class FakeUasBankingService implements UasBankingService {
     private final List<Alert> alerts = new ArrayList<>();
     private final List<Transaction> transactions = new ArrayList<>();
     private final List<CashMutation> cashMutations = new ArrayList<>();
+    private final List<Cheque> cheques = new ArrayList<>();
     private String nextFailureReason;
     private String nextDepositFailureReason;
     private String nextWithdrawFailureReason;
     private String nextCashTakeFailureReason;
     private String nextCashCoinTakeFailureReason;
     private String nextCashGiveFailureReason;
+    private String nextChequeFailureReason;
 
     public UUID createPrimaryAccount(UUID playerId, BigDecimal balance) {
         UUID accountId = UUID.randomUUID();
@@ -89,6 +100,10 @@ public final class FakeUasBankingService implements UasBankingService {
         this.nextCashGiveFailureReason = reason == null || reason.isBlank() ? "Forced cash give failure" : reason;
     }
 
+    public void failNextCheque(String reason) {
+        this.nextChequeFailureReason = reason == null || reason.isBlank() ? "Forced cheque failure" : reason;
+    }
+
     public void setCashBills(UUID playerId, int denomination, int count) {
         setCash(cashBills, playerId, denomination, count);
     }
@@ -107,6 +122,10 @@ public final class FakeUasBankingService implements UasBankingService {
 
     public List<CashMutation> cashMutations() {
         return List.copyOf(cashMutations);
+    }
+
+    public List<Cheque> cheques() {
+        return List.copyOf(cheques);
     }
 
     @Override
@@ -293,6 +312,32 @@ public final class FakeUasBankingService implements UasBankingService {
     @Override
     public UasCashResult takeCashCoins(UUID playerId, int denominationCents, int coinCount) {
         return adjustCash(cashCoins, playerId, UasCashKind.COIN, denominationCents, coinCount, "TAKE", false);
+    }
+
+    @Override
+    public UasItemResult issueCheque(UUID sourceAccountId,
+                                     UUID recipientPlayerId,
+                                     long amountDollars,
+                                     UUID issuerPlayerId,
+                                     String issuerName,
+                                     String recipientName) {
+        if (nextChequeFailureReason != null) {
+            String reason = nextChequeFailureReason;
+            nextChequeFailureReason = null;
+            cheques.add(new Cheque(sourceAccountId, recipientPlayerId, amountDollars, issuerPlayerId, issuerName, recipientName, false));
+            return UasItemResult.fail(reason);
+        }
+        if (sourceAccountId == null || recipientPlayerId == null || amountDollars <= 0) {
+            cheques.add(new Cheque(sourceAccountId, recipientPlayerId, amountDollars, issuerPlayerId, issuerName, recipientName, false));
+            return UasItemResult.fail("Invalid cheque request");
+        }
+        UasBankingResult debit = withdraw(sourceAccountId, BigDecimal.valueOf(amountDollars), "FAKE_CHEQUE");
+        if (!debit.success()) {
+            cheques.add(new Cheque(sourceAccountId, recipientPlayerId, amountDollars, issuerPlayerId, issuerName, recipientName, false));
+            return UasItemResult.fail(debit.reason());
+        }
+        cheques.add(new Cheque(sourceAccountId, recipientPlayerId, amountDollars, issuerPlayerId, issuerName, recipientName, true));
+        return UasItemResult.ok(null, "fake-cheque-" + cheques.size(), BigDecimal.valueOf(amountDollars));
     }
 
     @Override

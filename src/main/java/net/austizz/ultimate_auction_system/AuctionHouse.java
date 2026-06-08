@@ -5,11 +5,13 @@ import net.austizz.ultimate_auction_system.api.event.UasAuctionEvents;
 import net.austizz.ultimate_auction_system.banking.UasAlertResult;
 import net.austizz.ultimate_auction_system.banking.UasBankingResult;
 import net.austizz.ultimate_auction_system.banking.UasBankingService;
+import net.austizz.ultimate_auction_system.banking.UasItemResult;
 import net.austizz.ultimate_auction_system.banking.UbsBankingService;
 import net.austizz.ultimate_auction_system.banking.UasAccountSnapshot;
 import net.austizz.ultimate_auction_system.banking.UasMoneyFormatter;
 import net.austizz.ultimate_auction_system.i18n.UasTranslations;
 import net.minecraft.ChatFormatting;
+import net.minecraft.core.component.DataComponents;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.network.chat.ClickEvent;
@@ -23,6 +25,7 @@ import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.tags.TagKey;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.component.CustomData;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.ModList;
 import net.neoforged.neoforge.common.NeoForge;
@@ -1381,6 +1384,38 @@ public class AuctionHouse {
         ));
     }
 
+    private AuctionFinancialEvent recordItemEvent(AuctionItem item,
+                                                  String eventType,
+                                                  BigDecimal amount,
+                                                  String reference,
+                                                  UasItemResult result) {
+        AuctionFinancialEvent event = new AuctionFinancialEvent(
+                UUID.randomUUID(),
+                item == null ? null : item.getAuctionId(),
+                eventType,
+                reference,
+                amount,
+                result != null && result.success(),
+                null,
+                itemResultMessage(result),
+                LocalDateTime.now()
+        );
+        if (item != null) {
+            item.recordFinancialEvent(event);
+        }
+        return event;
+    }
+
+    private String itemResultMessage(UasItemResult result) {
+        if (result == null) {
+            return "UBS returned no item result";
+        }
+        if (!result.success()) {
+            return result.reason();
+        }
+        return result.referenceId().isBlank() ? "ok" : "ok:" + result.referenceId();
+    }
+
     private void alertOnlineAdmins(String title, String message, String tone, Object... args) {
         MinecraftServer server = ServerLifecycleHooks.getCurrentServer();
         if (server == null || message == null || message.isBlank()) {
@@ -2497,6 +2532,10 @@ public class AuctionHouse {
             return taxSettlement;
         }
 
+        if (Config.chequePayoutApplies(net)) {
+            return settleSellerChequePayout(item, net, payoutReference, gross, salesTax);
+        }
+
         UasBankingResult deposit = net.compareTo(BigDecimal.ZERO) > 0
                 ? bankingService.deposit(sellerAccountId, net, payoutReference)
                 : UasBankingResult.ok(BigDecimal.ZERO, null, payoutReference);
@@ -2515,6 +2554,91 @@ public class AuctionHouse {
         sendAuctionAlert(item.getPlayerId(), "Auction Payout", "Auction {0}: {1} payout: gross {2}, tax {3}, fees {4}, net {5}.", "SUCCESS", args);
         sendAuctionChatMessage(item.getPlayerId(), "Auction {0}: {1} payout: gross {2}, tax {3}, fees {4}, net {5}.", ChatFormatting.GREEN, args, openAhAction(), myAuctionsAction());
         return SettlementResult.ok("Auction payout settled.", gross, salesTax, net);
+    }
+
+    private SettlementResult settleSellerChequePayout(AuctionItem item,
+                                                      BigDecimal net,
+                                                      String payoutReference,
+                                                      BigDecimal gross,
+                                                      BigDecimal salesTax) {
+        UUID auctionId = item.getAuctionId();
+        Optional<UUID> sourceAccountId = Config.chequePayoutSourceAccountId();
+        if (sourceAccountId.isEmpty()) {
+            UasItemResult failure = UasItemResult.fail("Cheque payout source account is not configured");
+            recordItemEvent(item, EVENT_AUCTION_PAYOUT, net, payoutReference, failure);
+            item.transitionTo(AuctionState.FAILED_SETTLEMENT, "UBS cheque payout source account is not configured");
+            postSettlementFailedEvent(item, "UBS cheque payout source account is not configured");
+            alertOnlineAdmins("Auction Settlement Failed", "Auction {0} cheque payout failed: {1}", "ERROR", auctionId, failure.reason());
+            return SettlementResult.fail("Auction settlement failed: " + failure.reason(), gross, salesTax, net);
+        }
+
+        Long wholeDollars = wholeDollars(net);
+        if (wholeDollars == null || wholeDollars <= 0L) {
+            UasItemResult failure = UasItemResult.fail("Cheque payout requires a positive whole-dollar net payout");
+            recordItemEvent(item, EVENT_AUCTION_PAYOUT, net, payoutReference, failure);
+            item.transitionTo(AuctionState.FAILED_SETTLEMENT, "UBS cheque payout requires a positive whole-dollar amount");
+            postSettlementFailedEvent(item, "UBS cheque payout requires a positive whole-dollar amount");
+            alertOnlineAdmins("Auction Settlement Failed", "Auction {0} cheque payout failed: {1}", "ERROR", auctionId, failure.reason());
+            return SettlementResult.fail("Auction settlement failed: " + failure.reason(), gross, salesTax, net);
+        }
+
+        UUID sellerId = item.getPlayerId();
+        String sellerName = playerName(sellerId);
+        AuctionDeliverySavedData deliveryData;
+        try {
+            deliveryData = AuctionDeliverySavedData.get(ServerLifecycleHooks.getCurrentServer());
+        } catch (RuntimeException exception) {
+            UasItemResult failure = UasItemResult.fail("Cheque delivery storage unavailable: " + exception.getMessage());
+            recordItemEvent(item, EVENT_AUCTION_PAYOUT, net, payoutReference, failure);
+            item.transitionTo(AuctionState.FAILED_SETTLEMENT, "UBS cheque delivery storage unavailable: " + exception.getMessage());
+            postSettlementFailedEvent(item, "UBS cheque delivery storage unavailable: " + exception.getMessage());
+            alertOnlineAdmins("Auction Settlement Failed", "Auction {0} cheque delivery failed: {1}", "ERROR", auctionId, exception.getMessage());
+            return SettlementResult.fail("Auction settlement failed: " + failure.reason(), gross, salesTax, net);
+        }
+
+        UasItemResult cheque = bankingService.issueCheque(
+                sourceAccountId.get(),
+                sellerId,
+                wholeDollars,
+                Config.chequePayoutIssuerPlayerId().orElse(null),
+                Config.chequePayoutIssuerName,
+                sellerName
+        );
+        ItemStack issuedCheque = cheque.itemStack();
+        if (!cheque.success() || issuedCheque == null || issuedCheque.isEmpty()) {
+            UasItemResult failure = cheque.success() && (issuedCheque == null || issuedCheque.isEmpty())
+                    ? UasItemResult.fail("UBS returned an empty cheque item")
+                    : cheque;
+            recordItemEvent(item, EVENT_AUCTION_PAYOUT, net, payoutReference, failure);
+            item.transitionTo(AuctionState.FAILED_SETTLEMENT, "UBS cheque payout failed: " + failure.reason());
+            postSettlementFailedEvent(item, "UBS cheque payout failed: " + failure.reason());
+            alertOnlineAdmins("Auction Settlement Failed", "Auction {0} cheque payout failed: {1}", "ERROR", auctionId, failure.reason());
+            return SettlementResult.fail("Auction settlement failed: " + failure.reason(), gross, salesTax, net);
+        }
+
+        ItemStack chequeStack = annotateCheque(issuedCheque, auctionId, payoutReference, wholeDollars);
+        try {
+            giveOrDeliver(sellerId, chequeStack, deliveryData, auctionId, "UBS cheque payout");
+        } catch (RuntimeException exception) {
+            UasItemResult failure = UasItemResult.fail("Cheque delivery failed: " + exception.getMessage());
+            recordItemEvent(item, EVENT_AUCTION_PAYOUT, net, payoutReference, failure);
+            item.transitionTo(AuctionState.FAILED_SETTLEMENT, "UBS cheque delivery failed: " + exception.getMessage());
+            postSettlementFailedEvent(item, "UBS cheque delivery failed: " + exception.getMessage());
+            alertOnlineAdmins("Auction Settlement Failed", "Auction {0} cheque delivery failed: {1}", "ERROR", auctionId, exception.getMessage());
+            return SettlementResult.fail("Auction settlement failed: " + failure.reason(), gross, salesTax, net);
+        }
+
+        recordItemEvent(item, EVENT_AUCTION_PAYOUT, net, payoutReference, cheque);
+        item.getWinningBidRecord().ifPresent(record -> record.linkSettlement(
+                payoutReference,
+                UasBankingResult.ok(BigDecimal.ZERO, null, payoutReference)
+        ));
+        BigDecimal fees = successfulFinancialEventAmount(item, EVENT_LISTING_FEE)
+                .add(successfulFinancialEventAmount(item, EVENT_CANCELLATION_FEE));
+        Object[] args = {auctionId, itemName(item), moneyLabel(gross), moneyLabel(salesTax), moneyLabel(fees), cheque.referenceId().isBlank() ? payoutReference : cheque.referenceId()};
+        sendAuctionAlert(sellerId, "Auction Payout", "Auction {0}: {1} cheque payout: gross {2}, tax {3}, fees {4}, cheque {5}.", "SUCCESS", args);
+        sendAuctionChatMessage(sellerId, "Auction {0}: {1} cheque payout: gross {2}, tax {3}, fees {4}, cheque {5}.", ChatFormatting.GREEN, args, openAhAction(), deliveryAction());
+        return SettlementResult.ok("Auction cheque payout settled.", gross, salesTax, net);
     }
 
     private SettlementResult settleSalesTax(AuctionItem item, BigDecimal salesTax, BigDecimal gross, BigDecimal net) {
@@ -2556,6 +2680,33 @@ public class AuctionHouse {
                 .filter(event -> event != null && event.success() && normalized.equals(event.type()))
                 .map(AuctionFinancialEvent::amount)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
+    }
+
+    private Long wholeDollars(BigDecimal amount) {
+        if (amount == null) {
+            return null;
+        }
+        try {
+            return amount.setScale(0, java.math.RoundingMode.UNNECESSARY).longValueExact();
+        } catch (ArithmeticException exception) {
+            return null;
+        }
+    }
+
+    private ItemStack annotateCheque(ItemStack rawCheque, UUID auctionId, String payoutReference, long wholeDollars) {
+        ItemStack cheque = rawCheque == null ? ItemStack.EMPTY : rawCheque.copy();
+        if (cheque.isEmpty()) {
+            return cheque;
+        }
+        CustomData existing = cheque.get(DataComponents.CUSTOM_DATA);
+        net.minecraft.nbt.CompoundTag tag = existing == null ? new net.minecraft.nbt.CompoundTag() : existing.copyTag();
+        if (auctionId != null) {
+            tag.putUUID("uas_auction_id", auctionId);
+        }
+        tag.putString("uas_auction_reference", payoutReference == null ? "" : payoutReference);
+        tag.putLong("uas_cheque_payout_dollars", wholeDollars);
+        cheque.set(DataComponents.CUSTOM_DATA, CustomData.of(tag));
+        return cheque;
     }
 
     private void giveOrDeliver(ServerPlayer player,

@@ -3,6 +3,7 @@ package net.austizz.ultimate_auction_system.banking;
 import net.austizz.ultimatebankingsystem.api.ApiAccountSnapshot;
 import net.austizz.ultimatebankingsystem.api.ApiAlertResult;
 import net.austizz.ultimatebankingsystem.api.ApiCashResult;
+import net.austizz.ultimatebankingsystem.api.ApiItemResult;
 import net.austizz.ultimatebankingsystem.api.ApiResult;
 import net.austizz.ultimatebankingsystem.api.ApiTransactionResult;
 import net.austizz.ultimatebankingsystem.api.UltimateBankingApi;
@@ -224,6 +225,26 @@ public final class UbsBankingService implements UasBankingService {
     }
 
     @Override
+    public UasItemResult issueCheque(UUID sourceAccountId,
+                                     UUID recipientPlayerId,
+                                     long amountDollars,
+                                     UUID issuerPlayerId,
+                                     String issuerName,
+                                     String recipientName) {
+        if (api == null) {
+            return UasItemResult.fail("UBS API is unavailable");
+        }
+        return fromItemResult(api.issueCheque(
+                sourceAccountId,
+                recipientPlayerId,
+                amountDollars,
+                issuerPlayerId,
+                issuerName,
+                recipientName
+        ));
+    }
+
+    @Override
     public UasAlertResult sendSuccessAlert(UUID playerId, String title, String message, int durationMs) {
         return sendAlert(playerId, title, message, durationMs, "SUCCESS");
     }
@@ -268,6 +289,15 @@ public final class UbsBankingService implements UasBankingService {
         return result.success()
                 ? UasCashResult.ok(kind, result.denomination(), result.billCount())
                 : UasCashResult.fail(result.reason(), kind, result.denomination(), result.billCount());
+    }
+
+    private UasItemResult fromItemResult(ApiItemResult result) {
+        if (result == null) {
+            return UasItemResult.fail("UBS returned no item result");
+        }
+        return result.success()
+                ? UasItemResult.ok(result.itemStack(), result.referenceId(), result.amount())
+                : UasItemResult.fail(result.reason());
     }
 
     private UasAccountSnapshot fromSnapshot(ApiAccountSnapshot snapshot) {
