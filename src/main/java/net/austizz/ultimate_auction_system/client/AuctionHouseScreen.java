@@ -684,7 +684,7 @@ public class AuctionHouseScreen extends Screen {
         });
         addRenderableWidget(bidBox);
 
-        addAuctionButton(x + modalW - 20 - minW, inputY + 16, minW, 24, Component.literal("MIN"), AuctionButton.Style.GRAY, button -> {
+        addAuctionButton(x + modalW - 20 - minW, inputY + 16, minW, 24, Component.translatable("MIN"), AuctionButton.Style.GRAY, button -> {
             bidDraft = nextBidValue(selectedAuction);
             bidBox.setValue(bidDraft);
             bidReviewFresh = false;
@@ -718,7 +718,7 @@ public class AuctionHouseScreen extends Screen {
 
         if (createSelectionIsBundle()) {
             int titleY = y + (compact ? 274 : 190) - scroll;
-            bundleTitleBox = new AuctionEditBox(font, x + 20, titleY, modalW - 40, 22, Component.literal("Bundle Title"));
+            bundleTitleBox = new AuctionEditBox(font, x + 20, titleY, modalW - 40, 22, Component.translatable("Bundle Title"));
             bundleTitleBox.setHint(Component.literal(generatedSelectedBundleTitle()));
             bundleTitleBox.setValue(bundleTitleDraft);
             bundleTitleBox.setResponder(value -> bundleTitleDraft = value);
@@ -886,8 +886,8 @@ public class AuctionHouseScreen extends Screen {
     private void addAdminPlayerWidgets() {
         int searchY = contentTop + 8;
         int searchW = Math.max(120, contentWidth - 18);
-        adminSearchBox = new AuctionEditBox(font, contentLeft, searchY, searchW, 22, Component.literal("Search Players"));
-        adminSearchBox.setHint(Component.literal("Search player or UUID"));
+        adminSearchBox = new AuctionEditBox(font, contentLeft, searchY, searchW, 22, Component.translatable("Search Players"));
+        adminSearchBox.setHint(Component.translatable("Search player or UUID"));
         adminSearchBox.setValue(adminSearchDraft);
         adminSearchBox.setResponder(value -> {
             adminSearchDraft = value;
@@ -920,15 +920,15 @@ public class AuctionHouseScreen extends Screen {
             int formLeft = contentLeft + 6;
             int formRight = contentLeft + contentWidth - 16;
             int reasonW = Math.max(120, (formRight - formLeft) / 2 - 8);
-            adminBanReasonBox = new AuctionEditBox(font, formLeft, boxTop, reasonW, 22, Component.literal("Reason"));
-            adminBanReasonBox.setHint(Component.literal("Reason"));
+            adminBanReasonBox = new AuctionEditBox(font, formLeft, boxTop, reasonW, 22, Component.translatable("Reason"));
+            adminBanReasonBox.setHint(Component.translatable("Reason"));
             adminBanReasonBox.setValue(adminBanReasonDraft);
             adminBanReasonBox.setResponder(value -> adminBanReasonDraft = value);
             addRenderableWidget(adminBanReasonBox);
 
             int expiryX = formLeft + reasonW + 10;
-            adminBanExpiryBox = new AuctionEditBox(font, expiryX, boxTop, Math.max(120, formRight - expiryX), 22, Component.literal("Expires"));
-            adminBanExpiryBox.setHint(Component.literal("Expires: 2026-06-06T18:30 or blank"));
+            adminBanExpiryBox = new AuctionEditBox(font, expiryX, boxTop, Math.max(120, formRight - expiryX), 22, Component.translatable("Expires"));
+            adminBanExpiryBox.setHint(Component.translatable("Expires: 2026-06-06T18:30 or blank"));
             adminBanExpiryBox.setValue(adminBanExpiryDraft);
             adminBanExpiryBox.setResponder(value -> adminBanExpiryDraft = value);
             addRenderableWidget(adminBanExpiryBox);
@@ -956,7 +956,7 @@ public class AuctionHouseScreen extends Screen {
 
     private void addAdminBannedEntryWidgets() {
         int inputW = Math.max(120, contentWidth - 128);
-        adminBannedEntryBox = new AuctionEditBox(font, contentLeft, contentTop + 8, inputW, 22, Component.literal("Banned Entry"));
+        adminBannedEntryBox = new AuctionEditBox(font, contentLeft, contentTop + 8, inputW, 22, Component.translatable("Banned Entry"));
         adminBannedEntryBox.setHint(Component.literal("minecraft:bedrock, #minecraft:shulker_boxes, @modid"));
         adminBannedEntryBox.setValue(adminBannedEntryDraft);
         adminBannedEntryBox.setResponder(value -> adminBannedEntryDraft = value);
@@ -1093,8 +1093,8 @@ public class AuctionHouseScreen extends Screen {
         addRenderableWidget(endMinuteBox);
         addAuctionButton(minuteX, downY, minuteW, arrowH, Component.literal("v"), AuctionButton.Style.GRAY, button -> adjustSelectedMinute(-1));
 
-        addInvisibleButton(periodX, inputY - 12, 42, 22, Component.literal("AM"), button -> setSelectedPeriod(false));
-        addInvisibleButton(periodX, inputY + 18, 42, 22, Component.literal("PM"), button -> setSelectedPeriod(true));
+        addInvisibleButton(periodX, inputY - 12, 42, 22, Component.translatable("AM"), button -> setSelectedPeriod(false));
+        addInvisibleButton(periodX, inputY + 18, 42, 22, Component.translatable("PM"), button -> setSelectedPeriod(true));
     }
 
     private int modalWidth() {
@@ -1184,7 +1184,7 @@ public class AuctionHouseScreen extends Screen {
     private String endDateDisplay() {
         LocalDateTime end = selectedEndDateTime();
         String month = end.getMonth().getDisplayName(TextStyle.SHORT, Locale.ROOT);
-        return month + " " + end.getDayOfMonth() + ", " + timeLabel(end.getHour(), end.getMinute());
+        return Component.translatable("{0} {1}, {2}", Component.translatable(month), end.getDayOfMonth(), timeLabel(end.getHour(), end.getMinute())).getString();
     }
 
     private String timeLabel(int hour, int minute) {
@@ -1192,7 +1192,7 @@ public class AuctionHouseScreen extends Screen {
         if (displayHour == 0) {
             displayHour = 12;
         }
-        return displayHour + ":" + twoDigit(minute) + " " + (hour < 12 ? "AM" : "PM");
+        return Component.translatable("{0}:{1} {2}", displayHour, twoDigit(minute), Component.translatable(hour < 12 ? "AM" : "PM")).getString();
     }
 
     private String twoDigit(int value) {
@@ -1471,24 +1471,24 @@ public class AuctionHouseScreen extends Screen {
             return "";
         }
         if (bidReviewPending) {
-            return "Refreshing UBS account snapshot...";
+            return Component.translatable("Refreshing UBS account snapshot...").getString();
         }
         if (!payload.account().present()) {
-            return "UBS account unavailable.";
+            return Component.translatable("UBS account unavailable.").getString();
         }
         if (payload.account().frozen()) {
-            return "UBS account is frozen.";
+            return Component.translatable("UBS account is frozen.").getString();
         }
         if (moneyDraft(bidDraft).compareTo(moneyDraft(nextBidValue(selectedAuction))) < 0) {
-            return "Bid is below the minimum.";
+            return Component.translatable("Bid is below the minimum.").getString();
         }
         BigDecimal remaining = bidRemainingBalance();
         if (remaining.compareTo(BigDecimal.ZERO) < 0) {
-            return "Insufficient funds by " + moneyDisplay(remaining.abs()) + ".";
+            return Component.translatable("Insufficient funds by {0}.", moneyDisplay(remaining.abs())).getString();
         }
         return bidReviewFresh && bidReviewMatchesCurrent()
-                ? "Account refreshed. Confirm to submit."
-                : "Review refreshes your UBS balance before submitting.";
+                ? Component.translatable("Account refreshed. Confirm to submit.").getString()
+                : Component.translatable("Review refreshes your UBS balance before submitting.").getString();
     }
 
     private int bidReviewStatusColor() {
@@ -1509,7 +1509,7 @@ public class AuctionHouseScreen extends Screen {
 
     private String bidAccountLabel() {
         if (!payload.account().present()) {
-            return "No UBS account";
+            return Component.translatable("No UBS account").getString();
         }
         String type = payload.account().accountTypeLabel() == null || payload.account().accountTypeLabel().isBlank()
                 ? "UBS account"
@@ -1736,10 +1736,10 @@ public class AuctionHouseScreen extends Screen {
             return;
         }
         graphics.fill(panelLeft + 10, panelTop + 10, panelLeft + panelWidth - 10, panelTop + headerHeight - 10, 0xFF565656);
-        graphics.drawString(font, Component.literal(payload.adminMode() ? "ADMIN AUCTIONS" : "AUCTION HOUSE").withStyle(ChatFormatting.BOLD), panelLeft + 18, panelTop + 20, 0xFFFFAA00, false);
+        graphics.drawString(font, Component.translatable(payload.adminMode() ? "ADMIN AUCTIONS" : "AUCTION HOUSE").withStyle(ChatFormatting.BOLD), panelLeft + 18, panelTop + 20, 0xFFFFAA00, false);
         int accountY = panelWidth < 760 ? panelTop + 31 : panelTop + 42;
         if (payload.account().present()) {
-            graphics.drawString(font, Component.literal(payload.account().accountTypeLabel() + " " + payload.account().balance()), panelLeft + 18, accountY, 0xFF55FF55, false);
+            graphics.drawString(font, Component.translatable("{0} Primary Account: {1}", localPlayerName(), payload.account().balance()), panelLeft + 18, accountY, 0xFF55FF55, false);
         } else {
             graphics.drawString(font, Component.translatable("No UBS account"), panelLeft + 18, accountY, 0xFFFF5555, false);
         }
@@ -1753,12 +1753,19 @@ public class AuctionHouseScreen extends Screen {
         // Filters are opened from the header as a scrollable side modal.
     }
 
+    private String localPlayerName() {
+        if (minecraft != null && minecraft.player != null) {
+            return minecraft.player.getName().getString();
+        }
+        return Component.translatable("Player").getString();
+    }
+
     private void renderAdminHeader(GuiGraphics graphics) {
         graphics.fill(panelLeft + 10, panelTop + 10, panelLeft + panelWidth - 10, panelTop + headerHeight - 10, 0xFF202020);
         graphics.fill(panelLeft + 14, panelTop + 14, panelLeft + panelWidth - 14, panelTop + 58, 0xFF303030);
-        graphics.drawString(font, Component.literal("UAS ADMIN DASHBOARD").withStyle(ChatFormatting.BOLD), panelLeft + 22, panelTop + 22, 0xFFFFAA00, false);
-        graphics.drawString(font, Component.literal(adminSection.label), panelLeft + 22, panelTop + 40, 0xFFE0E0E0, false);
-        String generated = adminDashboard().generatedAt().isBlank() ? "" : "Updated " + readableDateTime(adminDashboard().generatedAt());
+        graphics.drawString(font, Component.translatable("UAS ADMIN DASHBOARD").withStyle(ChatFormatting.BOLD), panelLeft + 22, panelTop + 22, 0xFFFFAA00, false);
+        graphics.drawString(font, Component.translatable(adminSection.label), panelLeft + 22, panelTop + 40, 0xFFE0E0E0, false);
+        String generated = adminDashboard().generatedAt().isBlank() ? "" : Component.translatable("Updated {0}", readableDateTime(adminDashboard().generatedAt())).getString();
         graphics.drawString(font, Component.literal(trimToWidth(generated, Math.max(80, panelWidth / 3))), panelLeft + Math.max(210, panelWidth / 3), panelTop + 40, 0xFF9E9E9E, false);
         if (!payload.message().isBlank()) {
             String message = trimToWidth(Component.translatable(payload.message()).getString(), panelWidth - 40);
@@ -1792,7 +1799,7 @@ public class AuctionHouseScreen extends Screen {
         y += adminStatsGridHeight(true) + 18;
         hoverText = renderAdminEconomyChart(graphics, contentLeft + 12, y, contentWidth - 24, 156, mouseX, mouseY);
         y += 174;
-        graphics.drawString(font, Component.literal("Moderation Queues").withStyle(ChatFormatting.BOLD), contentLeft + 12, y, 0xFFFFFFFF, false);
+        graphics.drawString(font, Component.translatable("Moderation Queues").withStyle(ChatFormatting.BOLD), contentLeft + 12, y, 0xFFFFFFFF, false);
         y += 20;
         y = renderAdminQueuePreview(graphics, "Now Restricted", adminDashboard().restrictedListings(), y);
         y = renderAdminQueuePreview(graphics, "Failed Settlements", adminDashboard().failedSettlements(), y + 8);
@@ -1819,10 +1826,10 @@ public class AuctionHouseScreen extends Screen {
 
     private String renderAdminEconomyChart(GuiGraphics graphics, int x, int y, int w, int h, int mouseX, int mouseY) {
         renderAdminCard(graphics, x, y, w, h);
-        graphics.drawString(font, Component.literal("Economy Flow").withStyle(ChatFormatting.BOLD), x + 10, y + 10, 0xFFFFAA00, false);
+        graphics.drawString(font, Component.translatable("Economy Flow").withStyle(ChatFormatting.BOLD), x + 10, y + 10, 0xFFFFAA00, false);
         List<AuctionAdminDashboardPayload.Stats> stats = adminDashboard().stats();
         if (stats.isEmpty()) {
-            graphics.drawString(font, Component.literal("No economy data yet"), x + 10, y + 34, 0xFFBDBDBD, false);
+            graphics.drawString(font, Component.translatable("No economy data yet"), x + 10, y + 34, 0xFFBDBDBD, false);
             return null;
         }
 
@@ -1849,7 +1856,7 @@ public class AuctionHouseScreen extends Screen {
         for (int i = 0; i < stats.size(); i++) {
             AuctionAdminDashboardPayload.Stats stat = stats.get(i);
             int statY = rowTop + i * rowH;
-            graphics.drawString(font, Component.literal(trimToWidth(stat.label(), labelW)), x + 10, statY + 8, 0xFFE0E0E0, false);
+            graphics.drawString(font, Component.literal(trimToWidth(Component.translatable(stat.label()).getString(), labelW)), x + 10, statY + 8, 0xFFE0E0E0, false);
             List<ChartMetric> metrics = economyMetrics(stat);
             int barH = Math.max(3, Math.min(5, (rowH - 8) / Math.max(1, metrics.size())));
             int gap = Math.max(2, (rowH - 8 - metrics.size() * barH) / Math.max(1, metrics.size()));
@@ -1865,7 +1872,7 @@ public class AuctionHouseScreen extends Screen {
                 graphics.fill(barX, metricY, barX + Math.min(barW, valueW), metricY + barH, metric.color());
                 if (mouseX >= barX && mouseX <= barX + barW && mouseY >= metricY && mouseY <= metricY + barH
                         && mouseY >= contentTop && mouseY <= contentTop + contentHeight) {
-                    hoverText = stat.label() + " " + metric.label() + ": " + metric.display();
+                    hoverText = Component.translatable("{0} {1}: {2}", Component.translatable(stat.label()), Component.translatable(metric.label()), metric.display()).getString();
                 }
                 metricY += barH + gap;
             }
@@ -1875,8 +1882,9 @@ public class AuctionHouseScreen extends Screen {
 
     private int renderChartLegend(GuiGraphics graphics, int x, int y, String label, int color) {
         graphics.fill(x, y + 2, x + 8, y + 10, color);
-        graphics.drawString(font, Component.literal(label), x + 12, y + 2, 0xFFBDBDBD, false);
-        return x + 12 + font.width(label);
+        String translated = Component.translatable(label).getString();
+        graphics.drawString(font, Component.literal(translated), x + 12, y + 2, 0xFFBDBDBD, false);
+        return x + 12 + font.width(translated);
     }
 
     private List<ChartMetric> economyMetrics(AuctionAdminDashboardPayload.Stats stat) {
@@ -1900,15 +1908,15 @@ public class AuctionHouseScreen extends Screen {
             int cardX = x + col * (cardW + 8);
             int cardY = y + row * (cardH + 10);
             renderAdminCard(graphics, cardX, cardY, cardW, cardH);
-            graphics.drawString(font, Component.literal(stat.label()).withStyle(ChatFormatting.BOLD), cardX + 10, cardY + 10, 0xFFFFAA00, false);
-            graphics.drawString(font, Component.literal("Created " + stat.auctionsCreated() + "  Active " + stat.activeAuctions()), cardX + 10, cardY + 28, 0xFFE0E0E0, false);
-            graphics.drawString(font, Component.literal("Sold " + stat.soldAuctions() + "  Cancelled " + stat.cancelledAuctions()), cardX + 10, cardY + 42, 0xFFBDBDBD, false);
-            graphics.drawString(font, Component.literal("Bids " + stat.bidVolume()), cardX + 10, cardY + 58, 0xFFFFD700, false);
-            graphics.drawString(font, Component.literal("Sales " + stat.soldValue()), cardX + 10, cardY + 72, 0xFF55FF55, false);
+            graphics.drawString(font, Component.translatable(stat.label()).withStyle(ChatFormatting.BOLD), cardX + 10, cardY + 10, 0xFFFFAA00, false);
+            graphics.drawString(font, Component.translatable("Created {0}  Active {1}", stat.auctionsCreated(), stat.activeAuctions()), cardX + 10, cardY + 28, 0xFFE0E0E0, false);
+            graphics.drawString(font, Component.translatable("Sold {0}  Cancelled {1}", stat.soldAuctions(), stat.cancelledAuctions()), cardX + 10, cardY + 42, 0xFFBDBDBD, false);
+            graphics.drawString(font, Component.translatable("Bids {0}", stat.bidVolume()), cardX + 10, cardY + 58, 0xFFFFD700, false);
+            graphics.drawString(font, Component.translatable("Sales {0}", stat.soldValue()), cardX + 10, cardY + 72, 0xFF55FF55, false);
             if (!compact) {
-                graphics.drawString(font, Component.literal("Fees " + stat.estimatedListingFees()), cardX + 10, cardY + 90, 0xFFFFD700, false);
-                graphics.drawString(font, Component.literal("Tax " + stat.estimatedSalesTax()), cardX + 10, cardY + 104, 0xFFFFD700, false);
-                graphics.drawString(font, Component.literal("Avg " + stat.averageSale()), cardX + 10, cardY + 118, 0xFFE0E0E0, false);
+                graphics.drawString(font, Component.translatable("Fees {0}", stat.estimatedListingFees()), cardX + 10, cardY + 90, 0xFFFFD700, false);
+                graphics.drawString(font, Component.translatable("Tax {0}", stat.estimatedSalesTax()), cardX + 10, cardY + 104, 0xFFFFD700, false);
+                graphics.drawString(font, Component.translatable("Avg {0}", stat.averageSale()), cardX + 10, cardY + 118, 0xFFE0E0E0, false);
             }
         }
     }
@@ -1921,19 +1929,21 @@ public class AuctionHouseScreen extends Screen {
 
     private int renderAdminQueuePreview(GuiGraphics graphics, String title, List<AuctionEntrySummary> entries, int y) {
         renderAdminCard(graphics, contentLeft + 12, y, contentWidth - 24, 58);
-        graphics.drawString(font, Component.literal(title).withStyle(ChatFormatting.BOLD), contentLeft + 22, y + 10, 0xFFFFFFFF, false);
-        String detail = entries.isEmpty() ? "No auctions in this queue" : entries.size() + " auction(s), first: " + entries.getFirst().itemName();
+        graphics.drawString(font, Component.translatable(title).withStyle(ChatFormatting.BOLD), contentLeft + 22, y + 10, 0xFFFFFFFF, false);
+        String detail = entries.isEmpty()
+                ? Component.translatable("No auctions in this queue").getString()
+                : Component.translatable("{0} auction(s), first: {1}", entries.size(), entries.getFirst().itemName()).getString();
         graphics.drawString(font, Component.literal(trimToWidth(detail, contentWidth - 56)), contentLeft + 22, y + 30, entries.isEmpty() ? 0xFF9E9E9E : 0xFFFFD700, false);
         return y + 66;
     }
 
     private void renderAdminAuctionList(GuiGraphics graphics, int mouseX, int mouseY, String title) {
-        graphics.drawString(font, Component.literal(title).withStyle(ChatFormatting.BOLD), contentLeft + 10, contentTop + 8, 0xFFFFFFFF, false);
+        graphics.drawString(font, Component.translatable(title).withStyle(ChatFormatting.BOLD), contentLeft + 10, contentTop + 8, 0xFFFFFFFF, false);
         renderAdminAuctionRows(graphics, mouseX, mouseY, contentTop + 30);
     }
 
     private void renderAdminModeration(GuiGraphics graphics, int mouseX, int mouseY) {
-        graphics.drawString(font, Component.literal("Flagged Auctions").withStyle(ChatFormatting.BOLD), contentLeft + 10, contentTop + 8, 0xFFFFFFFF, false);
+        graphics.drawString(font, Component.translatable("Flagged Auctions").withStyle(ChatFormatting.BOLD), contentLeft + 10, contentTop + 8, 0xFFFFFFFF, false);
         renderAdminAuctionRows(graphics, mouseX, mouseY, contentTop + 30);
     }
 
@@ -1945,7 +1955,7 @@ public class AuctionHouseScreen extends Screen {
         int visibleRows = Math.max(1, (listBottom - listTop) / rowHeight);
         int end = Math.min(entries.size(), start + visibleRows + 2);
         if (entries.isEmpty()) {
-            graphics.drawCenteredString(font, Component.literal("No admin auctions to show"), contentLeft + contentWidth / 2, listTop + 60, 0xFFDDDDDD);
+            graphics.drawCenteredString(font, Component.translatable("No admin auctions to show"), contentLeft + contentWidth / 2, listTop + 60, 0xFFDDDDDD);
             return;
         }
         graphics.enableScissor(contentLeft, listTop, contentLeft + contentWidth, listBottom);
@@ -1966,13 +1976,13 @@ public class AuctionHouseScreen extends Screen {
         AuctionAdminDashboardPayload.Player selected = selectedAdminPlayer();
         if (selected != null) {
             renderAdminCard(graphics, contentLeft, contentTop + 38, contentWidth - 10, 202);
-            graphics.drawString(font, Component.literal("Inspecting " + selected.playerName()).withStyle(ChatFormatting.BOLD), contentLeft + 10, contentTop + 48, 0xFFFFAA00, false);
-            graphics.drawString(font, Component.literal("Active " + selected.activeListings() + "  Bids " + selected.bidCount() + "  Sold " + selected.soldCount() + "  Bought " + selected.boughtCount()), contentLeft + 10, contentTop + 64, 0xFFE0E0E0, false);
-            graphics.drawString(font, Component.literal("Bid volume " + selected.bidVolume() + "  Sold value " + selected.soldValue()), contentLeft + 10, contentTop + 80, 0xFFBDBDBD, false);
+            graphics.drawString(font, Component.translatable("Inspecting {0}", selected.playerName()).withStyle(ChatFormatting.BOLD), contentLeft + 10, contentTop + 48, 0xFFFFAA00, false);
+            graphics.drawString(font, Component.translatable("Active {0}  Bids {1}  Sold {2}  Bought {3}", selected.activeListings(), selected.bidCount(), selected.soldCount(), selected.boughtCount()), contentLeft + 10, contentTop + 64, 0xFFE0E0E0, false);
+            graphics.drawString(font, Component.translatable("Bid volume {0}  Sold value {1}", selected.bidVolume(), selected.soldValue()), contentLeft + 10, contentTop + 80, 0xFFBDBDBD, false);
             int maxListings = Math.max(1, selected.maxActiveListings());
             int limitColor = selected.activeListings() >= maxListings ? 0xFFFF6666 : selected.activeListings() >= Math.max(1, maxListings * 8 / 10) ? 0xFFFFD700 : 0xFF55FF55;
-            graphics.drawString(font, Component.literal("Listing limit " + selected.activeListings() + " / " + maxListings + " active"), contentLeft + 10, contentTop + 96, limitColor, false);
-            graphics.drawString(font, Component.literal("Blocked Actions"), contentLeft + 10, contentTop + 112, 0xFFBDBDBD, false);
+            graphics.drawString(font, Component.translatable("Listing limit {0} / {1} active", selected.activeListings(), maxListings), contentLeft + 10, contentTop + 96, limitColor, false);
+            graphics.drawString(font, Component.translatable("Blocked Actions"), contentLeft + 10, contentTop + 112, 0xFFBDBDBD, false);
         }
 
         List<AuctionAdminDashboardPayload.Player> players = filteredAdminPlayers();
@@ -1993,10 +2003,9 @@ public class AuctionHouseScreen extends Screen {
             graphics.fill(contentLeft, rowY, contentLeft + contentWidth - 10, rowY + rowH - 4, 0xFF000000);
             graphics.fill(contentLeft + 2, rowY + 2, contentLeft + contentWidth - 12, rowY + rowH - 6, fill);
             graphics.drawString(font, Component.literal(trimToWidth(player.playerName(), contentWidth / 2)).withStyle(ChatFormatting.BOLD), contentLeft + 10, rowY + 8, selectedRow ? 0xFFFFFFFF : 0xFFE0E0E0, false);
-            String detail = "Active " + player.activeListings() + " | Bids " + player.bidCount() + " | Sold " + player.soldCount();
-            graphics.drawString(font, Component.literal(detail), contentLeft + 10, rowY + 24, 0xFFBDBDBD, false);
+            graphics.drawString(font, Component.translatable("Active {0} | Bids {1} | Sold {2}", player.activeListings(), player.bidCount(), player.soldCount()), contentLeft + 10, rowY + 24, 0xFFBDBDBD, false);
             if (player.banActive()) {
-                graphics.drawString(font, Component.literal("BANNED"), contentLeft + contentWidth - 76, rowY + 14, 0xFFFF5555, false);
+                graphics.drawString(font, Component.translatable("BANNED"), contentLeft + contentWidth - 76, rowY + 14, 0xFFFF5555, false);
             }
         }
         graphics.disableScissor();
@@ -2010,7 +2019,7 @@ public class AuctionHouseScreen extends Screen {
         int start = Math.max(0, adminScroll / rowH);
         int rows = Math.max(1, (adminListBottom() - listTop) / rowH);
         int end = Math.min(entries.size(), start + rows + 1);
-        graphics.drawString(font, Component.literal("Item id, #tag, or @modid").withStyle(ChatFormatting.BOLD), contentLeft, contentTop + 34, 0xFFBDBDBD, false);
+        graphics.drawString(font, Component.translatable("Item id, #tag, or @modid").withStyle(ChatFormatting.BOLD), contentLeft, contentTop + 34, 0xFFBDBDBD, false);
         graphics.enableScissor(contentLeft, listTop, contentLeft + contentWidth, adminListBottom());
         for (int i = start; i < end; i++) {
             AuctionAdminDashboardPayload.BannedEntry entry = entries.get(i);
@@ -2020,12 +2029,12 @@ public class AuctionHouseScreen extends Screen {
             }
             graphics.fill(contentLeft, rowY, contentLeft + contentWidth - 10, rowY + rowH - 4, 0xFF000000);
             graphics.fill(contentLeft + 2, rowY + 2, contentLeft + contentWidth - 12, rowY + rowH - 6, 0xFF242424);
-            graphics.drawString(font, Component.literal(entry.type() + ": " + trimToWidth(entry.label(), contentWidth - 160)).withStyle(ChatFormatting.BOLD), contentLeft + 10, rowY + 7, 0xFFE0E0E0, false);
-            graphics.drawString(font, Component.literal(entry.matchingActiveAuctions() + " active match(es)"), contentLeft + 10, rowY + 21, entry.matchingActiveAuctions() > 0 ? 0xFFFFD700 : 0xFF9E9E9E, false);
+            graphics.drawString(font, Component.literal(entry.type()).append(Component.translatable(": ")).append(Component.literal(trimToWidth(entry.label(), contentWidth - 160))).withStyle(ChatFormatting.BOLD), contentLeft + 10, rowY + 7, 0xFFE0E0E0, false);
+            graphics.drawString(font, Component.translatable("{0} active match(es)", entry.matchingActiveAuctions()), contentLeft + 10, rowY + 21, entry.matchingActiveAuctions() > 0 ? 0xFFFFD700 : 0xFF9E9E9E, false);
         }
         graphics.disableScissor();
         if (entries.isEmpty()) {
-            graphics.drawString(font, Component.literal("No banned auction entries configured."), contentLeft + 10, listTop + 12, 0xFFBDBDBD, false);
+            graphics.drawString(font, Component.translatable("No banned auction entries configured."), contentLeft + 10, listTop + 12, 0xFFBDBDBD, false);
         }
         renderScrollBar(graphics, contentLeft + contentWidth - 6, listTop, adminListBottom(), adminScroll, adminContentHeight(), Math.max(1, adminListBottom() - listTop));
     }
@@ -2046,15 +2055,28 @@ public class AuctionHouseScreen extends Screen {
             }
             graphics.fill(contentLeft, rowY, contentLeft + contentWidth - 10, rowY + rowH - 4, 0xFF000000);
             graphics.fill(contentLeft + 2, rowY + 2, contentLeft + contentWidth - 12, rowY + rowH - 6, entry.success() ? 0xFF242424 : 0xFF3A1C1C);
-            graphics.drawString(font, Component.literal(entry.action() + " by " + entry.adminName()).withStyle(ChatFormatting.BOLD), contentLeft + 10, rowY + 7, entry.success() ? 0xFFE0E0E0 : 0xFFFF7777, false);
+            graphics.drawString(font, Component.translatable("{0} by {1}", auditActionLabel(entry.action()), entry.adminName()).withStyle(ChatFormatting.BOLD), contentLeft + 10, rowY + 7, entry.success() ? 0xFFE0E0E0 : 0xFFFF7777, false);
             graphics.drawString(font, Component.literal(trimToWidth(entry.target(), contentWidth - 40)), contentLeft + 10, rowY + 21, 0xFFBDBDBD, false);
             graphics.drawString(font, Component.literal(readableDateTime(entry.createdAt())), contentLeft + contentWidth - 150, rowY + 7, 0xFF9E9E9E, false);
         }
         graphics.disableScissor();
         if (audit.isEmpty()) {
-            graphics.drawString(font, Component.literal("No admin audit entries yet."), contentLeft + 10, y + 12, 0xFFBDBDBD, false);
+            graphics.drawString(font, Component.translatable("No admin audit entries yet."), contentLeft + 10, y + 12, 0xFFBDBDBD, false);
         }
         renderScrollBar(graphics, contentLeft + contentWidth - 6, y, adminListBottom(), adminScroll, adminContentHeight(), Math.max(1, adminListBottom() - y));
+    }
+
+    private Component auditActionLabel(String action) {
+        String normalized = action == null ? "" : action.trim().toUpperCase(Locale.ROOT);
+        return switch (normalized) {
+            case "PLAYER_BAN" -> Component.translatable("Player banned");
+            case "PLAYER_UNBAN" -> Component.translatable("Player unbanned");
+            case "ADMIN_FORCE_CANCEL" -> Component.translatable("Admin force-cancelled auction");
+            case "ADMIN_RETRY_SETTLEMENT" -> Component.translatable("Admin retried settlement");
+            case "BANNED_ENTRY_ADD" -> Component.translatable("Banned item added");
+            case "BANNED_ENTRY_REMOVE" -> Component.translatable("Banned item removed");
+            default -> Component.literal(action == null || action.isBlank() ? "-" : action);
+        };
     }
 
     private void renderAdminCard(GuiGraphics graphics, int x, int y, int w, int h) {
@@ -2107,7 +2129,7 @@ public class AuctionHouseScreen extends Screen {
         List<DashboardSection> sections = dashboardSections();
         boolean anyRows = sections.stream().anyMatch(section -> !section.entries().isEmpty());
         if (!anyRows) {
-            graphics.drawCenteredString(font, Component.literal("No dashboard activity yet"), contentLeft + contentWidth / 2, listTop + 42, 0xFFDDDDDD);
+            graphics.drawCenteredString(font, Component.translatable("No dashboard activity yet"), contentLeft + contentWidth / 2, listTop + 42, 0xFFDDDDDD);
             return;
         }
 
@@ -2117,12 +2139,12 @@ public class AuctionHouseScreen extends Screen {
             if (headerY + 22 >= listTop && headerY <= listBottom) {
                 graphics.fill(contentLeft, headerY, contentLeft + contentWidth - 10, headerY + 20, 0xFF1F1F1F);
                 graphics.fill(contentLeft, headerY, contentLeft + 4, headerY + 20, section.color());
-                graphics.drawString(font, Component.literal(section.title() + " (" + section.entries().size() + ")").withStyle(ChatFormatting.BOLD), contentLeft + 10, headerY + 6, section.color(), false);
+                graphics.drawString(font, Component.translatable("{0} ({1})", Component.translatable(section.title()), section.entries().size()).withStyle(ChatFormatting.BOLD), contentLeft + 10, headerY + 6, section.color(), false);
             }
             y += 26;
             if (section.entries().isEmpty()) {
                 if (y + 20 >= listTop && y <= listBottom) {
-                    graphics.drawString(font, Component.literal("No auctions in this section"), contentLeft + 12, y + 6, 0xFF9E9E9E, false);
+                    graphics.drawString(font, Component.translatable("No auctions in this section"), contentLeft + 12, y + 6, 0xFF9E9E9E, false);
                 }
                 y += 28;
                 continue;
@@ -2152,7 +2174,7 @@ public class AuctionHouseScreen extends Screen {
             graphics.fill(x, y, x + w, y + 54, 0xFF000000);
             graphics.fill(x + 2, y + 2, x + w - 2, y + 52, 0xFF191919);
             graphics.fill(x + 2, y + 2, x + w - 2, y + 4, section.color());
-            graphics.drawString(font, Component.literal(trimToWidth(section.title(), w - 12)), x + 8, y + 12, section.color(), false);
+            graphics.drawString(font, Component.literal(trimToWidth(Component.translatable(section.title()).getString(), w - 12)), x + 8, y + 12, section.color(), false);
             graphics.drawString(font, Component.literal(String.valueOf(section.entries().size())).withStyle(ChatFormatting.BOLD), x + 8, y + 30, 0xFFFFFFFF, false);
             x += w + cardGap;
         }
@@ -2191,7 +2213,7 @@ public class AuctionHouseScreen extends Screen {
         }
         int descriptionY = hasBuyout ? buyoutY + 16 : buyoutY;
         if (entry.bundle()) {
-            graphics.drawString(font, Component.literal("Bundle - " + entry.contents().size() + " stacks / " + entry.totalItemCount() + " items"), textX, descriptionY, 0xFF55FF55, false);
+            graphics.drawString(font, Component.translatable("Bundle - {0} stacks / {1} items", entry.contents().size(), entry.totalItemCount()), textX, descriptionY, 0xFF55FF55, false);
             descriptionY += 12;
         }
         String description = entry.description() == null || entry.description().isBlank() ? Component.translatable("No description").getString() : entry.description();
@@ -2309,7 +2331,7 @@ public class AuctionHouseScreen extends Screen {
         String sellerLine = Component.translatable("Seller").getString() + ": " + trimToWidth(selectedAuction.sellerName(), detailW - 40);
         graphics.drawString(font, Component.literal(sellerLine), detailX, previewY + 26, 0xFFBDBDBD, false);
         if (selectedAuction.bundle()) {
-            graphics.drawString(font, Component.literal("Bundle - " + selectedAuction.contents().size() + " stacks"), detailX, previewY + 38, 0xFF55FF55, false);
+            graphics.drawString(font, Component.translatable("Bundle - {0} stacks", selectedAuction.contents().size()), detailX, previewY + 38, 0xFF55FF55, false);
         }
         graphics.fill(detailX, previewY + 44, detailX + Math.min(detailW, 128), previewY + 66, 0xFF000000);
         graphics.fill(detailX + 2, previewY + 46, detailX + Math.min(detailW, 128) - 2, previewY + 64, 0xFF191919);
@@ -2321,11 +2343,11 @@ public class AuctionHouseScreen extends Screen {
         graphics.drawString(font, Component.literal(selectedAuction.currentBid()).withStyle(ChatFormatting.BOLD), x + 34, currentY + 26, 0xFFFFD700, false);
         int accountX = x + modalW / 2;
         int accountW = x + modalW - 34 - accountX;
-        graphics.drawString(font, Component.literal(trimToWidth("Account: " + bidAccountLabel(), accountW)), accountX, currentY + 10, payload.account().present() ? 0xFFBDBDBD : 0xFFFF6666, false);
-        graphics.drawString(font, Component.literal(trimToWidth("Balance: " + payload.account().balance(), accountW)).withStyle(ChatFormatting.BOLD), accountX, currentY + 26, payload.account().frozen() ? 0xFFFF6666 : 0xFF55FF55, false);
+        graphics.drawString(font, Component.literal(trimToWidth(Component.translatable("Account: {0}", bidAccountLabel()).getString(), accountW)), accountX, currentY + 10, payload.account().present() ? 0xFFBDBDBD : 0xFFFF6666, false);
+        graphics.drawString(font, Component.literal(trimToWidth(Component.translatable("Balance: {0}", payload.account().balance()).getString(), accountW)).withStyle(ChatFormatting.BOLD), accountX, currentY + 26, payload.account().frozen() ? 0xFFFF6666 : 0xFF55FF55, false);
         if (accountPanelH >= 64) {
-            graphics.drawString(font, Component.literal("Bid: " + moneyDisplay(moneyDraft(bidDraft))), x + 34, currentY + 46, 0xFFFFFFFF, false);
-            graphics.drawString(font, Component.literal("After: " + moneyDisplay(bidRemainingBalance())).withStyle(ChatFormatting.BOLD), accountX, currentY + 46, bidRemainingBalance().compareTo(BigDecimal.ZERO) < 0 ? 0xFFFF6666 : 0xFF55FF55, false);
+            graphics.drawString(font, Component.translatable("Bid: {0}", moneyDisplay(moneyDraft(bidDraft))), x + 34, currentY + 46, 0xFFFFFFFF, false);
+            graphics.drawString(font, Component.translatable("After: {0}", moneyDisplay(bidRemainingBalance())).withStyle(ChatFormatting.BOLD), accountX, currentY + 46, bidRemainingBalance().compareTo(BigDecimal.ZERO) < 0 ? 0xFFFF6666 : 0xFF55FF55, false);
         }
         graphics.drawString(font, Component.literal(trimToWidth(bidReviewStatus(), modalW - 40)), x + 20, currentY + accountPanelH + 4, bidReviewStatusColor(), false);
 
@@ -2349,7 +2371,7 @@ public class AuctionHouseScreen extends Screen {
         int detailW = Math.max(80, modalW - 96 - itemBox);
         graphics.drawString(font, Component.literal(trimToWidth(selectedAuction.itemName(), detailW)).withStyle(ChatFormatting.BOLD), detailX, summaryTop + 16, rarityColor, false);
         if (selectedAuction.bundle()) {
-            graphics.drawString(font, Component.literal("Bundle - " + selectedAuction.contents().size() + " stacks"), detailX, summaryTop + 30, 0xFF55FF55, false);
+            graphics.drawString(font, Component.translatable("Bundle - {0} stacks", selectedAuction.contents().size()), detailX, summaryTop + 30, 0xFF55FF55, false);
         }
         graphics.fill(detailX, summaryTop + 40, detailX + 84, summaryTop + 62, 0xFF000000);
         graphics.fill(detailX + 2, summaryTop + 42, detailX + 82, summaryTop + 60, 0xFF191919);
@@ -2402,12 +2424,12 @@ public class AuctionHouseScreen extends Screen {
         int listTop = y + 96;
         int listBottom = y + modalH - 54;
         graphics.drawString(font, Component.literal(trimToWidth(selectedAuction.itemName(), modalW - 40)).withStyle(ChatFormatting.BOLD), x + 20, summaryTop, 0xFFFFAA00, false);
-        graphics.drawString(font, Component.literal(safeContents.size() + " stacks / " + safeContents.stream().mapToInt(ItemStack::getCount).sum() + " items"), x + 20, summaryTop + 16, 0xFF55FF55, false);
+        graphics.drawString(font, Component.translatable("{0} stacks / {1} items", safeContents.size(), safeContents.stream().mapToInt(ItemStack::getCount).sum()), x + 20, summaryTop + 16, 0xFF55FF55, false);
 
         graphics.fill(x + 20, listTop, x + modalW - 20, listBottom, 0xFF000000);
         graphics.fill(x + 22, listTop + 2, x + modalW - 22, listBottom - 2, 0xFF191919);
         if (safeContents.isEmpty()) {
-            graphics.drawString(font, Component.literal("No contents to show"), x + 34, listTop + 18, 0xFFBDBDBD, false);
+            graphics.drawString(font, Component.translatable("No contents to show"), x + 34, listTop + 18, 0xFFBDBDBD, false);
             return;
         }
 
@@ -2449,28 +2471,28 @@ public class AuctionHouseScreen extends Screen {
 
         graphics.enableScissor(x + 6, bodyTop, x + modalW - 6, bodyBottom);
         String selectionTitle = createSelectionIsBundle() ? "Select Bundle Items from Inventory" : "Select Item from Inventory";
-        graphics.drawString(font, Component.literal(selectionTitle).withStyle(ChatFormatting.BOLD), x + 20, y + 54 - scroll, 0xFFFFFFFF, false);
+        graphics.drawString(font, Component.translatable(selectionTitle).withStyle(ChatFormatting.BOLD), x + 20, y + 54 - scroll, 0xFFFFFFFF, false);
         graphics.fill(inventoryGridLeft - 4, inventoryGridTop - 4, inventoryGridLeft + 202, inventoryGridTop + 92, 0xFF111111);
         graphics.fill(inventoryGridLeft - 2, inventoryGridTop - 2, inventoryGridLeft + 200, inventoryGridTop + 90, 0xFF2C2C2C);
         renderInventoryGrid(graphics, mouseX, mouseY);
         if (compact) {
             renderSelectedItemPreview(graphics, x + 20, y + 174 - scroll, modalW - 40, 74);
             if (createSelectionIsBundle()) {
-                graphics.drawString(font, Component.literal("Bundle Title").withStyle(ChatFormatting.BOLD), x + 20, y + 262 - scroll, 0xFFFFFFFF, false);
+                graphics.drawString(font, Component.translatable("Bundle Title").withStyle(ChatFormatting.BOLD), x + 20, y + 262 - scroll, 0xFFFFFFFF, false);
             }
-            graphics.drawString(font, Component.translatable("Starting Bid (dollars)").withStyle(ChatFormatting.BOLD), x + 20, y + 262 + bundleOffset - scroll, 0xFFFFFFFF, false);
-            graphics.drawString(font, Component.translatable("Buyout (dollars)").withStyle(ChatFormatting.BOLD), x + 20, y + 310 + bundleOffset - scroll, 0xFFFFFFFF, false);
-            graphics.drawString(font, Component.translatable("Auction End Date & Time").withStyle(ChatFormatting.BOLD), x + 20, y + 358 + bundleOffset - scroll, 0xFFFFFFFF, false);
-            graphics.drawString(font, Component.translatable("Description").withStyle(ChatFormatting.BOLD), x + 20, y + 406 + bundleOffset - scroll, 0xFFFFFFFF, false);
+            drawCreateLabel(graphics, "Starting Bid (dollars)", x + 20, y + 262 + bundleOffset - scroll, modalW - 40);
+            drawCreateLabel(graphics, "Buyout (dollars)", x + 20, y + 310 + bundleOffset - scroll, modalW - 40);
+            drawCreateLabel(graphics, "Auction End Date & Time", x + 20, y + 358 + bundleOffset - scroll, modalW - 40);
+            drawCreateLabel(graphics, "Description", x + 20, y + 406 + bundleOffset - scroll, modalW - 40);
         } else {
             renderSelectedItemPreview(graphics, x + 236, y + 72 - scroll, modalW - 256, 88);
             if (createSelectionIsBundle()) {
-                graphics.drawString(font, Component.literal("Bundle Title").withStyle(ChatFormatting.BOLD), x + 20, y + 178 - scroll, 0xFFFFFFFF, false);
+                graphics.drawString(font, Component.translatable("Bundle Title").withStyle(ChatFormatting.BOLD), x + 20, y + 178 - scroll, 0xFFFFFFFF, false);
             }
-            graphics.drawString(font, Component.translatable("Starting Bid (dollars)").withStyle(ChatFormatting.BOLD), x + 20, y + 178 + bundleOffset - scroll, 0xFFFFFFFF, false);
-            graphics.drawString(font, Component.translatable("Buyout (dollars)").withStyle(ChatFormatting.BOLD), x + 170, y + 178 + bundleOffset - scroll, 0xFFFFFFFF, false);
-            graphics.drawString(font, Component.translatable("Auction End Date & Time").withStyle(ChatFormatting.BOLD), x + 310, y + 178 + bundleOffset - scroll, 0xFFFFFFFF, false);
-            graphics.drawString(font, Component.translatable("Description").withStyle(ChatFormatting.BOLD), x + 20, y + 226 + bundleOffset - scroll, 0xFFFFFFFF, false);
+            drawCreateLabel(graphics, "Starting Bid (dollars)", x + 20, y + 178 + bundleOffset - scroll, 138);
+            drawCreateLabel(graphics, "Buyout (dollars)", x + 170, y + 178 + bundleOffset - scroll, 128);
+            drawCreateLabel(graphics, "Auction End Date & Time", x + 310, y + 178 + bundleOffset - scroll, Math.max(90, modalW - 330));
+            drawCreateLabel(graphics, "Description", x + 20, y + 226 + bundleOffset - scroll, modalW - 40);
         }
 
         int feeY = y + (compact ? 466 : 274) + bundleOffset - scroll;
@@ -2480,6 +2502,11 @@ public class AuctionHouseScreen extends Screen {
         graphics.drawString(font, Component.literal(moneyDisplay(listingFeePreview())).withStyle(ChatFormatting.BOLD), x + 34, feeY + 30, 0xFFFFD700, false);
         graphics.disableScissor();
         renderScrollBar(graphics, x + modalW - 12, bodyTop, bodyBottom, createScroll, createContentHeight(modalW), bodyBottom - bodyTop);
+    }
+
+    private void drawCreateLabel(GuiGraphics graphics, String key, int x, int y, int maxWidth) {
+        String label = trimToWidth(Component.translatable(key).getString(), Math.max(24, maxWidth));
+        graphics.drawString(font, Component.literal(label).withStyle(ChatFormatting.BOLD), x, y, 0xFFFFFFFF, false);
     }
 
     private void renderConfirmCreateModal(GuiGraphics graphics, int x, int y, int modalW, int modalH, int mouseX, int mouseY) {
@@ -2509,7 +2536,7 @@ public class AuctionHouseScreen extends Screen {
         graphics.drawString(font, Component.literal(trimToWidth(pending.sourceLabel(), detailW)), detailX, previewTop + 30, 0xFFBDBDBD, false);
         int metadataY = previewTop + 46;
         if (pending.bundle()) {
-            graphics.drawString(font, Component.literal("Bundle - " + pending.contents().size() + " stacks / " + pending.itemCount() + " items"), detailX, metadataY, 0xFF55FF55, false);
+            graphics.drawString(font, Component.translatable("Bundle - {0} stacks / {1} items", pending.contents().size(), pending.itemCount()), detailX, metadataY, 0xFF55FF55, false);
             metadataY += 12;
         }
         for (String line : itemMetadataLines(pending.item(), detailW, 2)) {
@@ -2531,9 +2558,9 @@ public class AuctionHouseScreen extends Screen {
             graphics.drawString(font, Component.literal(line), x + 20, lineY, 0xFFE0E0E0, false);
             lineY += 12;
         }
-        graphics.drawString(font, Component.literal(Component.translatable("Ends").getString() + ": " + readableDateTime(pending.endsAt())), x + 20, lineY + 8, 0xFFA5D6A7, false);
-        graphics.drawString(font, Component.literal(Component.translatable("Duration").getString() + ": " + durationFromNow(pending.endsAt())), x + 20, lineY + 22, 0xFFA5D6A7, false);
-        graphics.drawString(font, Component.literal(Component.translatable("Confirm by").getString() + ": " + readableDateTime(pending.expiresAt())), x + 20, lineY + 36, 0xFFFFAA00, false);
+        graphics.drawString(font, Component.translatable("Ends: {0}", readableDateTime(pending.endsAt())), x + 20, lineY + 8, 0xFFA5D6A7, false);
+        graphics.drawString(font, Component.translatable("Duration: {0}", durationFromNow(pending.endsAt())), x + 20, lineY + 22, 0xFFA5D6A7, false);
+        graphics.drawString(font, Component.translatable("Confirm by: {0}", readableDateTime(pending.expiresAt())), x + 20, lineY + 36, 0xFFFFAA00, false);
 
         if (mouseX >= itemX && mouseX <= itemX + itemBox && mouseY >= itemY && mouseY <= itemY + itemBox) {
             graphics.renderTooltip(font, pending.item(), mouseX, mouseY);
@@ -2588,12 +2615,15 @@ public class AuctionHouseScreen extends Screen {
             int border = selected ? 0xFF55FF55 : 0xFF000000;
             graphics.fill(x + 20, rowY, x + modalW - 20, rowY + rowH - 3, border);
             graphics.fill(x + 22, rowY + 2, x + modalW - 22, rowY + rowH - 5, fill);
-            Component title = Component.literal(trimToWidth(option.displayName(), modalW - 82))
+            String displayName = option.modId().isBlank()
+                    ? Component.translatable("All Mods").getString()
+                    : option.displayName();
+            Component title = Component.literal(trimToWidth(displayName, modalW - 82))
                     .withStyle(selected ? ChatFormatting.BOLD : ChatFormatting.WHITE);
             graphics.drawString(font, title, x + 30, rowY + 7, selected ? 0xFFFFFFFF : 0xFFE0E0E0, false);
             String detail = option.modId().isBlank()
                     ? Component.translatable("All listed mods").getString()
-                    : option.modId() + " - " + option.activeAuctionCount() + " " + Component.translatable("auctions").getString();
+                    : Component.translatable("{0} - {1} auctions", option.modId(), option.activeAuctionCount()).getString();
             graphics.drawString(font, Component.literal(trimToWidth(detail, modalW - 82)), x + 30, rowY + 19, selected ? 0xFFD7FFD7 : 0xFFBDBDBD, false);
         }
         graphics.disableScissor();
@@ -2616,11 +2646,11 @@ public class AuctionHouseScreen extends Screen {
         renderBundlePreview(graphics, stacks, x + 18, y + 20, 46, 46);
         if (createSelectionIsBundle()) {
             graphics.drawString(font, Component.literal(trimToWidth(selectedBundlePreviewTitle(), w - 92)).withStyle(ChatFormatting.BOLD), x + 80, y + 18, 0xFFFFAA00, false);
-            graphics.drawString(font, Component.literal(stacks.size() + " stacks, " + stacks.stream().mapToInt(ItemStack::getCount).sum() + " items"), x + 80, y + 34, 0xFFE0E0E0, false);
-            graphics.drawString(font, Component.literal("Bundle"), x + 80, y + 50, 0xFF55FF55, false);
+            graphics.drawString(font, Component.translatable("{0} stacks, {1} items", stacks.size(), stacks.stream().mapToInt(ItemStack::getCount).sum()), x + 80, y + 34, 0xFFE0E0E0, false);
+            graphics.drawString(font, Component.translatable("Bundle"), x + 80, y + 50, 0xFF55FF55, false);
         } else {
             graphics.drawString(font, stack.getHoverName(), x + 80, y + 24, 0xFF5F6BFF, false);
-            graphics.drawString(font, Component.literal(stack.getCount() + "x " + Component.translatable("Inventory Slot").getString() + " " + (selectedInventorySlot + 1)), x + 80, y + 42, 0xFFE0E0E0, false);
+            graphics.drawString(font, Component.translatable("{0}x Inventory Slot {1}", stack.getCount(), selectedInventorySlot + 1), x + 80, y + 42, 0xFFE0E0E0, false);
         }
     }
 
@@ -2671,23 +2701,23 @@ public class AuctionHouseScreen extends Screen {
     private String generatedSelectedBundleTitle() {
         List<ItemStack> stacks = selectedInventoryStacks();
         if (stacks.isEmpty()) {
-            return "Bundle";
+            return Component.translatable("Bundle").getString();
         }
         if (stacks.size() == 1) {
             return stacks.getFirst().getHoverName().getString();
         }
-        return "Bundle: " + stacks.getFirst().getHoverName().getString() + " + " + (stacks.size() - 1) + " more";
+        return Component.translatable("Bundle: {0} + {1} more", stacks.getFirst().getHoverName().getString(), stacks.size() - 1).getString();
     }
 
     private void renderDatePickerModal(GuiGraphics graphics, int x, int y, int modalW, int modalH) {
         DatePickerLayout layout = datePickerLayout(x, y, modalW, modalH);
 
         graphics.drawString(font, Component.translatable("Select Date (up to 30 days)").withStyle(ChatFormatting.BOLD), layout.calendarX(), y + 52, 0xFFFFFFFF, false);
-        graphics.drawCenteredString(font, Component.literal(calendarMonth.getMonth().getDisplayName(TextStyle.FULL, Locale.ROOT) + " " + calendarMonth.getYear()), layout.calendarX() + layout.calendarWidth() / 2, layout.monthY() + 7, 0xFFFFFFFF);
+        graphics.drawCenteredString(font, Component.translatable("{0} {1}", Component.translatable(calendarMonth.getMonth().getDisplayName(TextStyle.FULL, Locale.ROOT)), calendarMonth.getYear()), layout.calendarX() + layout.calendarWidth() / 2, layout.monthY() + 7, 0xFFFFFFFF);
 
-        String[] weekdays = {"S", "M", "T", "W", "T", "F", "S"};
+        String[] weekdays = {"Sunday initial", "Monday initial", "Tuesday initial", "Wednesday initial", "Thursday initial", "Friday initial", "Saturday initial"};
         for (int col = 0; col < weekdays.length; col++) {
-            graphics.drawCenteredString(font, Component.literal(weekdays[col]), layout.calendarX() + col * layout.cell() + (layout.cell() - 2) / 2, layout.weekdayY(), 0xFFE0E0E0);
+            graphics.drawCenteredString(font, Component.translatable(weekdays[col]), layout.calendarX() + col * layout.cell() + (layout.cell() - 2) / 2, layout.weekdayY(), 0xFFE0E0E0);
         }
 
         graphics.drawString(font, Component.translatable("Select Time").withStyle(ChatFormatting.BOLD), layout.timeX(), layout.timeY(), 0xFFFFFFFF, false);
@@ -2703,8 +2733,8 @@ public class AuctionHouseScreen extends Screen {
         graphics.drawCenteredString(font, Component.literal(":"), colonX, valueY + 7, 0xFFFFFFFF);
         renderPeriodDot(graphics, controlsX + 124, valueY - 6, !selectedEndPm());
         renderPeriodDot(graphics, controlsX + 124, valueY + 24, selectedEndPm());
-        graphics.drawString(font, Component.literal("AM"), controlsX + 140, valueY - 3, selectedEndPm() ? 0xFFBDBDBD : 0xFFFFFFFF, false);
-        graphics.drawString(font, Component.literal("PM"), controlsX + 140, valueY + 27, selectedEndPm() ? 0xFFFFFFFF : 0xFFBDBDBD, false);
+        graphics.drawString(font, Component.translatable("AM"), controlsX + 140, valueY - 3, selectedEndPm() ? 0xFFBDBDBD : 0xFFFFFFFF, false);
+        graphics.drawString(font, Component.translatable("PM"), controlsX + 140, valueY + 27, selectedEndPm() ? 0xFFFFFFFF : 0xFFBDBDBD, false);
     }
 
     private void renderPeriodDot(GuiGraphics graphics, int x, int y, boolean selected) {
@@ -2969,14 +2999,14 @@ public class AuctionHouseScreen extends Screen {
 
     private String selectedModLabel() {
         if (selectedModId == null || selectedModId.isBlank()) {
-            return "All Mods";
+            return Component.translatable("All Mods").getString();
         }
         return modDisplayName(selectedModId);
     }
 
     private String modDisplayName(String modId) {
         if (modId == null || modId.isBlank()) {
-            return "All Mods";
+            return Component.translatable("All Mods").getString();
         }
         for (AuctionModFilterSummaryPayload summary : modFilterSummaries()) {
             if (modId.equals(summary.modId())) {
@@ -3309,36 +3339,36 @@ public class AuctionHouseScreen extends Screen {
 
     private String timeFilterLabel() {
         if (maxHoursLeft == 0L) {
-            return "Any Time";
+            return Component.translatable("Any Time").getString();
         }
         if (maxHoursLeft == 1L) {
-            return "Under 1 Hour";
+            return Component.translatable("Under 1 Hour").getString();
         }
         if (maxHoursLeft == 24L) {
-            return "Under 24 Hours";
+            return Component.translatable("Under 24 Hours").getString();
         }
-        return "Under 7 Days";
+        return Component.translatable("Under 7 Days").getString();
     }
 
     private String timeLeft(String rawEnd, String state) {
         if (!"ACTIVE".equals(state)) {
-            return state;
+            return Component.translatable(state).getString();
         }
         try {
             Duration duration = Duration.between(LocalDateTime.now(), LocalDateTime.parse(rawEnd));
             if (duration.isNegative() || duration.isZero()) {
-                return "Ended";
+                return Component.translatable("Ended").getString();
             }
             long days = duration.toDays();
             long hours = duration.toHoursPart();
             long minutes = duration.toMinutesPart();
             if (days > 0) {
-                return days + "d " + hours + "h";
+                return Component.translatable("{0}d {1}h", days, hours).getString();
             }
             if (hours > 0) {
-                return hours + "h " + minutes + "m";
+                return Component.translatable("{0}h {1}m", hours, minutes).getString();
             }
-            return Math.max(1, minutes) + "m";
+            return Component.translatable("{0}m", Math.max(1, minutes)).getString();
         } catch (DateTimeParseException exception) {
             return "";
         }
@@ -3352,17 +3382,17 @@ public class AuctionHouseScreen extends Screen {
             }
             long days = duration.toDays();
             if (days > 0) {
-                return days + "d ago";
+                return Component.translatable("{0}d ago", days).getString();
             }
             long hours = duration.toHours();
             if (hours > 0) {
-                return hours + "h ago";
+                return Component.translatable("{0}h ago", hours).getString();
             }
             long minutes = duration.toMinutes();
             if (minutes > 0) {
-                return minutes + "m ago";
+                return Component.translatable("{0}m ago", minutes).getString();
             }
-            return "just now";
+            return Component.translatable("just now").getString();
         } catch (DateTimeParseException exception) {
             return rawTimestamp == null ? "" : rawTimestamp;
         }
@@ -3409,7 +3439,7 @@ public class AuctionHouseScreen extends Screen {
         try {
             LocalDateTime time = LocalDateTime.parse(rawTime);
             String month = time.getMonth().getDisplayName(TextStyle.SHORT, Locale.ROOT);
-            return month + " " + time.getDayOfMonth() + ", " + timeLabel(time.getHour(), time.getMinute());
+            return Component.translatable("{0} {1}, {2}", Component.translatable(month), time.getDayOfMonth(), timeLabel(time.getHour(), time.getMinute())).getString();
         } catch (DateTimeParseException exception) {
             return rawTime;
         }
@@ -3419,18 +3449,18 @@ public class AuctionHouseScreen extends Screen {
         try {
             Duration duration = Duration.between(LocalDateTime.now(), LocalDateTime.parse(rawTime));
             if (duration.isNegative() || duration.isZero()) {
-                return "now";
+                return Component.translatable("now").getString();
             }
             long days = duration.toDays();
             long hours = duration.toHoursPart();
             long minutes = duration.toMinutesPart();
             if (days > 0) {
-                return days + "d " + hours + "h";
+                return Component.translatable("{0}d {1}h", days, hours).getString();
             }
             if (hours > 0) {
-                return hours + "h " + minutes + "m";
+                return Component.translatable("{0}h {1}m", hours, minutes).getString();
             }
-            return Math.max(1, duration.toMinutes()) + "m";
+            return Component.translatable("{0}m", Math.max(1, duration.toMinutes())).getString();
         } catch (DateTimeParseException exception) {
             return "";
         }

@@ -534,7 +534,7 @@ public class AuctionHouse {
                     item.recordRejectedBid(bidderId, bidderAccountId.get(), safeAmount, AuctionBidResult.REJECTED_ACCOUNT_UNAVAILABLE, "Outbid refund failed: " + refund.reason());
                     String message = "Outbid refund failed for auction " + item.getAuctionId() + ": " + refund.reason();
                     UltimateAuctionSystem.LOGGER.warn("[UAS] {}", message);
-                    alertOnlineAdmins("Auction Refund Failed", message, "ERROR");
+                    alertOnlineAdmins("Auction Refund Failed", "Outbid refund failed for auction {0}: {1}", "ERROR", item.getAuctionId(), refund.reason());
                     return AuctionActionResult.fail("Could not safely refund the previous highest bidder. Bid was not accepted.");
                 }
             }
@@ -546,7 +546,7 @@ public class AuctionHouse {
                 recordBankingEvent(item, EVENT_BID_ESCROW_REFUND, safeAmount, refundReference, refund);
                 if (!refund.success()) {
                     item.transitionTo(AuctionState.FAILED_SETTLEMENT, "bid escrow refund failed after rejected bid: " + refund.reason());
-                    alertOnlineAdmins("Auction Settlement Failed", "Bid escrow refund failed for auction " + item.getAuctionId() + ": " + refund.reason(), "ERROR");
+                    alertOnlineAdmins("Auction Settlement Failed", "Bid escrow refund failed for auction {0}: {1}", "ERROR", item.getAuctionId(), refund.reason());
                 }
                 return AuctionActionResult.fail(bidRecord.getReason());
             }
@@ -558,12 +558,12 @@ public class AuctionHouse {
             if (soldByBid) {
                 SettlementResult settlement = settleHeldBid(item);
                 if (!settlement.success()) {
-                    String sellerMessage = "Auction " + item.getAuctionId() + ": " + itemName(item) + " could not pay out to your account. " + settlement.message();
-                    String bidderMessage = "Auction " + item.getAuctionId() + ": " + itemName(item) + " is waiting for payment settlement.";
-                    sendAuctionAlert(item.getPlayerId(), "Auction Settlement Failed", sellerMessage, "ERROR");
-                    sendAuctionChatMessage(item.getPlayerId(), sellerMessage, ChatFormatting.RED, openAhAction(), myAuctionsAction());
-                    sendAuctionAlert(bidderId, "Auction Settlement Delayed", bidderMessage, "WARNING");
-                    sendAuctionChatMessage(bidderId, bidderMessage, ChatFormatting.YELLOW, openAhAction());
+                    Object[] sellerArgs = {item.getAuctionId(), itemName(item), settlement.message()};
+                    Object[] bidderArgs = {item.getAuctionId(), itemName(item)};
+                    sendAuctionAlert(item.getPlayerId(), "Auction Settlement Failed", "Auction {0}: {1} could not pay out to your account. {2}", "ERROR", sellerArgs);
+                    sendAuctionChatMessage(item.getPlayerId(), "Auction {0}: {1} could not pay out to your account. {2}", ChatFormatting.RED, sellerArgs, openAhAction(), myAuctionsAction());
+                    sendAuctionAlert(bidderId, "Auction Settlement Delayed", "Auction {0}: {1} is waiting for payment settlement.", "WARNING", bidderArgs);
+                    sendAuctionChatMessage(bidderId, "Auction {0}: {1} is waiting for payment settlement.", ChatFormatting.YELLOW, bidderArgs, openAhAction());
                     return AuctionActionResult.fail(settlement.message());
                 }
             }
@@ -655,7 +655,7 @@ public class AuctionHouse {
                     item.recordRejectedBid(bidderId, bidderAccountId.get(), buyoutAmount, AuctionBidResult.REJECTED_ACCOUNT_UNAVAILABLE, "Outbid refund failed: " + refund.reason());
                     String message = "Buyout refund of previous bidder failed for auction " + item.getAuctionId() + ": " + refund.reason();
                     UltimateAuctionSystem.LOGGER.warn("[UAS] {}", message);
-                    alertOnlineAdmins("Auction Refund Failed", message, "ERROR");
+                    alertOnlineAdmins("Auction Refund Failed", "Buyout refund of previous bidder failed for auction {0}: {1}", "ERROR", item.getAuctionId(), refund.reason());
                     return AuctionActionResult.fail("Could not safely refund the previous highest bidder. Buyout was not accepted.");
                 }
             }
@@ -667,7 +667,7 @@ public class AuctionHouse {
                 recordBankingEvent(item, EVENT_BUYOUT_ESCROW_REFUND, buyoutAmount, refundReference, refund);
                 if (!refund.success()) {
                     item.transitionTo(AuctionState.FAILED_SETTLEMENT, "buyout escrow refund failed after rejected buyout: " + refund.reason());
-                    alertOnlineAdmins("Auction Settlement Failed", "Buyout escrow refund failed for auction " + item.getAuctionId() + ": " + refund.reason(), "ERROR");
+                    alertOnlineAdmins("Auction Settlement Failed", "Buyout escrow refund failed for auction {0}: {1}", "ERROR", item.getAuctionId(), refund.reason());
                 }
                 return AuctionActionResult.fail(bidRecord.getReason());
             }
@@ -675,12 +675,12 @@ public class AuctionHouse {
             item.transitionTo(AuctionState.ENDED, "buyout accepted");
             SettlementResult settlement = settleHeldBid(item);
             if (!settlement.success()) {
-                String sellerMessage = "Auction " + item.getAuctionId() + ": " + itemName(item) + " could not pay out to your account. " + settlement.message();
-                String bidderMessage = "Auction " + item.getAuctionId() + ": " + itemName(item) + " is waiting for payment settlement.";
-                sendAuctionAlert(item.getPlayerId(), "Auction Settlement Failed", sellerMessage, "ERROR");
-                sendAuctionChatMessage(item.getPlayerId(), sellerMessage, ChatFormatting.RED, openAhAction(), myAuctionsAction());
-                sendAuctionAlert(bidderId, "Auction Settlement Delayed", bidderMessage, "WARNING");
-                sendAuctionChatMessage(bidderId, bidderMessage, ChatFormatting.YELLOW, openAhAction());
+                Object[] sellerArgs = {item.getAuctionId(), itemName(item), settlement.message()};
+                Object[] bidderArgs = {item.getAuctionId(), itemName(item)};
+                sendAuctionAlert(item.getPlayerId(), "Auction Settlement Failed", "Auction {0}: {1} could not pay out to your account. {2}", "ERROR", sellerArgs);
+                sendAuctionChatMessage(item.getPlayerId(), "Auction {0}: {1} could not pay out to your account. {2}", ChatFormatting.RED, sellerArgs, openAhAction(), myAuctionsAction());
+                sendAuctionAlert(bidderId, "Auction Settlement Delayed", "Auction {0}: {1} is waiting for payment settlement.", "WARNING", bidderArgs);
+                sendAuctionChatMessage(bidderId, "Auction {0}: {1} is waiting for payment settlement.", ChatFormatting.YELLOW, bidderArgs, openAhAction());
                 return AuctionActionResult.fail(settlement.message());
             }
             markChanged("Auction storage marked dirty after accepted buyout.");
@@ -755,15 +755,15 @@ public class AuctionHouse {
             }
             giveOrDeliver(item.getPlayerId(), item.getContents(), deliveryData, auctionId, "Admin force-cancel return");
             markChanged("Auction storage marked dirty after admin force-cancel.");
-            String sellerMessage = "Auction " + item.getAuctionId() + ": " + itemName(item) + " was force-cancelled by an admin and returned.";
-            sendAuctionAlert(item.getPlayerId(), "Auction Force-Cancelled", sellerMessage, "WARNING");
-            sendAuctionChatMessage(item.getPlayerId(), sellerMessage, ChatFormatting.YELLOW, openAhAction(), myAuctionsAction());
+            Object[] sellerArgs = {item.getAuctionId(), itemName(item)};
+            sendAuctionAlert(item.getPlayerId(), "Auction Force-Cancelled", "Auction {0}: {1} was force-cancelled by an admin and returned.", "WARNING", sellerArgs);
+            sendAuctionChatMessage(item.getPlayerId(), "Auction {0}: {1} was force-cancelled by an admin and returned.", ChatFormatting.YELLOW, sellerArgs, openAhAction(), myAuctionsAction());
             if (winnerId != null) {
-                String winnerMessage = "Auction " + item.getAuctionId() + ": Your bid on " + itemName(item) + " was refunded after an admin force-cancel.";
-                sendAuctionAlert(winnerId, "Auction Force-Cancelled", winnerMessage, "WARNING");
-                sendAuctionChatMessage(winnerId, winnerMessage, ChatFormatting.YELLOW, openAhAction());
+                Object[] winnerArgs = {item.getAuctionId(), itemName(item)};
+                sendAuctionAlert(winnerId, "Auction Force-Cancelled", "Auction {0}: Your bid on {1} was refunded after an admin force-cancel.", "WARNING", winnerArgs);
+                sendAuctionChatMessage(winnerId, "Auction {0}: Your bid on {1} was refunded after an admin force-cancel.", ChatFormatting.YELLOW, winnerArgs, openAhAction());
             }
-            alertSubscribers(item, exclusions(item.getPlayerId(), winnerId), "Auction Force-Cancelled", "Auction " + item.getAuctionId() + ": " + itemName(item) + " was force-cancelled by an admin.", "WARNING");
+            alertSubscribers(item, exclusions(item.getPlayerId(), winnerId), "Auction Force-Cancelled", "Auction {0}: {1} was force-cancelled by an admin.", "WARNING", item.getAuctionId(), itemName(item));
             return AuctionActionResult.ok("Auction force-cancelled and item returned.");
         }
     }
@@ -819,24 +819,22 @@ public class AuctionHouse {
             }
             SettlementResult settlement = settleHeldBid(item);
             if (!settlement.success()) {
-                String sellerMessage = "Auction " + item.getAuctionId() + ": " + itemName(item) + " still could not pay out after retry.";
-                String winnerMessage = "Auction " + item.getAuctionId() + ": " + itemName(item) + " still could not finish settlement.";
-                sendAuctionAlert(item.getPlayerId(), "Auction Settlement Retry Failed", sellerMessage, "ERROR");
-                sendAuctionChatMessage(item.getPlayerId(), sellerMessage, ChatFormatting.RED, openAhAction(), myAuctionsAction());
-                sendAuctionAlert(winnerId, "Auction Settlement Retry Failed", winnerMessage, "ERROR");
-                sendAuctionChatMessage(winnerId, winnerMessage, ChatFormatting.RED, openAhAction());
+                Object[] args = {item.getAuctionId(), itemName(item)};
+                sendAuctionAlert(item.getPlayerId(), "Auction Settlement Retry Failed", "Auction {0}: {1} still could not pay out after retry.", "ERROR", args);
+                sendAuctionChatMessage(item.getPlayerId(), "Auction {0}: {1} still could not pay out after retry.", ChatFormatting.RED, args, openAhAction(), myAuctionsAction());
+                sendAuctionAlert(winnerId, "Auction Settlement Retry Failed", "Auction {0}: {1} still could not finish settlement.", "ERROR", args);
+                sendAuctionChatMessage(winnerId, "Auction {0}: {1} still could not finish settlement.", ChatFormatting.RED, args, openAhAction());
                 return AuctionActionResult.fail(settlement.message());
             }
             giveOrDeliver(winnerId, item.getContents(), deliveryData, auctionId, "Won auction item");
             item.transitionTo(AuctionState.CLAIMED, "admin retried settlement and delivered item by " + (adminName == null || adminName.isBlank() ? "console" : adminName));
             markChanged("Auction storage marked dirty after admin settlement retry.");
-            String sellerMessage = "Auction " + item.getAuctionId() + ": " + itemName(item) + " was paid out after an admin retry.";
-            String winnerMessage = "Auction " + item.getAuctionId() + ": " + itemName(item) + " was delivered after an admin settlement retry.";
-            sendAuctionAlert(item.getPlayerId(), "Auction Settlement Recovered", sellerMessage, "SUCCESS");
-            sendAuctionChatMessage(item.getPlayerId(), sellerMessage, ChatFormatting.GREEN, openAhAction(), myAuctionsAction());
-            sendAuctionAlert(winnerId, "Auction Won", winnerMessage, "SUCCESS");
-            sendAuctionChatMessage(winnerId, winnerMessage, ChatFormatting.GREEN, openAhAction());
-            alertSubscribers(item, exclusions(item.getPlayerId(), winnerId), "Auction Settlement Recovered", "Auction " + item.getAuctionId() + ": " + itemName(item) + " was recovered by an admin.", "INFO");
+            Object[] args = {item.getAuctionId(), itemName(item)};
+            sendAuctionAlert(item.getPlayerId(), "Auction Settlement Recovered", "Auction {0}: {1} was paid out after an admin retry.", "SUCCESS", args);
+            sendAuctionChatMessage(item.getPlayerId(), "Auction {0}: {1} was paid out after an admin retry.", ChatFormatting.GREEN, args, openAhAction(), myAuctionsAction());
+            sendAuctionAlert(winnerId, "Auction Won", "Auction {0}: {1} was delivered after an admin settlement retry.", "SUCCESS", args);
+            sendAuctionChatMessage(winnerId, "Auction {0}: {1} was delivered after an admin settlement retry.", ChatFormatting.GREEN, args, openAhAction());
+            alertSubscribers(item, exclusions(item.getPlayerId(), winnerId), "Auction Settlement Recovered", "Auction {0}: {1} was recovered by an admin.", "INFO", item.getAuctionId(), itemName(item));
             return AuctionActionResult.ok("Auction settlement retried, paid, and delivered.");
         }
     }
@@ -880,9 +878,9 @@ public class AuctionHouse {
             }
             SettlementResult settlement = settleHeldBid(item);
             if (!settlement.success()) {
-                String message = "Auction " + item.getAuctionId() + ": " + itemName(item) + " could not pay out to your account. " + settlement.message();
-                sendAuctionAlert(item.getPlayerId(), "Auction Settlement Failed", message, "ERROR");
-                sendAuctionChatMessage(item.getPlayerId(), message, ChatFormatting.RED, openAhAction(), myAuctionsAction());
+                Object[] args = {item.getAuctionId(), itemName(item), settlement.message()};
+                sendAuctionAlert(item.getPlayerId(), "Auction Settlement Failed", "Auction {0}: {1} could not pay out to your account. {2}", "ERROR", args);
+                sendAuctionChatMessage(item.getPlayerId(), "Auction {0}: {1} could not pay out to your account. {2}", ChatFormatting.RED, args, openAhAction(), myAuctionsAction());
                 return AuctionActionResult.fail(settlement.message());
             }
             if (item.getBuyoutPrice().isEmpty() || item.getHighestBid().compareTo(item.getBuyoutPrice().get()) < 0) {
@@ -953,18 +951,18 @@ public class AuctionHouse {
         UUID sellerId = item.getPlayerId();
 
         if (sellerId != null && !sellerId.equals(bidderId)) {
-            String message = "Auction " + item.getAuctionId() + ": " + bidderName + " bid " + bidAmount + " on " + itemName + ".";
-            sendAuctionAlert(sellerId, "New Auction Bid", message, "INFO");
-            sendAuctionChatMessage(sellerId, message, ChatFormatting.AQUA, openAhAction(), myAuctionsAction());
+            Object[] args = {item.getAuctionId(), bidderName, bidAmount, itemName};
+            sendAuctionAlert(sellerId, "New Auction Bid", "Auction {0}: {1} bid {2} on {3}.", "INFO", args);
+            sendAuctionChatMessage(sellerId, "Auction {0}: {1} bid {2} on {3}.", ChatFormatting.AQUA, args, openAhAction(), myAuctionsAction());
         }
         if (previousBidderId != null && !previousBidderId.equals(bidderId)) {
-            String message = "Auction " + item.getAuctionId() + ": You were outbid on " + itemName + ". Refund succeeded for " + moneyLabel(previousAmount) + ". New bid: " + bidAmount + ".";
-            sendAuctionAlert(previousBidderId, "You Were Outbid", message, "WARNING");
-            sendAuctionChatMessage(previousBidderId, message, ChatFormatting.YELLOW, bidSuggestAction(item), openAhAction());
+            Object[] args = {item.getAuctionId(), itemName, moneyLabel(previousAmount), bidAmount};
+            sendAuctionAlert(previousBidderId, "You Were Outbid", "Auction {0}: You were outbid on {1}. Refund succeeded for {2}. New bid: {3}.", "WARNING", args);
+            sendAuctionChatMessage(previousBidderId, "Auction {0}: You were outbid on {1}. Refund succeeded for {2}. New bid: {3}.", ChatFormatting.YELLOW, args, bidSuggestAction(item), openAhAction());
         }
 
         Set<UUID> excluded = exclusions(bidderId, sellerId, previousBidderId);
-        alertSubscribers(item, excluded, "Auction Updated", "Auction " + item.getAuctionId() + ": " + bidderName + " bid " + bidAmount + " on " + itemName + ".", "INFO");
+        alertSubscribers(item, excluded, "Auction Updated", "Auction {0}: {1} bid {2} on {3}.", "INFO", item.getAuctionId(), bidderName, bidAmount, itemName);
     }
 
     private void notifyAuctionSold(AuctionItem item, UUID buyerId, BigDecimal amount) {
@@ -974,62 +972,65 @@ public class AuctionHouse {
         UUID sellerId = item.getPlayerId();
 
         if (buyerId != null) {
-            String message = "Auction " + item.getAuctionId() + ": You won " + itemName + " for " + saleAmount + ". Claim is available.";
-            sendAuctionAlert(buyerId, "Auction Won", message, "SUCCESS");
-            sendAuctionChatMessage(buyerId, message, ChatFormatting.GREEN, claimAction(item), openAhAction());
+            Object[] args = {item.getAuctionId(), itemName, saleAmount};
+            sendAuctionAlert(buyerId, "Auction Won", "Auction {0}: You won {1} for {2}. Claim is available.", "SUCCESS", args);
+            sendAuctionChatMessage(buyerId, "Auction {0}: You won {1} for {2}. Claim is available.", ChatFormatting.GREEN, args, claimAction(item), openAhAction());
         }
         if (sellerId != null && !sellerId.equals(buyerId)) {
-            String message = "Auction " + item.getAuctionId() + ": " + itemName + " sold to " + buyerName + " for " + saleAmount + ". Seller payout processed.";
-            sendAuctionAlert(sellerId, "Auction Sold", message, "SUCCESS");
-            sendAuctionChatMessage(sellerId, message, ChatFormatting.GREEN, openAhAction(), myAuctionsAction());
+            Object[] args = {item.getAuctionId(), itemName, buyerName, saleAmount};
+            sendAuctionAlert(sellerId, "Auction Sold", "Auction {0}: {1} sold to {2} for {3}. Seller payout processed.", "SUCCESS", args);
+            sendAuctionChatMessage(sellerId, "Auction {0}: {1} sold to {2} for {3}. Seller payout processed.", ChatFormatting.GREEN, args, openAhAction(), myAuctionsAction());
         }
 
         Set<UUID> losingBidders = new HashSet<>(item.getBids().keySet());
         losingBidders.remove(buyerId);
         for (UUID losingBidderId : losingBidders) {
-            String message = "Auction " + item.getAuctionId() + ": " + itemName + " sold to another player for " + saleAmount + ". You did not win.";
-            sendAuctionAlert(losingBidderId, "Auction Sold", message, "WARNING");
-            sendAuctionChatMessage(losingBidderId, message, ChatFormatting.YELLOW, openAhAction());
+            Object[] args = {item.getAuctionId(), itemName, saleAmount};
+            sendAuctionAlert(losingBidderId, "Auction Sold", "Auction {0}: {1} sold to another player for {2}. You did not win.", "WARNING", args);
+            sendAuctionChatMessage(losingBidderId, "Auction {0}: {1} sold to another player for {2}. You did not win.", ChatFormatting.YELLOW, args, openAhAction());
         }
 
         Set<UUID> excluded = exclusions(buyerId, sellerId);
         excluded.addAll(losingBidders);
-        alertSubscribers(item, excluded, "Auction Sold", "Auction " + item.getAuctionId() + ": " + itemName + " sold for " + saleAmount + ".", "INFO");
+        alertSubscribers(item, excluded, "Auction Sold", "Auction {0}: {1} sold for {2}.", "INFO", item.getAuctionId(), itemName, saleAmount);
     }
 
     private void notifyAuctionCancelled(AuctionItem item, UUID sellerId) {
-        alertSubscribers(item, exclusions(sellerId), "Auction Cancelled", "Auction " + item.getAuctionId() + ": " + itemName(item) + " was cancelled by the seller.", "WARNING");
+        alertSubscribers(item, exclusions(sellerId), "Auction Cancelled", "Auction {0}: {1} was cancelled by the seller.", "WARNING", item.getAuctionId(), itemName(item));
     }
 
     private void notifyAuctionEndedUnsold(AuctionItem item, UUID sellerId) {
-        alertSubscribers(item, exclusions(sellerId), "Auction Ended", "Auction " + item.getAuctionId() + ": " + itemName(item) + " ended without a buyer.", "INFO");
+        alertSubscribers(item, exclusions(sellerId), "Auction Ended", "Auction {0}: {1} ended without a buyer.", "INFO", item.getAuctionId(), itemName(item));
     }
 
-    private void alertSubscribers(AuctionItem item, Set<UUID> excluded, String title, String message, String tone) {
+    private void alertSubscribers(AuctionItem item, Set<UUID> excluded, String title, String message, String tone, Object... args) {
         if (item == null) {
             return;
         }
         Set<UUID> safeExcluded = excluded == null ? Set.of() : excluded;
         for (UUID subscriberId : item.getNotificationSubscribers()) {
             if (subscriberId != null && !safeExcluded.contains(subscriberId)) {
-                sendAuctionAlert(subscriberId, title, message, tone);
-                sendAuctionChatMessage(subscriberId, message, toneColor(tone), openAhAction());
+                sendAuctionAlert(subscriberId, title, message, tone, args);
+                sendAuctionChatMessage(subscriberId, message, toneColor(tone), args, openAhAction());
             }
         }
     }
 
-    private void sendAuctionAlert(UUID playerId, String title, String message, String tone) {
+    private void sendAuctionAlert(UUID playerId, String title, String message, String tone, Object... args) {
         if (playerId == null || message == null || message.isBlank()) {
             return;
         }
+        ServerPlayer player = onlinePlayer(playerId);
+        String localizedTitle = UasTranslations.plain(player, title);
+        String localizedMessage = UasTranslations.formatPlain(player, message, args);
         UasAlertResult result = switch (tone == null ? "" : tone) {
-            case "SUCCESS" -> bankingService.sendSuccessAlert(playerId, title, message, ALERT_DURATION_MS);
-            case "ERROR" -> bankingService.sendErrorAlert(playerId, title, message, ALERT_DURATION_MS);
-            case "WARNING" -> bankingService.sendWarningAlert(playerId, title, message, ALERT_DURATION_MS);
-            default -> bankingService.sendInfoAlert(playerId, title, message, ALERT_DURATION_MS);
+            case "SUCCESS" -> bankingService.sendSuccessAlert(playerId, localizedTitle, localizedMessage, ALERT_DURATION_MS);
+            case "ERROR" -> bankingService.sendErrorAlert(playerId, localizedTitle, localizedMessage, ALERT_DURATION_MS);
+            case "WARNING" -> bankingService.sendWarningAlert(playerId, localizedTitle, localizedMessage, ALERT_DURATION_MS);
+            default -> bankingService.sendInfoAlert(playerId, localizedTitle, localizedMessage, ALERT_DURATION_MS);
         };
         if (result == null || !result.success()) {
-            sendFallbackSystemMessage(playerId, message, toneColor(tone));
+            sendFallbackSystemMessage(playerId, localizedMessage, toneColor(tone));
         }
     }
 
@@ -1037,23 +1038,31 @@ public class AuctionHouse {
                                         String message,
                                         ChatFormatting color,
                                         AuctionChatAction... actions) {
+        sendAuctionChatMessage(playerId, message, color, new Object[0], actions);
+    }
+
+    private void sendAuctionChatMessage(UUID playerId,
+                                        String message,
+                                        ChatFormatting color,
+                                        Object[] args,
+                                        AuctionChatAction... actions) {
         ServerPlayer player = onlinePlayer(playerId);
         if (player == null || message == null || message.isBlank()) {
             return;
         }
         MutableComponent line = Component.literal("[AH] ")
                 .withStyle(ChatFormatting.GOLD, ChatFormatting.BOLD)
-                .append(Component.literal(message).withStyle(color));
+                .append(Component.literal(UasTranslations.formatPlain(player, message, args)).withStyle(color));
         if (actions != null) {
             for (AuctionChatAction action : actions) {
                 if (action == null || action.command() == null || action.command().isBlank()) {
                     continue;
                 }
                 line.append(Component.literal(" "))
-                        .append(Component.literal(action.label()).withStyle(style -> style
+                        .append(Component.literal(UasTranslations.plain(player, action.label())).withStyle(style -> style
                                 .withColor(action.color())
                                 .withClickEvent(new ClickEvent(action.clickAction(), action.command()))
-                                .withHoverEvent(new HoverEvent(HoverEvent.Action.SHOW_TEXT, Component.literal(action.hover())))));
+                                .withHoverEvent(new HoverEvent(HoverEvent.Action.SHOW_TEXT, Component.literal(UasTranslations.plain(player, action.hover()))))));
             }
         }
         player.sendSystemMessage(line, false);
@@ -1167,7 +1176,7 @@ public class AuctionHouse {
         ));
     }
 
-    private void alertOnlineAdmins(String title, String message, String tone) {
+    private void alertOnlineAdmins(String title, String message, String tone, Object... args) {
         MinecraftServer server = ServerLifecycleHooks.getCurrentServer();
         if (server == null || message == null || message.isBlank()) {
             UltimateAuctionSystem.LOGGER.warn("[UAS] Admin alert while no server is available: {}", message);
@@ -1175,7 +1184,7 @@ public class AuctionHouse {
         }
         for (ServerPlayer player : server.getPlayerList().getPlayers()) {
             if (player != null && player.hasPermissions(Config.adminStatusPermissionLevel)) {
-                sendAuctionAlert(player.getUUID(), title, message, tone);
+                sendAuctionAlert(player.getUUID(), title, message, tone, args);
             }
         }
     }
@@ -1696,14 +1705,14 @@ public class AuctionHouse {
             return;
         }
         MutableComponent message = Component.empty()
-                .append(Component.literal("Auction created: ").withStyle(ChatFormatting.GREEN))
+                .append(UasTranslations.literal("Auction created: ").withStyle(ChatFormatting.GREEN))
                 .append(Component.literal(item.getAuctionId().toString()).withStyle(ChatFormatting.AQUA))
-                .append(Component.literal(" "))
-                .append(Component.literal("[Open /ah]").withStyle(style -> style
+                .append(UasTranslations.literal(" "))
+                .append(UasTranslations.literal("[Open /ah]").withStyle(style -> style
                         .withColor(ChatFormatting.YELLOW)
                         .withClickEvent(new ClickEvent(ClickEvent.Action.RUN_COMMAND, "/ah"))))
-                .append(Component.literal(" "))
-                .append(Component.literal("[My Auctions]").withStyle(style -> style
+                .append(UasTranslations.literal(" "))
+                .append(UasTranslations.literal("[My Auctions]").withStyle(style -> style
                         .withColor(ChatFormatting.GOLD)
                         .withClickEvent(new ClickEvent(ClickEvent.Action.RUN_COMMAND, "/ah mine active"))));
         player.sendSystemMessage(message, false);
@@ -1843,9 +1852,9 @@ public class AuctionHouse {
         if (winningBidderId == null) {
             UltimateAuctionSystem.LOGGER.info("Auction {} expired without bids; no UBS payout was created.", id);
             item.transitionTo(AuctionState.ENDED, "auction ended without bids");
-            String message = "Auction " + item.getAuctionId() + ": " + itemName(item) + " ended without a buyer.";
-            sendAuctionAlert(item.getPlayerId(), "Auction Ended", message, "INFO");
-            sendAuctionChatMessage(item.getPlayerId(), message, ChatFormatting.AQUA, openAhAction(), myAuctionsAction());
+            Object[] args = {item.getAuctionId(), itemName(item)};
+            sendAuctionAlert(item.getPlayerId(), "Auction Ended", "Auction {0}: {1} ended without a buyer.", "INFO", args);
+            sendAuctionChatMessage(item.getPlayerId(), "Auction {0}: {1} ended without a buyer.", ChatFormatting.AQUA, args, openAhAction(), myAuctionsAction());
             notifyAuctionEndedUnsold(item, item.getPlayerId());
             return;
         }
@@ -1853,12 +1862,11 @@ public class AuctionHouse {
         if (!bankingService.isAvailable()) {
             UltimateAuctionSystem.LOGGER.warn("UBS is not available; cannot settle auction {}.", id);
             item.transitionTo(AuctionState.FAILED_SETTLEMENT, "UBS unavailable during settlement");
-            String sellerMessage = "Auction " + item.getAuctionId() + ": " + itemName(item) + " sold but UBS is unavailable for payout.";
-            String winnerMessage = "Auction " + item.getAuctionId() + ": " + itemName(item) + " is waiting for payment settlement.";
-            sendAuctionAlert(item.getPlayerId(), "Auction Settlement Delayed", sellerMessage, "WARNING");
-            sendAuctionChatMessage(item.getPlayerId(), sellerMessage, ChatFormatting.YELLOW, openAhAction(), myAuctionsAction());
-            sendAuctionAlert(winningBidderId, "Auction Settlement Delayed", winnerMessage, "WARNING");
-            sendAuctionChatMessage(winningBidderId, winnerMessage, ChatFormatting.YELLOW, openAhAction());
+            Object[] args = {item.getAuctionId(), itemName(item)};
+            sendAuctionAlert(item.getPlayerId(), "Auction Settlement Delayed", "Auction {0}: {1} sold but UBS is unavailable for payout.", "WARNING", args);
+            sendAuctionChatMessage(item.getPlayerId(), "Auction {0}: {1} sold but UBS is unavailable for payout.", ChatFormatting.YELLOW, args, openAhAction(), myAuctionsAction());
+            sendAuctionAlert(winningBidderId, "Auction Settlement Delayed", "Auction {0}: {1} is waiting for payment settlement.", "WARNING", args);
+            sendAuctionChatMessage(winningBidderId, "Auction {0}: {1} is waiting for payment settlement.", ChatFormatting.YELLOW, args, openAhAction());
             return;
         }
 
@@ -1866,9 +1874,9 @@ public class AuctionHouse {
         if (sellerAccountId == null) {
             UltimateAuctionSystem.LOGGER.warn("Auction {} has no stored seller account ID; cannot settle seller {}.", id, item.getPlayerId());
             item.transitionTo(AuctionState.FAILED_SETTLEMENT, "missing seller account during settlement");
-            String message = "Auction " + item.getAuctionId() + ": " + itemName(item) + " has no seller account for payout.";
-            sendAuctionAlert(item.getPlayerId(), "Auction Settlement Failed", message, "ERROR");
-            sendAuctionChatMessage(item.getPlayerId(), message, ChatFormatting.RED, openAhAction(), myAuctionsAction());
+            Object[] args = {item.getAuctionId(), itemName(item)};
+            sendAuctionAlert(item.getPlayerId(), "Auction Settlement Failed", "Auction {0}: {1} has no seller account for payout.", "ERROR", args);
+            sendAuctionChatMessage(item.getPlayerId(), "Auction {0}: {1} has no seller account for payout.", ChatFormatting.RED, args, openAhAction(), myAuctionsAction());
             return;
         }
 
@@ -1877,21 +1885,21 @@ public class AuctionHouse {
         if (winningBidderAccountId == null) {
             UltimateAuctionSystem.LOGGER.warn("Auction {} has no auditable winning bid account; cannot settle.", id);
             item.transitionTo(AuctionState.FAILED_SETTLEMENT, "missing winning bidder account during settlement");
-            String message = "Auction " + item.getAuctionId() + ": " + itemName(item) + " is missing your winning bid account.";
-            sendAuctionAlert(winningBidderId, "Auction Settlement Failed", message, "ERROR");
-            sendAuctionChatMessage(winningBidderId, message, ChatFormatting.RED, openAhAction());
+            Object[] args = {item.getAuctionId(), itemName(item)};
+            sendAuctionAlert(winningBidderId, "Auction Settlement Failed", "Auction {0}: {1} is missing your winning bid account.", "ERROR", args);
+            sendAuctionChatMessage(winningBidderId, "Auction {0}: {1} is missing your winning bid account.", ChatFormatting.RED, args, openAhAction());
             return;
         }
 
         SettlementResult settlement = settleHeldBid(item);
         if (!settlement.success()) {
             UltimateAuctionSystem.LOGGER.warn("UBS auction settlement failed for {}: {}", id, settlement.message());
-            String sellerMessage = "Auction " + item.getAuctionId() + ": " + itemName(item) + " could not pay out: " + settlement.message();
-            String winnerMessage = "Auction " + item.getAuctionId() + ": " + itemName(item) + " could not finish payment settlement.";
-            sendAuctionAlert(item.getPlayerId(), "Auction Settlement Failed", sellerMessage, "ERROR");
-            sendAuctionChatMessage(item.getPlayerId(), sellerMessage, ChatFormatting.RED, openAhAction(), myAuctionsAction());
-            sendAuctionAlert(winningBidderId, "Auction Settlement Failed", winnerMessage, "ERROR");
-            sendAuctionChatMessage(winningBidderId, winnerMessage, ChatFormatting.RED, openAhAction());
+            Object[] sellerArgs = {item.getAuctionId(), itemName(item), settlement.message()};
+            Object[] winnerArgs = {item.getAuctionId(), itemName(item)};
+            sendAuctionAlert(item.getPlayerId(), "Auction Settlement Failed", "Auction {0}: {1} could not pay out: {2}", "ERROR", sellerArgs);
+            sendAuctionChatMessage(item.getPlayerId(), "Auction {0}: {1} could not pay out: {2}", ChatFormatting.RED, sellerArgs, openAhAction(), myAuctionsAction());
+            sendAuctionAlert(winningBidderId, "Auction Settlement Failed", "Auction {0}: {1} could not finish payment settlement.", "ERROR", winnerArgs);
+            sendAuctionChatMessage(winningBidderId, "Auction {0}: {1} could not finish payment settlement.", ChatFormatting.RED, winnerArgs, openAhAction());
             return;
         }
 
@@ -2126,14 +2134,14 @@ public class AuctionHouse {
             item.transitionTo(AuctionState.FAILED_SETTLEMENT, "missing seller account during claim");
             UasBankingResult failure = UasBankingResult.fail("Missing seller account", BigDecimal.ZERO);
             recordBankingEvent(item, EVENT_AUCTION_PAYOUT, net, payoutReference, failure);
-            alertOnlineAdmins("Auction Settlement Failed", "Auction " + item.getAuctionId() + " is missing a seller account for payout.", "ERROR");
+            alertOnlineAdmins("Auction Settlement Failed", "Auction {0} is missing a seller account for payout.", "ERROR", item.getAuctionId());
             return SettlementResult.fail("Auction settlement failed: missing seller account.", gross, salesTax, net);
         }
         UasBankingResult canReceive = bankingService.validateCanReceive(sellerAccountId);
         if (!canReceive.success()) {
             item.transitionTo(AuctionState.FAILED_SETTLEMENT, "seller account cannot receive payout: " + canReceive.reason());
             recordBankingEvent(item, EVENT_AUCTION_PAYOUT, net, payoutReference, canReceive);
-            alertOnlineAdmins("Auction Settlement Failed", "Auction " + item.getAuctionId() + " seller account cannot receive payout: " + canReceive.reason(), "ERROR");
+            alertOnlineAdmins("Auction Settlement Failed", "Auction {0} seller account cannot receive payout: {1}", "ERROR", item.getAuctionId(), canReceive.reason());
             return SettlementResult.fail("Auction settlement failed: seller account cannot receive payout: " + canReceive.reason(), gross, salesTax, net);
         }
 
@@ -2144,7 +2152,7 @@ public class AuctionHouse {
         item.getWinningBidRecord().ifPresent(record -> record.linkSettlement(payoutReference, deposit));
         if (!deposit.success()) {
             item.transitionTo(AuctionState.FAILED_SETTLEMENT, "UBS payout failed: " + deposit.reason());
-            alertOnlineAdmins("Auction Settlement Failed", "Auction " + item.getAuctionId() + " seller payout failed: " + deposit.reason(), "ERROR");
+            alertOnlineAdmins("Auction Settlement Failed", "Auction {0} seller payout failed: {1}", "ERROR", item.getAuctionId(), deposit.reason());
             return SettlementResult.fail("Auction settlement failed: " + deposit.reason(), gross, salesTax, net);
         }
 
@@ -2158,9 +2166,9 @@ public class AuctionHouse {
                     "Deducted from seller payout"
             );
         }
-        String message = "Auction " + item.getAuctionId() + ": " + itemName(item) + " payout: gross " + moneyLabel(gross) + ", tax " + moneyLabel(salesTax) + ", net " + moneyLabel(net) + ".";
-        sendAuctionAlert(item.getPlayerId(), "Auction Payout", message, "SUCCESS");
-        sendAuctionChatMessage(item.getPlayerId(), message, ChatFormatting.GREEN, openAhAction(), myAuctionsAction());
+        Object[] args = {item.getAuctionId(), itemName(item), moneyLabel(gross), moneyLabel(salesTax), moneyLabel(net)};
+        sendAuctionAlert(item.getPlayerId(), "Auction Payout", "Auction {0}: {1} payout: gross {2}, tax {3}, net {4}.", "SUCCESS", args);
+        sendAuctionChatMessage(item.getPlayerId(), "Auction {0}: {1} payout: gross {2}, tax {3}, net {4}.", ChatFormatting.GREEN, args, openAhAction(), myAuctionsAction());
         return SettlementResult.ok("Auction payout settled.", gross, salesTax, net);
     }
 

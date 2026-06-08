@@ -162,7 +162,7 @@ public class AUSCommands {
     private static int openAdminAuctionGui(CommandContext<CommandSourceStack> context) {
         ServerPlayer player = context.getSource().getPlayer();
         if (player == null) {
-            context.getSource().sendFailure(Component.literal("Only players can open the UAS admin GUI."));
+            context.getSource().sendFailure(UasTranslations.literal("Only players can open the UAS admin GUI."));
             return 0;
         }
         UasPayloads.openAdminAuctionHouse(player);
@@ -183,7 +183,7 @@ public class AUSCommands {
         BigDecimal startingBid = parseMoney(StringArgumentType.getString(context, "Starting Price"));
         BigDecimal buyout = hasBuyout ? parseMoney(StringArgumentType.getString(context, "Buyout Price")) : BigDecimal.ZERO;
         if (startingBid == null || buyout == null) {
-            context.getSource().sendFailure(Component.literal("Incorrect number format. Use whole dollars only, for example 50."));
+            context.getSource().sendFailure(UasTranslations.literal("Incorrect number format. Use whole dollars only, for example 50."));
             return 0;
         }
         int durationHours = IntegerArgumentType.getInteger(context, "Duration Hours");
@@ -191,10 +191,10 @@ public class AUSCommands {
         AuctionActionResult result = house.prepareAuctionFromMainHand(player, startingBid, buyout, durationHours, description);
         sendResult(context.getSource(), result);
         if (result.success()) {
-            context.getSource().sendSystemMessage(Component.literal("[Confirm]")
+            context.getSource().sendSystemMessage(UasTranslations.literal("[Confirm]")
                     .withStyle(style -> style.withColor(ChatFormatting.GREEN).withClickEvent(new ClickEvent(ClickEvent.Action.RUN_COMMAND, "/ah confirm")))
-                    .append(Component.literal(" "))
-                    .append(Component.literal("[Discard]").withStyle(style -> style.withColor(ChatFormatting.RED).withClickEvent(new ClickEvent(ClickEvent.Action.RUN_COMMAND, "/ah discard")))));
+                    .append(UasTranslations.literal(" "))
+                    .append(UasTranslations.literal("[Discard]").withStyle(style -> style.withColor(ChatFormatting.RED).withClickEvent(new ClickEvent(ClickEvent.Action.RUN_COMMAND, "/ah discard")))));
         }
         return result.success() ? Command.SINGLE_SUCCESS : 0;
     }
@@ -265,7 +265,7 @@ public class AUSCommands {
             return 0;
         }
         if (amount == null) {
-            context.getSource().sendFailure(Component.literal("Incorrect number format. Use whole dollars only, for example 50."));
+            context.getSource().sendFailure(UasTranslations.literal("Incorrect number format. Use whole dollars only, for example 50."));
             return 0;
         }
         AuctionActionResult result = auctionHouse.placeBidWithEscrow(player, auctionId, amount);
@@ -286,7 +286,7 @@ public class AUSCommands {
         }
         AuctionItem item = auctionHouse.getAuctionItem(auctionId);
         if (item == null) {
-            source.sendFailure(Component.literal("Auction not found."));
+            source.sendFailure(UasTranslations.literal("Auction not found."));
             return 0;
         }
         sendAuctionDetail(source, item);
@@ -305,22 +305,24 @@ public class AUSCommands {
         }
         AuctionItem item = auctionHouse.getAuctionItem(auctionId);
         if (item == null) {
-            context.getSource().sendFailure(Component.literal("Auction not found."));
+            context.getSource().sendFailure(UasTranslations.literal("Auction not found."));
             return 0;
         }
         if (!buyoutAvailable(item)) {
-            context.getSource().sendFailure(Component.literal("This auction cannot be bought out right now."));
+            context.getSource().sendFailure(UasTranslations.literal("This auction cannot be bought out right now."));
             return 0;
         }
         PENDING_BUYOUTS.put(player.getUUID(), new PendingBuyout(auctionId, System.currentTimeMillis() + BUYOUT_CONFIRM_WINDOW_MILLIS));
-        context.getSource().sendSystemMessage(Component.literal("Buyout preview: ")
+        context.getSource().sendSystemMessage(UasTranslations.literal("Buyout preview: ")
                 .withStyle(ChatFormatting.GOLD)
                 .append(Component.literal(item.getDisplayTitle()).withStyle(ChatFormatting.AQUA))
-                .append(Component.literal(" for ").withStyle(ChatFormatting.GRAY))
+                .append(UasTranslations.literal(" for ").withStyle(ChatFormatting.GRAY))
                 .append(Component.literal(UasMoneyFormatter.display(item.getBuyoutPrice().orElse(BigDecimal.ZERO))).withStyle(ChatFormatting.GREEN))
-                .append(Component.literal(". Auction " + auctionId + ". ").withStyle(ChatFormatting.GRAY))
+                .append(UasTranslations.literal(". Auction ").withStyle(ChatFormatting.GRAY))
+                .append(Component.literal(String.valueOf(auctionId)).withStyle(ChatFormatting.GRAY))
+                .append(UasTranslations.literal(". ").withStyle(ChatFormatting.GRAY))
                 .append(chatAction("[Confirm Buyout]", "/ah buyout confirm " + auctionId, "Confirm this buyout and spend from your UBS primary account.", ChatFormatting.GREEN, ClickEvent.Action.RUN_COMMAND))
-                .append(Component.literal(" "))
+                .append(UasTranslations.literal(" "))
                 .append(chatAction("[Cancel]", "/ah", "Do not buy out; open the Auction House instead.", ChatFormatting.RED, ClickEvent.Action.RUN_COMMAND)));
         return Command.SINGLE_SUCCESS;
     }
@@ -337,7 +339,9 @@ public class AUSCommands {
         }
         PendingBuyout pending = PENDING_BUYOUTS.get(player.getUUID());
         if (pending == null || !pending.matches(auctionId)) {
-            context.getSource().sendFailure(Component.literal("Run /ah buyout " + auctionId + " first to preview and confirm this buyout."));
+            context.getSource().sendFailure(UasTranslations.literal("Run /ah buyout ")
+                    .append(Component.literal(String.valueOf(auctionId)))
+                    .append(UasTranslations.literal(" first to preview and confirm this buyout.")));
             return 0;
         }
         PENDING_BUYOUTS.remove(player.getUUID());
@@ -467,21 +471,28 @@ public class AUSCommands {
     private static void sendAuctionDetail(CommandSourceStack source, AuctionItem item) {
         ItemStack stack = item.getItem();
         UUID auctionId = item.getAuctionId();
-        MutableComponent title = Component.literal("=== Auction " + auctionId + " ===").withStyle(ChatFormatting.GOLD);
+        MutableComponent title = UasTranslations.literal("=== Auction ")
+                .append(Component.literal(String.valueOf(auctionId)))
+                .append(UasTranslations.literal(" ==="))
+                .withStyle(ChatFormatting.GOLD);
         source.sendSystemMessage(title);
         source.sendSystemMessage(Component.literal(stack.getCount() + "x " + item.getDisplayTitle())
                 .withStyle(style -> style
                         .withColor(ChatFormatting.AQUA)
                         .withHoverEvent(new HoverEvent(HoverEvent.Action.SHOW_ITEM, new HoverEvent.ItemStackInfo(stack)))));
-        source.sendSystemMessage(Component.literal("Seller: " + playerName(source, item.getPlayerId())).withStyle(ChatFormatting.GRAY));
-        source.sendSystemMessage(Component.literal("Current bid: " + UasMoneyFormatter.display(item.getHighestBid())).withStyle(ChatFormatting.GOLD));
-        source.sendSystemMessage(Component.literal("Buyout: " + item.getBuyoutPrice().map(UasMoneyFormatter::display).orElse("none")).withStyle(ChatFormatting.GREEN));
-        source.sendSystemMessage(Component.literal("State: " + item.getState() + " | " + timeLeftText(item)).withStyle(ChatFormatting.GRAY));
+        source.sendSystemMessage(UasTranslations.literal("Seller: ").append(Component.literal(playerName(source, item.getPlayerId()))).withStyle(ChatFormatting.GRAY));
+        source.sendSystemMessage(UasTranslations.literal("Current bid: ").append(Component.literal(UasMoneyFormatter.display(item.getHighestBid()))).withStyle(ChatFormatting.GOLD));
+        source.sendSystemMessage(UasTranslations.literal("Buyout: ").append(UasTranslations.literal(item.getBuyoutPrice().map(UasMoneyFormatter::display).orElse("none"))).withStyle(ChatFormatting.GREEN));
+        source.sendSystemMessage(UasTranslations.literal("State: ")
+                .append(UasTranslations.literal(item.getState().name()))
+                .append(UasTranslations.literal(" | "))
+                .append(timeLeftComponent(item))
+                .withStyle(ChatFormatting.GRAY));
         if (item.getDescription() != null && !item.getDescription().isBlank()) {
-            source.sendSystemMessage(Component.literal("Description: " + item.getDescription()).withStyle(ChatFormatting.WHITE));
+            source.sendSystemMessage(UasTranslations.literal("Description: ").append(Component.literal(item.getDescription())).withStyle(ChatFormatting.WHITE));
         }
 
-        MutableComponent actions = Component.literal("Actions: ").withStyle(ChatFormatting.GRAY)
+        MutableComponent actions = UasTranslations.literal("Actions: ").withStyle(ChatFormatting.GRAY)
                 .append(chatAction("[Bid]", "/ah bid " + auctionId + " ", "Suggest a bid command for this auction.", ChatFormatting.GREEN, ClickEvent.Action.SUGGEST_COMMAND));
         if (buyoutAvailable(item)) {
             actions.append(Component.literal(" "))
@@ -500,7 +511,7 @@ public class AUSCommands {
     private static int sendMine(CommandContext<CommandSourceStack> context, AuctionSellerFilter filter, int page) {
         ServerPlayer player = context.getSource().getPlayer();
         if (player == null) {
-            context.getSource().sendFailure(Component.literal("Only players can view their auction listings."));
+            context.getSource().sendFailure(UasTranslations.literal("Only players can view their auction listings."));
             return 0;
         }
         AuctionHouse house = auctionHouse;
@@ -517,13 +528,21 @@ public class AUSCommands {
         int start = (safePage - 1) * pageSize;
         int end = Math.min(listings.size(), start + pageSize);
 
-        context.getSource().sendSystemMessage(Component.literal("=== My Auctions: " + safeFilter.name().toLowerCase() + " (" + safePage + "/" + maxPage + ") ===").withStyle(ChatFormatting.GOLD));
-        context.getSource().sendSystemMessage(Component.literal("Active " + stats.active() + "/" + stats.activeLimit()
-                + " | Sold " + stats.sold()
-                + " | Cancelled " + stats.cancelled()
-                + " | Expired " + stats.expired()).withStyle(ChatFormatting.GRAY));
+        context.getSource().sendSystemMessage(UasTranslations.literal("=== My Auctions: ")
+                .append(Component.literal(safeFilter.name().toLowerCase()))
+                .append(Component.literal(" (" + safePage + "/" + maxPage + ") ==="))
+                .withStyle(ChatFormatting.GOLD));
+        context.getSource().sendSystemMessage(UasTranslations.literal("Active ")
+                .append(Component.literal(stats.active() + "/" + stats.activeLimit()))
+                .append(UasTranslations.literal(" | Sold "))
+                .append(Component.literal(String.valueOf(stats.sold())))
+                .append(UasTranslations.literal(" | Cancelled "))
+                .append(Component.literal(String.valueOf(stats.cancelled())))
+                .append(UasTranslations.literal(" | Expired "))
+                .append(Component.literal(String.valueOf(stats.expired())))
+                .withStyle(ChatFormatting.GRAY));
         if (listings.isEmpty()) {
-            context.getSource().sendSystemMessage(Component.literal("No matching auction listings.").withStyle(ChatFormatting.GRAY));
+            context.getSource().sendSystemMessage(UasTranslations.literal("No matching auction listings.").withStyle(ChatFormatting.GRAY));
             return Command.SINGLE_SUCCESS;
         }
         for (int index = start; index < end; index++) {
@@ -534,12 +553,13 @@ public class AUSCommands {
 
     private static void sendMineRow(CommandSourceStack source, AuctionItem item) {
         ItemStack stack = item.getItem();
-        String status = sellerStatusLabel(source, item);
+        MutableComponent status = sellerStatusLabel(source, item);
         MutableComponent row = Component.literal("- ")
                 .withStyle(ChatFormatting.GRAY)
                 .append(Component.literal(stack.getCount() + "x " + stack.getHoverName().getString()).withStyle(ChatFormatting.AQUA))
                 .append(Component.literal(" | " + UasMoneyFormatter.display(item.getCurrentPrice())).withStyle(ChatFormatting.GOLD))
-                .append(Component.literal(" | " + status).withStyle(ChatFormatting.GRAY));
+                .append(UasTranslations.literal(" | "))
+                .append(status.withStyle(ChatFormatting.GRAY));
 
         if (item.getState() == AuctionState.ACTIVE && item.getHighestBidderId() == null && !item.isExpired()) {
             row.append(Component.literal(" "))
@@ -561,10 +581,10 @@ public class AUSCommands {
                                                String hover,
                                                ChatFormatting color,
                                                ClickEvent.Action action) {
-        return Component.literal(label).withStyle(style -> style
+        return UasTranslations.literal(label).withStyle(style -> style
                 .withColor(color)
                 .withClickEvent(new ClickEvent(action, command))
-                .withHoverEvent(new HoverEvent(HoverEvent.Action.SHOW_TEXT, Component.literal(hover))));
+                .withHoverEvent(new HoverEvent(HoverEvent.Action.SHOW_TEXT, UasTranslations.literal(hover))));
     }
 
     private static boolean buyoutAvailable(AuctionItem item) {
@@ -589,17 +609,17 @@ public class AUSCommands {
                 : player.getUUID().equals(winnerId);
     }
 
-    private static String sellerStatusLabel(CommandSourceStack source, AuctionItem item) {
+    private static MutableComponent sellerStatusLabel(CommandSourceStack source, AuctionItem item) {
         if (item.getState() == AuctionState.CANCELLED) {
-            return "cancelled";
+            return UasTranslations.literal("cancelled");
         }
         if (item.getHighestBidderId() != null) {
-            return "highest bidder " + playerName(source, item.getHighestBidderId());
+            return UasTranslations.literal("highest bidder ").append(Component.literal(playerName(source, item.getHighestBidderId())));
         }
         if (item.getState() == AuctionState.ACTIVE && !item.isExpired()) {
-            return "active, " + timeLeftText(item);
+            return UasTranslations.literal("active, ").append(timeLeftComponent(item));
         }
-        return "expired without bids";
+        return UasTranslations.literal("expired without bids");
     }
 
     private static int sendSellerStats(CommandContext<CommandSourceStack> context) {
@@ -613,13 +633,13 @@ public class AUSCommands {
             return 0;
         }
         SellerAuctionStats stats = house.getSellerStats(sellerId);
-        context.getSource().sendSystemMessage(Component.literal("=== UAS Seller Auctions ===").withStyle(ChatFormatting.GOLD));
-        context.getSource().sendSystemMessage(Component.literal("Seller: " + sellerId).withStyle(ChatFormatting.GRAY));
-        context.getSource().sendSystemMessage(Component.literal("Active: " + stats.active() + "/" + stats.activeLimit()).withStyle(ChatFormatting.GREEN));
-        context.getSource().sendSystemMessage(Component.literal("Sold: " + stats.sold()).withStyle(ChatFormatting.GOLD));
-        context.getSource().sendSystemMessage(Component.literal("Cancelled: " + stats.cancelled()).withStyle(ChatFormatting.RED));
-        context.getSource().sendSystemMessage(Component.literal("Expired: " + stats.expired()).withStyle(ChatFormatting.YELLOW));
-        context.getSource().sendSystemMessage(Component.literal("Total: " + stats.total()).withStyle(ChatFormatting.AQUA));
+        context.getSource().sendSystemMessage(UasTranslations.literal("=== UAS Seller Auctions ===").withStyle(ChatFormatting.GOLD));
+        context.getSource().sendSystemMessage(UasTranslations.literal("Seller: ").append(Component.literal(String.valueOf(sellerId))).withStyle(ChatFormatting.GRAY));
+        context.getSource().sendSystemMessage(UasTranslations.literal("Active: ").append(Component.literal(stats.active() + "/" + stats.activeLimit())).withStyle(ChatFormatting.GREEN));
+        context.getSource().sendSystemMessage(UasTranslations.literal("Sold: ").append(Component.literal(String.valueOf(stats.sold()))).withStyle(ChatFormatting.GOLD));
+        context.getSource().sendSystemMessage(UasTranslations.literal("Cancelled: ").append(Component.literal(String.valueOf(stats.cancelled()))).withStyle(ChatFormatting.RED));
+        context.getSource().sendSystemMessage(UasTranslations.literal("Expired: ").append(Component.literal(String.valueOf(stats.expired()))).withStyle(ChatFormatting.YELLOW));
+        context.getSource().sendSystemMessage(UasTranslations.literal("Total: ").append(Component.literal(String.valueOf(stats.total()))).withStyle(ChatFormatting.AQUA));
         return Command.SINGLE_SUCCESS;
     }
 
@@ -675,7 +695,7 @@ public class AUSCommands {
         }
 
         ItemStack stack = auction.getItem();
-        source.sendSystemMessage(Component.literal("=== UAS Auction Inspect ===").withStyle(ChatFormatting.GOLD));
+        source.sendSystemMessage(UasTranslations.literal("=== UAS Auction Inspect ===").withStyle(ChatFormatting.GOLD));
         sendInspectLine(source, "Auction ID", auction.getAuctionId().toString(), ChatFormatting.AQUA);
         sendInspectLine(source, "Item", stack.getCount() + "x " + stack.getHoverName().getString(), ChatFormatting.WHITE);
         sendInspectLine(source, "Description", blankFallback(auction.getDescription(), "(empty)"), ChatFormatting.GRAY);
@@ -696,9 +716,12 @@ public class AUSCommands {
         sendInspectLine(source, "Notification subscribers", String.valueOf(auction.getNotificationSubscribers().size()), ChatFormatting.GRAY);
 
         List<AuctionBidRecord> bidRecords = auction.getBidRecords();
-        source.sendSystemMessage(Component.literal("Bid history (" + bidRecords.size() + ")").withStyle(ChatFormatting.GOLD));
+        source.sendSystemMessage(UasTranslations.literal("Bid history (")
+                .append(Component.literal(String.valueOf(bidRecords.size())))
+                .append(UasTranslations.literal(")"))
+                .withStyle(ChatFormatting.GOLD));
         if (bidRecords.isEmpty()) {
-            source.sendSystemMessage(Component.literal("- No bid records.").withStyle(ChatFormatting.GRAY));
+            source.sendSystemMessage(UasTranslations.literal("- No bid records.").withStyle(ChatFormatting.GRAY));
         } else {
             for (AuctionBidRecord record : bidRecords) {
                 source.sendSystemMessage(formatBidRecord(record));
@@ -706,9 +729,12 @@ public class AUSCommands {
         }
 
         List<AuctionFinancialEvent> financialEvents = auction.getFinancialEvents();
-        source.sendSystemMessage(Component.literal("Financial events (" + financialEvents.size() + ")").withStyle(ChatFormatting.GOLD));
+        source.sendSystemMessage(UasTranslations.literal("Financial events (")
+                .append(Component.literal(String.valueOf(financialEvents.size())))
+                .append(UasTranslations.literal(")"))
+                .withStyle(ChatFormatting.GOLD));
         if (financialEvents.isEmpty()) {
-            source.sendSystemMessage(Component.literal("- No financial events.").withStyle(ChatFormatting.GRAY));
+            source.sendSystemMessage(UasTranslations.literal("- No financial events.").withStyle(ChatFormatting.GRAY));
         } else {
             for (AuctionFinancialEvent event : financialEvents) {
                 source.sendSystemMessage(formatFinancialEvent(event));
@@ -721,7 +747,7 @@ public class AUSCommands {
         if (source == null || result == null || result.message().isBlank()) {
             return;
         }
-        source.sendSystemMessage(Component.literal(result.message()).withStyle(result.success() ? ChatFormatting.GREEN : ChatFormatting.RED));
+        source.sendSystemMessage(UasTranslations.literal(result.message()).withStyle(result.success() ? ChatFormatting.GREEN : ChatFormatting.RED));
     }
 
     private static BigDecimal parseMoney(String raw) {
@@ -740,14 +766,14 @@ public class AUSCommands {
         try {
             return UUID.fromString(raw);
         } catch (IllegalArgumentException exception) {
-            source.sendFailure(Component.literal("Invalid auction ID. Use the UUID shown in /ah mine or admin inspect."));
+            source.sendFailure(UasTranslations.literal("Invalid auction ID. Use the UUID shown in /ah mine or admin inspect."));
             return null;
         }
     }
 
     private static UUID resolvePlayerId(CommandSourceStack source, String raw) {
         if (raw == null || raw.isBlank()) {
-            source.sendFailure(Component.literal("Player name or UUID is required."));
+            source.sendFailure(UasTranslations.literal("Player name or UUID is required."));
             return null;
         }
         try {
@@ -758,7 +784,7 @@ public class AUSCommands {
         if (online != null) {
             return online.getUUID();
         }
-        source.sendFailure(Component.literal("Could not resolve player. Use an online player name or UUID."));
+        source.sendFailure(UasTranslations.literal("Could not resolve player. Use an online player name or UUID."));
         return null;
     }
 
@@ -771,19 +797,23 @@ public class AUSCommands {
     }
 
     private static String timeLeftText(AuctionItem item) {
+        return timeLeftComponent(item).getString();
+    }
+
+    private static MutableComponent timeLeftComponent(AuctionItem item) {
         java.time.Duration duration = java.time.Duration.between(java.time.LocalDateTime.now(), item.getDateOfEnd());
         if (duration.isNegative() || duration.isZero()) {
-            return "ended";
+            return UasTranslations.literal("ended");
         }
         long days = duration.toDays();
         if (days > 0) {
-            return days + "d " + duration.toHoursPart() + "h left";
+            return Component.translatable("{0}d {1}h left", days, duration.toHoursPart());
         }
         long hours = duration.toHours();
         if (hours > 0) {
-            return hours + "h " + duration.toMinutesPart() + "m left";
+            return Component.translatable("{0}h {1}m left", hours, duration.toMinutesPart());
         }
-        return Math.max(1, duration.toMinutes()) + "m left";
+        return Component.translatable("{0}m left", Math.max(1, duration.toMinutes()));
     }
 
     private static void sendStatusLine(CommandSourceStack source, String label, String value, ChatFormatting valueColor) {
@@ -811,37 +841,48 @@ public class AUSCommands {
     }
 
     private static void sendInspectLine(CommandSourceStack source, String label, String value, ChatFormatting valueColor) {
-        source.sendSystemMessage(Component.literal(label)
+        source.sendSystemMessage(UasTranslations.literal(label)
                 .withStyle(ChatFormatting.GRAY)
-                .append(Component.literal(": ").withStyle(ChatFormatting.GRAY))
-                .append(Component.literal(value).withStyle(valueColor)));
+                .append(UasTranslations.literal(": ").withStyle(ChatFormatting.GRAY))
+                .append(UasTranslations.literal(value).withStyle(valueColor)));
     }
 
     private static MutableComponent formatBidRecord(AuctionBidRecord record) {
         ChatFormatting resultColor = record.isAccepted() ? ChatFormatting.GREEN : ChatFormatting.RED;
-        return Component.literal("- ")
+        return UasTranslations.literal("- ")
                 .withStyle(ChatFormatting.GRAY)
                 .append(Component.literal(record.getResult().name()).withStyle(resultColor))
                 .append(Component.literal(" " + UasMoneyFormatter.display(record.getAmount())).withStyle(ChatFormatting.GOLD))
-                .append(Component.literal(" bidder=" + record.getBidderId()).withStyle(ChatFormatting.GRAY))
-                .append(Component.literal(" account=" + record.getBidderAccountId().map(UUID::toString).orElse("(none)")).withStyle(ChatFormatting.GRAY))
-                .append(Component.literal(" at=" + formatDate(record.getTimestamp())).withStyle(ChatFormatting.GRAY))
-                .append(Component.literal(" reason=" + blankFallback(record.getReason(), "(none)")).withStyle(ChatFormatting.GRAY))
-                .append(Component.literal(" settlement=" + record.getSettlementReference().orElse("(none)")).withStyle(ChatFormatting.GRAY))
-                .append(Component.literal(" txn=" + record.getSettlementTransactionId().map(UUID::toString).orElse("(none)")).withStyle(ChatFormatting.GRAY))
-                .append(Component.literal(" settlementResult=" + record.getSettlementResult().orElse("(none)")).withStyle(ChatFormatting.GRAY));
+                .append(UasTranslations.literal(" bidder=").withStyle(ChatFormatting.GRAY))
+                .append(Component.literal(String.valueOf(record.getBidderId())).withStyle(ChatFormatting.GRAY))
+                .append(UasTranslations.literal(" account=").withStyle(ChatFormatting.GRAY))
+                .append(UasTranslations.literal(record.getBidderAccountId().map(UUID::toString).orElse("(none)")).withStyle(ChatFormatting.GRAY))
+                .append(UasTranslations.literal(" at=").withStyle(ChatFormatting.GRAY))
+                .append(UasTranslations.literal(formatDate(record.getTimestamp())).withStyle(ChatFormatting.GRAY))
+                .append(UasTranslations.literal(" reason=").withStyle(ChatFormatting.GRAY))
+                .append(UasTranslations.literal(blankFallback(record.getReason(), "(none)")).withStyle(ChatFormatting.GRAY))
+                .append(UasTranslations.literal(" settlement=").withStyle(ChatFormatting.GRAY))
+                .append(UasTranslations.literal(record.getSettlementReference().orElse("(none)")).withStyle(ChatFormatting.GRAY))
+                .append(UasTranslations.literal(" txn=").withStyle(ChatFormatting.GRAY))
+                .append(UasTranslations.literal(record.getSettlementTransactionId().map(UUID::toString).orElse("(none)")).withStyle(ChatFormatting.GRAY))
+                .append(UasTranslations.literal(" settlementResult=").withStyle(ChatFormatting.GRAY))
+                .append(UasTranslations.literal(record.getSettlementResult().orElse("(none)")).withStyle(ChatFormatting.GRAY));
     }
 
     private static MutableComponent formatFinancialEvent(AuctionFinancialEvent event) {
         ChatFormatting resultColor = event.success() ? ChatFormatting.GREEN : ChatFormatting.RED;
-        return Component.literal("- ")
+        return UasTranslations.literal("- ")
                 .withStyle(ChatFormatting.GRAY)
                 .append(Component.literal(event.type()).withStyle(resultColor))
                 .append(Component.literal(" " + UasMoneyFormatter.display(event.amount())).withStyle(ChatFormatting.GOLD))
-                .append(Component.literal(" auction=" + event.auctionId()).withStyle(ChatFormatting.GRAY))
-                .append(Component.literal(" ref=" + event.reference()).withStyle(ChatFormatting.GRAY))
-                .append(Component.literal(" txn=" + (event.transactionId() == null ? "(none)" : event.transactionId())).withStyle(ChatFormatting.GRAY))
-                .append(Component.literal(" result=" + blankFallback(event.result(), "(none)")).withStyle(ChatFormatting.GRAY));
+                .append(UasTranslations.literal(" auction=").withStyle(ChatFormatting.GRAY))
+                .append(UasTranslations.literal(String.valueOf(event.auctionId())).withStyle(ChatFormatting.GRAY))
+                .append(UasTranslations.literal(" ref=").withStyle(ChatFormatting.GRAY))
+                .append(UasTranslations.literal(event.reference()).withStyle(ChatFormatting.GRAY))
+                .append(UasTranslations.literal(" txn=").withStyle(ChatFormatting.GRAY))
+                .append(UasTranslations.literal(String.valueOf(event.transactionId() == null ? "(none)" : event.transactionId())).withStyle(ChatFormatting.GRAY))
+                .append(UasTranslations.literal(" result=").withStyle(ChatFormatting.GRAY))
+                .append(UasTranslations.literal(blankFallback(event.result(), "(none)")).withStyle(ChatFormatting.GRAY));
     }
 
     private static ChatFormatting colorForState(AuctionState state) {
