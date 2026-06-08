@@ -1,6 +1,7 @@
 package net.austizz.ultimate_auction_system;
 
-import com.google.common.eventbus.Subscribe;
+import net.austizz.ultimate_auction_system.api.UasAuctionSnapshot;
+import net.austizz.ultimate_auction_system.api.event.UasAuctionEvents;
 import net.austizz.ultimate_auction_system.banking.UasAlertResult;
 import net.austizz.ultimate_auction_system.banking.UasBankingResult;
 import net.austizz.ultimate_auction_system.banking.UasBankingService;
@@ -24,6 +25,7 @@ import net.minecraft.world.level.Level;
 import net.minecraft.world.item.ItemStack;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.ModList;
+import net.neoforged.neoforge.common.NeoForge;
 import net.neoforged.neoforge.event.tick.ServerTickEvent;
 import net.neoforged.neoforge.server.ServerLifecycleHooks;
 
@@ -557,6 +559,7 @@ public class AuctionHouse {
                 recordBankingEvent(item, EVENT_BID_ESCROW_REFUND, safeAmount, refundReference, refund);
                 if (!refund.success()) {
                     item.transitionTo(AuctionState.FAILED_SETTLEMENT, "bid escrow refund failed after rejected bid: " + refund.reason());
+                    postSettlementFailedEvent(item, "Bid escrow refund failed after rejected bid: " + refund.reason());
                     alertOnlineAdmins("Auction Settlement Failed", "Bid escrow refund failed for auction {0}: {1}", "ERROR", item.getAuctionId(), refund.reason());
                 }
                 return AuctionActionResult.fail(bidRecord.getReason());
@@ -567,6 +570,10 @@ public class AuctionHouse {
             boolean soldByBid = item.getState() == AuctionState.ENDED
                     && item.getBuyoutPrice().isPresent()
                     && safeAmount.compareTo(item.getBuyoutPrice().get()) >= 0;
+            postAuctionEvent(new UasAuctionEvents.BidAccepted(eventSnapshot(item), bidderId, safeAmount, previousBidderId, previousAmount, soldByBid));
+            if (previousBidderId != null) {
+                postAuctionEvent(new UasAuctionEvents.Outbid(eventSnapshot(item), previousBidderId, previousAmount, bidderId, safeAmount));
+            }
             if (soldByBid) {
                 SettlementResult settlement = settleHeldBid(item);
                 if (!settlement.success()) {
@@ -578,6 +585,7 @@ public class AuctionHouse {
                     sendAuctionChatMessage(bidderId, "Auction {0}: {1} is waiting for payment settlement.", ChatFormatting.YELLOW, bidderArgs, openAhAction());
                     return AuctionActionResult.fail(settlement.message());
                 }
+                postAuctionEvent(new UasAuctionEvents.BuyoutAccepted(eventSnapshot(item), bidderId, safeAmount));
             }
             if (emitBidAlerts) {
                 if (soldByBid) {
@@ -684,6 +692,7 @@ public class AuctionHouse {
                 recordBankingEvent(item, EVENT_BUYOUT_ESCROW_REFUND, buyoutAmount, refundReference, refund);
                 if (!refund.success()) {
                     item.transitionTo(AuctionState.FAILED_SETTLEMENT, "buyout escrow refund failed after rejected buyout: " + refund.reason());
+                    postSettlementFailedEvent(item, "Buyout escrow refund failed after rejected buyout: " + refund.reason());
                     alertOnlineAdmins("Auction Settlement Failed", "Buyout escrow refund failed for auction {0}: {1}", "ERROR", item.getAuctionId(), refund.reason());
                 }
                 return AuctionActionResult.fail(bidRecord.getReason());
@@ -702,6 +711,11 @@ public class AuctionHouse {
             }
             markChanged("Auction storage marked dirty after accepted buyout.");
             auditSuspiciousBidSignals(item, auditServer);
+            postAuctionEvent(new UasAuctionEvents.BidAccepted(eventSnapshot(item), bidderId, buyoutAmount, previousBidderId, previousAmount, true));
+            if (previousBidderId != null) {
+                postAuctionEvent(new UasAuctionEvents.Outbid(eventSnapshot(item), previousBidderId, previousAmount, bidderId, buyoutAmount));
+            }
+            postAuctionEvent(new UasAuctionEvents.BuyoutAccepted(eventSnapshot(item), bidderId, buyoutAmount));
             notifyAuctionSold(item, bidderId, buyoutAmount);
             return AuctionActionResult.ok("Buyout accepted. Seller was paid; claim the item from My Bids.");
         }
@@ -734,6 +748,7 @@ public class AuctionHouse {
             }
             giveOrDeliver(seller, item.getContents(), deliveryData, auctionId, "Cancelled auction return");
             markChanged("Auction storage marked dirty after auction cancellation.");
+            postAuctionEvent(new UasAuctionEvents.Cancelled(eventSnapshot(item), seller.getUUID(), "Seller cancelled auction with no bids", false));
             auditSuspiciousCancellationSignals(seller.getUUID(), seller.getServer());
             notifyAuctionCancelled(item, seller.getUUID());
             return AuctionActionResult.ok("Auction cancelled and item returned.");
@@ -815,6 +830,7 @@ public class AuctionHouse {
                 giveOrDeliver(item.getPlayerId(), item.getContents(), deliveryData, auctionId, "Admin force-cancel return: " + safeReason);
             }
             markChanged("Auction storage marked dirty after admin force-cancel.");
+            postAuctionEvent(new UasAuctionEvents.Cancelled(eventSnapshot(item), adminId, safeReason, true));
             Object[] sellerArgs = {item.getAuctionId(), itemName(item), safeAdminName, safeReason};
             if (recoverItems) {
                 sendAuctionAlert(item.getPlayerId(), "Auction Force-Cancelled", "Auction {0}: {1} was force-cancelled by admin {2}. Reason: {3}. Item moved to admin recovery.", "WARNING", sellerArgs);
@@ -947,6 +963,7 @@ public class AuctionHouse {
             giveOrDeliver(winnerId, item.getContents(), deliveryData, auctionId, "Won auction item");
             item.transitionTo(AuctionState.CLAIMED, "admin retried settlement and delivered item by " + (adminName == null || adminName.isBlank() ? "console" : adminName));
             markChanged("Auction storage marked dirty after admin settlement retry.");
+            postAuctionEvent(new UasAuctionEvents.Claimed(eventSnapshot(item), winnerId, false));
             Object[] args = {item.getAuctionId(), itemName(item)};
             sendAuctionAlert(item.getPlayerId(), "Auction Settlement Recovered", "Auction {0}: {1} was paid out after an admin retry.", "SUCCESS", args);
             sendAuctionChatMessage(item.getPlayerId(), "Auction {0}: {1} was paid out after an admin retry.", ChatFormatting.GREEN, args, openAhAction(), myAuctionsAction());
@@ -987,6 +1004,7 @@ public class AuctionHouse {
                 giveOrDeliver(player, item.getContents(), deliveryData, auctionId, "Expired unsold auction return");
                 item.transitionTo(AuctionState.CLAIMED, "seller claimed unsold return");
                 markChanged("Auction storage marked dirty after seller return claim.");
+                postAuctionEvent(new UasAuctionEvents.Claimed(eventSnapshot(item), player.getUUID(), true));
                 notifyAuctionEndedUnsold(item, player.getUUID());
                 return AuctionActionResult.ok("Unsold item returned.");
             }
@@ -1007,6 +1025,7 @@ public class AuctionHouse {
             giveOrDeliver(player, item.getContents(), deliveryData, auctionId, "Won auction item");
             item.transitionTo(AuctionState.CLAIMED, "winner claimed auction item");
             markChanged("Auction storage marked dirty after winner claim.");
+            postAuctionEvent(new UasAuctionEvents.Claimed(eventSnapshot(item), player.getUUID(), false));
             return AuctionActionResult.ok("Auction item claimed.");
         }
     }
@@ -1084,6 +1103,7 @@ public class AuctionHouse {
     }
 
     private void notifyAuctionSold(AuctionItem item, UUID buyerId, BigDecimal amount) {
+        postAuctionEvent(new UasAuctionEvents.Sold(eventSnapshot(item), buyerId, amount));
         String itemName = itemName(item);
         String saleAmount = moneyLabel(amount);
         String buyerName = playerName(buyerId);
@@ -1256,6 +1276,20 @@ public class AuctionHouse {
                 ? "UNKNOWN"
                 : eventType.trim().toUpperCase(Locale.ROOT);
         return "UAS_" + normalized + ":" + (auctionId == null ? "unknown" : auctionId);
+    }
+
+    private UasAuctionSnapshot eventSnapshot(AuctionItem item) {
+        return UasAuctionSnapshot.fromItem(item);
+    }
+
+    private void postAuctionEvent(UasAuctionEvents.AuctionEvent event) {
+        if (event != null) {
+            NeoForge.EVENT_BUS.post(event);
+        }
+    }
+
+    private void postSettlementFailedEvent(AuctionItem item, String reason) {
+        postAuctionEvent(new UasAuctionEvents.SettlementFailed(eventSnapshot(item), reason));
     }
 
     private AuctionFinancialEvent recordBankingEvent(AuctionItem item,
@@ -2061,6 +2095,7 @@ public class AuctionHouse {
         if (!bankingService.isAvailable()) {
             UltimateAuctionSystem.LOGGER.warn("UBS is not available; cannot settle auction {}.", id);
             item.transitionTo(AuctionState.FAILED_SETTLEMENT, "UBS unavailable during settlement");
+            postSettlementFailedEvent(item, "UBS unavailable during settlement");
             Object[] args = {item.getAuctionId(), itemName(item)};
             sendAuctionAlert(item.getPlayerId(), "Auction Settlement Delayed", "Auction {0}: {1} sold but UBS is unavailable for payout.", "WARNING", args);
             sendAuctionChatMessage(item.getPlayerId(), "Auction {0}: {1} sold but UBS is unavailable for payout.", ChatFormatting.YELLOW, args, openAhAction(), myAuctionsAction());
@@ -2073,6 +2108,7 @@ public class AuctionHouse {
         if (sellerAccountId == null) {
             UltimateAuctionSystem.LOGGER.warn("Auction {} has no stored seller account ID; cannot settle seller {}.", id, item.getPlayerId());
             item.transitionTo(AuctionState.FAILED_SETTLEMENT, "missing seller account during settlement");
+            postSettlementFailedEvent(item, "Missing seller account during settlement");
             Object[] args = {item.getAuctionId(), itemName(item)};
             sendAuctionAlert(item.getPlayerId(), "Auction Settlement Failed", "Auction {0}: {1} has no seller account for payout.", "ERROR", args);
             sendAuctionChatMessage(item.getPlayerId(), "Auction {0}: {1} has no seller account for payout.", ChatFormatting.RED, args, openAhAction(), myAuctionsAction());
@@ -2084,6 +2120,7 @@ public class AuctionHouse {
         if (winningBidderAccountId == null) {
             UltimateAuctionSystem.LOGGER.warn("Auction {} has no auditable winning bid account; cannot settle.", id);
             item.transitionTo(AuctionState.FAILED_SETTLEMENT, "missing winning bidder account during settlement");
+            postSettlementFailedEvent(item, "Missing winning bidder account during settlement");
             Object[] args = {item.getAuctionId(), itemName(item)};
             sendAuctionAlert(winningBidderId, "Auction Settlement Failed", "Auction {0}: {1} is missing your winning bid account.", "ERROR", args);
             sendAuctionChatMessage(winningBidderId, "Auction {0}: {1} is missing your winning bid account.", ChatFormatting.RED, args, openAhAction());
@@ -2174,6 +2211,7 @@ public class AuctionHouse {
         attachMutationTracking(item);
         AuctionItems.put(item.getAuctionId(), item);
         markChanged("Auction storage marked dirty after listing creation.");
+        postAuctionEvent(new UasAuctionEvents.ListingCreated(eventSnapshot(item), player.getUUID()));
         sendAuctionCreatedMessage(player, item);
         return AuctionActionResult.ok("Auction created: " + item.getAuctionId(), item.getAuctionId());
     }
@@ -2331,6 +2369,7 @@ public class AuctionHouse {
         UUID sellerAccountId = item.getSellerAccountId();
         if (sellerAccountId == null) {
             item.transitionTo(AuctionState.FAILED_SETTLEMENT, "missing seller account during claim");
+            postSettlementFailedEvent(item, "Missing seller account during claim");
             UasBankingResult failure = UasBankingResult.fail("Missing seller account", BigDecimal.ZERO);
             recordBankingEvent(item, EVENT_AUCTION_PAYOUT, net, payoutReference, failure);
             alertOnlineAdmins("Auction Settlement Failed", "Auction {0} is missing a seller account for payout.", "ERROR", item.getAuctionId());
@@ -2339,6 +2378,7 @@ public class AuctionHouse {
         UasBankingResult canReceive = bankingService.validateCanReceive(sellerAccountId);
         if (!canReceive.success()) {
             item.transitionTo(AuctionState.FAILED_SETTLEMENT, "seller account cannot receive payout: " + canReceive.reason());
+            postSettlementFailedEvent(item, "Seller account cannot receive payout: " + canReceive.reason());
             recordBankingEvent(item, EVENT_AUCTION_PAYOUT, net, payoutReference, canReceive);
             alertOnlineAdmins("Auction Settlement Failed", "Auction {0} seller account cannot receive payout: {1}", "ERROR", item.getAuctionId(), canReceive.reason());
             return SettlementResult.fail("Auction settlement failed: seller account cannot receive payout: " + canReceive.reason(), gross, salesTax, net);
@@ -2356,6 +2396,7 @@ public class AuctionHouse {
         item.getWinningBidRecord().ifPresent(record -> record.linkSettlement(payoutReference, deposit));
         if (!deposit.success()) {
             item.transitionTo(AuctionState.FAILED_SETTLEMENT, "UBS payout failed: " + deposit.reason());
+            postSettlementFailedEvent(item, "UBS payout failed: " + deposit.reason());
             alertOnlineAdmins("Auction Settlement Failed", "Auction {0} seller payout failed: {1}", "ERROR", item.getAuctionId(), deposit.reason());
             return SettlementResult.fail("Auction settlement failed: " + deposit.reason(), gross, salesTax, net);
         }
@@ -2391,6 +2432,7 @@ public class AuctionHouse {
         recordBankingEvent(item, EVENT_SALES_TAX, salesTax, taxReference, taxDeposit);
         if (!taxDeposit.success()) {
             item.transitionTo(AuctionState.FAILED_SETTLEMENT, "sales tax transfer failed: " + taxDeposit.reason());
+            postSettlementFailedEvent(item, "Sales tax transfer failed: " + taxDeposit.reason());
             alertOnlineAdmins("Auction Settlement Failed", "Auction {0} sales tax transfer failed: {1}", "ERROR", item.getAuctionId(), taxDeposit.reason());
             return SettlementResult.fail("Auction settlement failed: sales tax transfer failed: " + taxDeposit.reason(), gross, salesTax, net);
         }

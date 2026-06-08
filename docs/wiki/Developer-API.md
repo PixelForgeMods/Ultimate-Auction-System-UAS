@@ -76,3 +76,24 @@ Stable result codes:
 - `UNKNOWN_FAILURE`
 
 Normal validation failures should be handled by checking `success` and `code`; integrations should not parse `reason` except for display.
+
+## Auction Events
+
+UAS posts server-side NeoForge events under `net.austizz.ultimate_auction_system.api.event.UasAuctionEvents`.
+
+Available post-action events:
+
+- `ListingCreated`
+- `BidAccepted`
+- `Outbid`
+- `BuyoutAccepted`
+- `Sold`
+- `Cancelled`
+- `SettlementFailed`
+- `Claimed`
+
+Each event carries an immutable `UasAuctionSnapshot` plus relevant UUIDs and amounts. The snapshot returns defensive `ItemStack` copies, so listeners cannot mutate escrowed items.
+
+Ordering is deterministic: UAS mutates the auction, marks storage dirty, then posts the event, then sends normal alerts/chat messages. Settlement-related events fire after the relevant UBS action succeeds or after the auction is moved into `FAILED_SETTLEMENT`.
+
+These phase-7 hooks are notification/audit hooks only. They are not cancellable pre-action hooks; integrations must not assume they can veto core listing, bidding, settlement, cancellation, or claim flows.
