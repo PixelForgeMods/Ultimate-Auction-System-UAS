@@ -92,6 +92,8 @@ Supported Browse filters:
 - Time left: any time, under 1 hour, under 24 hours, or under 7 days
 - Sort: newest, ending soon, highest bid, lowest price, or buyout price
 
+The Filters modal can save named Browse presets. Saved searches persist per player, include search text, category, mod, price, time-left, and sort settings, and can be run, renamed, or deleted from the GUI.
+
 Bid and raise-bid modals use a two-step flow. The first action refreshes the UBS account snapshot and shows the selected account, balance, bid amount, expected remaining balance, and warnings. The second action submits the bid to the same server service used by `/ah bid`.
 
 Create-auction supports one inventory slot or a bundle of up to 18 stacks. Bundle auctions show a bundle title and a contents preview. UAS validates the selected item contents again on confirm before escrow.
@@ -222,6 +224,10 @@ Bidding and limits:
 - `limits.maxAuctionDurationHours`: maximum auction duration, default `168`
 - `limits.pendingListingConfirmationSeconds`: pending listing confirmation timeout, default `60`
 - `limits.bannedAuctionEntries`: exact item, tag, or mod restrictions for new listings
+
+Marketplace:
+
+- `marketplace.maxSavedSearchesPerPlayer`: named Browse filter presets each player can save, default `12`
 
 Settlement:
 

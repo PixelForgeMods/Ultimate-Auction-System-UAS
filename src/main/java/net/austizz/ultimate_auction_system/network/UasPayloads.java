@@ -6,6 +6,7 @@ import net.austizz.ultimate_auction_system.AuctionCategory;
 import net.austizz.ultimate_auction_system.AuctionDeliverySavedData;
 import net.austizz.ultimate_auction_system.AuctionHouse;
 import net.austizz.ultimate_auction_system.AuctionHouseSnapshot;
+import net.austizz.ultimate_auction_system.AuctionSavedSearchSavedData;
 import net.austizz.ultimate_auction_system.AuctionSort;
 import net.austizz.ultimate_auction_system.AuctionUiQuery;
 import net.austizz.ultimate_auction_system.UltimateAuctionSystem;
@@ -99,6 +100,9 @@ public final class UasPayloads {
                 case "CLAIM" -> house.claimAuction(player, payload.auctionId(), deliveryData);
                 case "TOGGLE_NOTIFICATIONS" -> house.toggleNotifications(player, payload.auctionId());
                 case "WITHDRAW_DELIVERY" -> house.withdrawDelivery(player, payload.deliveryId(), deliveryData);
+                case "SAVE_SEARCH" -> AuctionSavedSearchSavedData.get(player.getServer()).saveSearch(player.getUUID(), payload.title(), query);
+                case "RENAME_SEARCH" -> AuctionSavedSearchSavedData.get(player.getServer()).renameSearch(player.getUUID(), payload.auctionId(), payload.title());
+                case "DELETE_SEARCH" -> AuctionSavedSearchSavedData.get(player.getServer()).deleteSearch(player.getUUID(), payload.auctionId());
                 default -> AuctionActionResult.ok("");
             };
             if (adminMode && "ADMIN_FORCE_CANCEL".equals(action)) {

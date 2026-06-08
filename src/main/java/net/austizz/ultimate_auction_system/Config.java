@@ -35,6 +35,7 @@ public class Config {
     public static final int DEFAULT_SEARCH_COOLDOWN_SECONDS = 1;
     public static final int DEFAULT_MAX_WATCHED_AUCTIONS_PER_PLAYER = 64;
     public static final int DEFAULT_WATCH_ENDING_SOON_THRESHOLD_MINUTES = 60;
+    public static final int DEFAULT_MAX_SAVED_SEARCHES_PER_PLAYER = 12;
     public static final boolean DEFAULT_REQUIRE_UBS_FOR_LISTING = true;
     public static final boolean DEFAULT_AUTO_SETTLE_EXPIRED_AUCTIONS = true;
     public static final boolean DEFAULT_PHYSICAL_CASH_LISTING_FEES = false;
@@ -80,6 +81,7 @@ public class Config {
     private static final int MAX_PERMISSION_LEVEL = 4;
     private static final int MAX_WATCHED_AUCTIONS_PER_PLAYER = 1_000;
     private static final int MAX_WATCH_ENDING_SOON_THRESHOLD_MINUTES = 24 * 60;
+    private static final int MAX_SAVED_SEARCHES_PER_PLAYER = 100;
     private static final int MIN_AUTOSAVE_INTERVAL_TICKS = 20;
     private static final int MAX_AUTOSAVE_INTERVAL_TICKS = 72_000;
     private static final int MIN_PENDING_CONFIRMATION_SECONDS = 10;
@@ -215,6 +217,13 @@ public class Config {
                     "0 disables ending-soon watch notifications. Sold, cancelled, and bid-update notifications still work."
             )
             .defineInRange("notifications.endingSoonThresholdMinutes", DEFAULT_WATCH_ENDING_SOON_THRESHOLD_MINUTES, 0, MAX_WATCH_ENDING_SOON_THRESHOLD_MINUTES);
+
+    private static final ModConfigSpec.IntValue MAX_SAVED_SEARCHES = BUILDER
+            .comment(
+                    "Maximum named auction browser filter presets one player can save.",
+                    "Runtime reload: applies when players create new saved searches."
+            )
+            .defineInRange("marketplace.maxSavedSearchesPerPlayer", DEFAULT_MAX_SAVED_SEARCHES_PER_PLAYER, 1, MAX_SAVED_SEARCHES_PER_PLAYER);
 
     private static final ModConfigSpec.BooleanValue REQUIRE_UBS_FOR_LISTING = BUILDER
             .comment(
@@ -432,6 +441,7 @@ public class Config {
     public static int searchCooldownSeconds = DEFAULT_SEARCH_COOLDOWN_SECONDS;
     public static int maxWatchedAuctionsPerPlayer = DEFAULT_MAX_WATCHED_AUCTIONS_PER_PLAYER;
     public static int watchEndingSoonThresholdMinutes = DEFAULT_WATCH_ENDING_SOON_THRESHOLD_MINUTES;
+    public static int maxSavedSearchesPerPlayer = DEFAULT_MAX_SAVED_SEARCHES_PER_PLAYER;
     public static boolean requireUbsForListing;
     public static boolean autoSettleExpiredAuctions;
     public static boolean physicalCashListingFees = DEFAULT_PHYSICAL_CASH_LISTING_FEES;
@@ -487,6 +497,7 @@ public class Config {
         searchCooldownSeconds = readInt("rateLimits.searchCooldownSeconds", SEARCH_COOLDOWN_SECONDS, DEFAULT_SEARCH_COOLDOWN_SECONDS, 0, MAX_RATE_LIMIT_SECONDS);
         maxWatchedAuctionsPerPlayer = readInt("notifications.maxWatchedAuctionsPerPlayer", MAX_WATCHED_AUCTIONS, DEFAULT_MAX_WATCHED_AUCTIONS_PER_PLAYER, 1, MAX_WATCHED_AUCTIONS_PER_PLAYER);
         watchEndingSoonThresholdMinutes = readInt("notifications.endingSoonThresholdMinutes", WATCH_ENDING_SOON_THRESHOLD_MINUTES, DEFAULT_WATCH_ENDING_SOON_THRESHOLD_MINUTES, 0, MAX_WATCH_ENDING_SOON_THRESHOLD_MINUTES);
+        maxSavedSearchesPerPlayer = readInt("marketplace.maxSavedSearchesPerPlayer", MAX_SAVED_SEARCHES, DEFAULT_MAX_SAVED_SEARCHES_PER_PLAYER, 1, MAX_SAVED_SEARCHES_PER_PLAYER);
         requireUbsForListing = readBoolean("settlement.requireUbsForListing", REQUIRE_UBS_FOR_LISTING, DEFAULT_REQUIRE_UBS_FOR_LISTING);
         autoSettleExpiredAuctions = readBoolean("settlement.autoSettleExpiredAuctions", AUTO_SETTLE_EXPIRED_AUCTIONS, DEFAULT_AUTO_SETTLE_EXPIRED_AUCTIONS);
         physicalCashListingFees = readBoolean("settlement.physicalCashListingFees", PHYSICAL_CASH_LISTING_FEES, DEFAULT_PHYSICAL_CASH_LISTING_FEES);

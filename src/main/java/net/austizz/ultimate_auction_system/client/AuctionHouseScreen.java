@@ -12,6 +12,7 @@ import net.austizz.ultimate_auction_system.network.AuctionDeliverySummary;
 import net.austizz.ultimate_auction_system.network.AuctionEntrySummary;
 import net.austizz.ultimate_auction_system.network.AuctionModFilterSummaryPayload;
 import net.austizz.ultimate_auction_system.network.AuctionPendingListingSummary;
+import net.austizz.ultimate_auction_system.network.AuctionSavedSearchPayload;
 import net.austizz.ultimate_auction_system.network.AuctionSnapshotPayload;
 import net.minecraft.ChatFormatting;
 import net.minecraft.client.gui.GuiGraphics;
@@ -150,6 +151,7 @@ public class AuctionHouseScreen extends Screen {
     private String selectedModId = "";
     private String pendingModId = "";
     private String modSearchDraft = "";
+    private String savedSearchNameDraft = "";
     private String adminSearchDraft = "";
     private String adminBannedEntryDraft = "";
     private String adminBanReasonDraft = "";
@@ -176,6 +178,7 @@ public class AuctionHouseScreen extends Screen {
     private EditBox endHourBox;
     private EditBox endMinuteBox;
     private EditBox modSearchBox;
+    private EditBox savedSearchNameBox;
     private EditBox adminSearchBox;
     private EditBox adminBannedEntryBox;
     private EditBox adminBanReasonBox;
@@ -263,6 +266,7 @@ public class AuctionHouseScreen extends Screen {
         startingBidDraft = sanitizeMoneyInput(value(startingBidBox, startingBidDraft));
         buyoutDraft = sanitizeMoneyInput(value(buyoutBox, buyoutDraft));
         bundleTitleDraft = value(bundleTitleBox, bundleTitleDraft);
+        savedSearchNameDraft = value(savedSearchNameBox, savedSearchNameDraft);
         adminSearchDraft = value(adminSearchBox, adminSearchDraft);
         adminBannedEntryDraft = value(adminBannedEntryBox, adminBannedEntryDraft);
         adminBanReasonDraft = value(adminBanReasonBox, adminBanReasonDraft);
@@ -891,6 +895,30 @@ public class AuctionHouseScreen extends Screen {
             rebuildWidgets();
         });
         setVisibleInModalBody(sortButton, bodyTop, bodyBottom);
+
+        savedSearchNameBox = new AuctionEditBox(font, fieldX, y + 404 - scroll, Math.max(80, fieldW - 116), 20, Component.translatable("Saved Search Name"));
+        savedSearchNameBox.setHint(Component.translatable("Name this search"));
+        savedSearchNameBox.setValue(savedSearchNameDraft);
+        savedSearchNameBox.setResponder(value -> savedSearchNameDraft = value);
+        setVisibleInModalBody(savedSearchNameBox, bodyTop, bodyBottom);
+        addRenderableWidget(savedSearchNameBox);
+
+        AuctionButton saveSearchButton = addAuctionButton(fieldX + fieldW - 108, y + 404 - scroll, 108, 20, "Save Current", AuctionButton.Style.GREEN, button -> sendSavedSearchAction("SAVE_SEARCH", null));
+        setVisibleInModalBody(saveSearchButton, bodyTop, bodyBottom);
+
+        int rowY = y + 436 - scroll;
+        int rowH = 56;
+        for (AuctionSavedSearchPayload savedSearch : savedSearches()) {
+            int buttonY = rowY + 32;
+            int actionW = Math.max(54, Math.min(72, (fieldW - 16) / 4));
+            AuctionButton runButton = addAuctionButton(fieldX + fieldW - actionW * 3 - 12, buttonY, actionW, 18, "Run", AuctionButton.Style.GREEN, button -> runSavedSearch(savedSearch));
+            AuctionButton renameButton = addAuctionButton(fieldX + fieldW - actionW * 2 - 8, buttonY, actionW, 18, "Rename", AuctionButton.Style.GRAY, button -> sendSavedSearchAction("RENAME_SEARCH", savedSearch));
+            AuctionButton deleteButton = addAuctionButton(fieldX + fieldW - actionW - 4, buttonY, actionW, 18, "Delete", AuctionButton.Style.RED, button -> sendSavedSearchAction("DELETE_SEARCH", savedSearch));
+            setVisibleInModalBody(runButton, bodyTop, bodyBottom);
+            setVisibleInModalBody(renameButton, bodyTop, bodyBottom);
+            setVisibleInModalBody(deleteButton, bodyTop, bodyBottom);
+            rowY += rowH;
+        }
 
         addAuctionButton(x + 18, y + modalH - 36, modalW - 118, 26, "Apply Filters", AuctionButton.Style.GREEN, button -> applyFilters());
         addAuctionButton(x + modalW - 88, y + modalH - 36, 70, 26, "Close", AuctionButton.Style.GRAY, button -> closeModal());
@@ -3081,6 +3109,27 @@ public class AuctionHouseScreen extends Screen {
         graphics.drawString(font, Component.translatable("Price Range"), labelX, y + 170 - scroll, 0xFFE0E0E0, false);
         graphics.drawString(font, Component.translatable("Closing Time"), labelX, y + 260 - scroll, 0xFFE0E0E0, false);
         graphics.drawString(font, Component.translatable("Sort By"), labelX, y + 322 - scroll, 0xFFE0E0E0, false);
+        graphics.drawString(font, Component.translatable("Saved Searches"), labelX, y + 384 - scroll, 0xFFE0E0E0, false);
+
+        List<AuctionSavedSearchPayload> savedSearches = savedSearches();
+        int rowY = y + 436 - scroll;
+        int rowH = 56;
+        if (savedSearches.isEmpty()) {
+            graphics.drawString(font, Component.translatable("No saved searches"), labelX, rowY + 10, 0xFF9E9E9E, false);
+        }
+        for (AuctionSavedSearchPayload savedSearch : savedSearches) {
+            int rowBottom = rowY + rowH - 4;
+            if (rowBottom >= bodyTop && rowY <= bodyBottom) {
+                int clampedTop = Math.max(rowY, bodyTop);
+                int clampedBottom = Math.min(rowBottom, bodyBottom);
+                graphics.fill(labelX, clampedTop, x + modalW - 18, clampedBottom, 0xFF000000);
+                graphics.fill(labelX + 2, clampedTop + 2, x + modalW - 20, clampedBottom - 2, 0xFF191919);
+                int textW = Math.max(60, modalW - 274);
+                graphics.drawString(font, Component.literal(trimToWidth(savedSearch.name(), textW)).withStyle(ChatFormatting.BOLD), labelX + 10, rowY + 7, 0xFFFFFFFF, false);
+                graphics.drawString(font, Component.literal(trimToWidth(savedSearchDetail(savedSearch), textW)), labelX + 10, rowY + 22, 0xFFBDBDBD, false);
+            }
+            rowY += rowH;
+        }
         graphics.disableScissor();
         renderScrollBar(graphics, x + modalW - 12, bodyTop, bodyBottom, filterScroll, filterContentHeight(), bodyBottom - bodyTop);
     }
@@ -3262,7 +3311,7 @@ public class AuctionHouseScreen extends Screen {
     }
 
     private int filterContentHeight() {
-        return 374;
+        return 468 + savedSearches().size() * 56;
     }
 
     private int modContentHeight() {
@@ -3560,6 +3609,108 @@ public class AuctionHouseScreen extends Screen {
         return payload == null || payload.modFilters() == null ? List.of() : payload.modFilters();
     }
 
+    private List<AuctionSavedSearchPayload> savedSearches() {
+        return payload == null || payload.savedSearches() == null ? List.of() : payload.savedSearches();
+    }
+
+    private void runSavedSearch(AuctionSavedSearchPayload savedSearch) {
+        if (savedSearch == null) {
+            return;
+        }
+        searchDraft = savedSearch.search();
+        category = AuctionCategory.fromToken(savedSearch.category());
+        sort = AuctionSort.fromToken(savedSearch.sort());
+        minPriceDraft = sanitizeMoneyInput(savedSearch.minimumPrice());
+        maxPriceDraft = sanitizeMoneyInput(savedSearch.maximumPrice());
+        maxHoursLeft = Math.max(0L, savedSearch.maximumHoursLeft());
+        selectedModId = savedSearch.modId() == null ? "" : savedSearch.modId();
+        if (searchBox != null) {
+            searchBox.setValue(searchDraft);
+        }
+        if (minPriceBox != null) {
+            minPriceBox.setValue(minPriceDraft);
+        }
+        if (maxPriceBox != null) {
+            maxPriceBox.setValue(maxPriceDraft);
+        }
+        auctionScroll = 0;
+        modal = Modal.NONE;
+        refreshFromServer();
+    }
+
+    private void sendSavedSearchAction(String action, AuctionSavedSearchPayload savedSearch) {
+        String name = value(savedSearchNameBox, savedSearchNameDraft).trim();
+        if ("RENAME_SEARCH".equals(action) && name.isBlank() && savedSearch != null) {
+            savedSearchNameDraft = savedSearch.name();
+            rebuildWidgets();
+            return;
+        }
+        PacketDistributor.sendToServer(new AuctionActionPayload(
+                action,
+                savedSearch == null ? null : savedSearch.searchId(),
+                null,
+                -1,
+                List.of(),
+                "DELETE_SEARCH".equals(action) ? "" : name,
+                "",
+                "",
+                "",
+                0,
+                "",
+                "",
+                searchValue(),
+                category.name(),
+                sort.name(),
+                minPriceValue(),
+                maxPriceValue(),
+                maxHoursLeft,
+                selectedModId,
+                selectedAccountIdForAction(),
+                payload.adminMode()
+        ));
+    }
+
+    private String savedSearchDetail(AuctionSavedSearchPayload savedSearch) {
+        if (savedSearch == null) {
+            return "";
+        }
+        List<String> parts = new ArrayList<>();
+        if (savedSearch.search() != null && !savedSearch.search().isBlank()) {
+            parts.add(Component.translatable("Search: {0}", savedSearch.search()).getString());
+        }
+        String categoryLabel = Component.translatable(AuctionCategory.fromToken(savedSearch.category()).label()).getString();
+        parts.add(Component.translatable("Category: {0}", categoryLabel).getString());
+        String mod = savedSearch.modId() == null ? "" : savedSearch.modId().trim();
+        parts.add(mod.isBlank()
+                ? Component.translatable("Any mod").getString()
+                : Component.translatable("Mod: {0}", modDisplayName(mod)).getString());
+        String price = savedSearchPrice(savedSearch);
+        if (!price.isBlank()) {
+            parts.add(price);
+        }
+        long hoursLeft = Math.max(0L, savedSearch.maximumHoursLeft());
+        if (hoursLeft > 0L) {
+            parts.add(timeFilterLabel(hoursLeft));
+        }
+        parts.add(Component.translatable(AuctionSort.fromToken(savedSearch.sort()).label()).getString());
+        return String.join(Component.translatable(" | ").getString(), parts);
+    }
+
+    private String savedSearchPrice(AuctionSavedSearchPayload savedSearch) {
+        String min = savedSearch.minimumPrice() == null ? "" : savedSearch.minimumPrice().trim();
+        String max = savedSearch.maximumPrice() == null ? "" : savedSearch.maximumPrice().trim();
+        if (min.isBlank() && max.isBlank()) {
+            return "";
+        }
+        if (min.isBlank()) {
+            return Component.translatable("Price: up to {0}", moneyDisplay(moneyDraft(max))).getString();
+        }
+        if (max.isBlank()) {
+            return Component.translatable("Price: from {0}", moneyDisplay(moneyDraft(min))).getString();
+        }
+        return Component.translatable("Price: {0} - {1}", moneyDisplay(moneyDraft(min)), moneyDisplay(moneyDraft(max))).getString();
+    }
+
     private void applyFilters() {
         minPriceDraft = sanitizeMoneyInput(value(minPriceBox, minPriceDraft));
         maxPriceDraft = sanitizeMoneyInput(value(maxPriceBox, maxPriceDraft));
@@ -3855,13 +4006,17 @@ public class AuctionHouseScreen extends Screen {
     }
 
     private String timeFilterLabel() {
-        if (maxHoursLeft == 0L) {
+        return timeFilterLabel(maxHoursLeft);
+    }
+
+    private String timeFilterLabel(long hoursLeft) {
+        if (hoursLeft == 0L) {
             return Component.translatable("Any Time").getString();
         }
-        if (maxHoursLeft == 1L) {
+        if (hoursLeft == 1L) {
             return Component.translatable("Under 1 Hour").getString();
         }
-        if (maxHoursLeft == 24L) {
+        if (hoursLeft == 24L) {
             return Component.translatable("Under 24 Hours").getString();
         }
         return Component.translatable("Under 7 Days").getString();

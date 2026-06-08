@@ -123,6 +123,7 @@ class AuctionUiModelTest {
                 List.of(),
                 List.of(),
                 List.of(),
+                List.of(),
                 null,
                 null,
                 0.05D,

@@ -34,6 +34,12 @@ The Browse tab is server-filtered, so results stay consistent with the server st
 
 Rows include valid actions for the current state, such as Bid, Raise Bid, Buyout, Notify, View Bids, Claim, or Cancel.
 
+## Saved Searches
+
+Open Filters to save named Browse filter presets. A saved search stores the current search text, category, mod filter, price range, time-left filter, and sort order. Use Run to apply it later; use Rename or Delete to manage old presets. Saved searches persist per player across server restarts and run against the current live auction list, so missing items or changed mods simply produce fewer results instead of breaking the browser.
+
+Servers can limit how many saved searches each player can keep.
+
 ## Create An Auction In The GUI
 
 The GUI is the recommended way to create auctions.

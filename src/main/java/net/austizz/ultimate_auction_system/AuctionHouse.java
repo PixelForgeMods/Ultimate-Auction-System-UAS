@@ -1560,13 +1560,16 @@ public class AuctionHouse {
         List<AuctionDeliveryEntry> deliveries = viewerId == null || deliveryData == null
                 ? List.of()
                 : deliveryData.getDeliveries(viewerId);
+        List<AuctionSavedSearch> savedSearches = viewer == null || viewer.getServer() == null || viewerId == null
+                ? List.of()
+                : AuctionSavedSearchSavedData.get(viewer.getServer()).list(viewerId);
         AuctionListingPreview pendingListing = viewerId == null
                 ? null
                 : getPendingListingPreview(viewerId).orElse(null);
         AuctionAdminDashboardSnapshot adminDashboard = resolvedAdminMode
                 ? buildAdminDashboard(all, adminSavedData(viewer), deliveryData)
                 : AuctionAdminDashboardSnapshot.empty();
-        return new AuctionHouseSnapshot(browse, myBids, myAuctions, dashboardListings, deliveries, modFilters, accounts, primaryAccount, pendingListing, Config.listingFeeRate, message == null ? "" : message, success, resolvedAdminMode, adminDashboard);
+        return new AuctionHouseSnapshot(browse, myBids, myAuctions, dashboardListings, deliveries, modFilters, savedSearches, accounts, primaryAccount, pendingListing, Config.listingFeeRate, message == null ? "" : message, success, resolvedAdminMode, adminDashboard);
     }
 
     private List<AuctionListingSummary> buildPersonalDashboard(List<AuctionListingSummary> all, UUID viewerId) {
