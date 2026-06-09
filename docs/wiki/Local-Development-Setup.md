@@ -10,10 +10,16 @@ Ultimate mod series/
   Ultimate-Banking-System-UBS-main/
 ```
 
-`build.gradle` uses UBS as an implementation dependency and has a local flat-dir fallback for the sibling UBS jar:
+`build.gradle` uses UBS as an implementation dependency. It first uses the local UBS jar path, then falls back to the Maven coordinate if that jar is not present:
 
 ```groovy
-implementation 'net.austizz.ultimatebankingsystem:ultimatebankingsystem:1.2.0'
+implementation files(ubsDependencyFile)
+```
+
+Override the local jar path when needed:
+
+```text
+./gradlew build -Pubs_dependency_jar=C:/path/to/ultimatebankingsystem-1.2.4.jar
 ```
 
 ## Build

@@ -1,5 +1,15 @@
-# Project exclude paths
+# Gradle and IDE state
 /.gradle/
 /.idea/
 /build/
-/build/classes/java/main/
+
+# Local Minecraft/dev runtime state
+/run/
+/logs/
+
+# Local publishing and generated data outputs
+/repo/
+/src/generated/resources/
+
+# Runtime logs
+*.log

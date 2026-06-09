@@ -478,10 +478,9 @@ public class AuctionItem {
             transitionTo(AuctionState.ENDED, "sealed bid rejected after auction end time");
             return recordRejectedBid(bidderId, bidderAccountId, bid, AuctionBidResult.REJECTED_AUCTION_ENDED, "Auction already ended.");
         }
-        BigDecimal bidderCurrent = bids.get(bidderId);
-        BigDecimal minimum = bidderCurrent == null ? startingBidPrice : bidderCurrent.add(Config.minimumBidIncrementAmount());
+        BigDecimal minimum = sealedBidMinimum(startingBidPrice, bids.get(bidderId));
         if (bid.compareTo(minimum) < 0) {
-            return recordRejectedBid(bidderId, bidderAccountId, bid, AuctionBidResult.REJECTED_TOO_LOW, "Sealed bid must be higher than your current sealed bid.");
+            return recordRejectedBid(bidderId, bidderAccountId, bid, AuctionBidResult.REJECTED_TOO_LOW, "Sealed bid must be at least " + minimum.stripTrailingZeros().toPlainString() + ".");
         }
 
         bids.put(bidderId, bid);
@@ -510,6 +509,10 @@ public class AuctionItem {
             }
         }
         return Optional.empty();
+    }
+
+    static BigDecimal sealedBidMinimum(BigDecimal startingBidPrice, BigDecimal ignoredPreviousOwnAmount) {
+        return startingBidPrice == null ? BigDecimal.ZERO : startingBidPrice.max(BigDecimal.ZERO);
     }
 
     public synchronized Optional<AuctionBidRecord> selectWinningSealedBid() {
@@ -676,7 +679,7 @@ public class AuctionItem {
             if (!record.isAccepted() || !record.isValidForAuction(auctionId)) {
                 continue;
             }
-            bids.merge(record.getBidderId(), record.getAmount(), BigDecimal::max);
+            bids.put(record.getBidderId(), record.getAmount());
         }
     }
 

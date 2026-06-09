@@ -35,6 +35,8 @@ public record AuctionActionPayload(
         UUID accountId,
         boolean adminMode
 ) implements CustomPacketPayload {
+    public static final int MAX_DESCRIPTION_LENGTH = 500;
+
     public static final Type<AuctionActionPayload> TYPE = new Type<>(
             ResourceLocation.fromNamespaceAndPath(UltimateAuctionSystem.MODID, "auction_action"));
 
@@ -96,6 +98,12 @@ public record AuctionActionPayload(
         title = title == null ? "" : title;
         reservePrice = reservePrice == null ? "" : reservePrice;
         format = format == null ? "" : format;
+        description = normalizeDescription(description);
+    }
+
+    private static String normalizeDescription(String value) {
+        String normalized = value == null ? "" : value.replace("\r\n", "\n").replace('\r', '\n').strip();
+        return normalized.length() > MAX_DESCRIPTION_LENGTH ? normalized.substring(0, MAX_DESCRIPTION_LENGTH) : normalized;
     }
 
     public static AuctionActionPayload refresh(String search, String category, String sort, String min, String max, long hoursLeft) {

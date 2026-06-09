@@ -40,14 +40,23 @@ import java.time.YearMonth;
 import java.time.format.DateTimeParseException;
 import java.time.format.TextStyle;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Set;
 import java.util.UUID;
 import java.util.function.Consumer;
 
 public class AuctionHouseScreen extends Screen {
     private static final Duration MIN_CLIENT_AUCTION_DURATION = Duration.ofMinutes(5);
     private static final int SEARCH_REFRESH_DEBOUNCE_TICKS = 4;
+    private static final int DASHBOARD_SECTION_HEADER_HEIGHT = 26;
+    private static final int DASHBOARD_SECTION_EMPTY_HEIGHT = 28;
+    private static final int DASHBOARD_SECTION_GAP = 10;
+    private static final int DESCRIPTION_FIELD_HEIGHT = 70;
+    private static final int COMPACT_DESCRIPTION_FIELD_HEIGHT = 56;
+    private static final int LISTING_FEE_PANEL_HEIGHT = 66;
+    private static final int HELP_TOOLTIP_TEXT_WIDTH = 220;
 
     private record DatePickerLayout(int cell,
                                     int calendarWidth,
@@ -143,6 +152,7 @@ public class AuctionHouseScreen extends Screen {
     private String reserveDraft = "";
     private String bidDraft = "";
     private UUID selectedAccountId;
+    private final Set<String> expandedDashboardSections = new HashSet<>();
     private Modal accountSelectorReturnModal = Modal.NONE;
     private Modal datePickerReturnModal = Modal.CREATE;
     private UUID bidReviewAuctionId;
@@ -179,7 +189,7 @@ public class AuctionHouseScreen extends Screen {
     private EditBox buyoutBox;
     private EditBox reserveBox;
     private EditBox bundleTitleBox;
-    private EditBox descriptionBox;
+    private AuctionTextArea descriptionBox;
     private EditBox endHourBox;
     private EditBox endMinuteBox;
     private EditBox modSearchBox;
@@ -214,6 +224,8 @@ public class AuctionHouseScreen extends Screen {
     private boolean modSearchRebuildPending = false;
     private boolean refocusHeaderSearch = false;
     private boolean refocusModSearch = false;
+    private String hoveredCreateHelpTitleKey = "";
+    private String hoveredCreateHelpBodyKey = "";
 
     public AuctionHouseScreen(AuctionSnapshotPayload payload) {
         super(Component.translatable("Auction House"));
@@ -535,18 +547,37 @@ public class AuctionHouseScreen extends Screen {
         int y = listTop - auctionScroll;
         int rowHeight = auctionRowHeight();
         for (DashboardSection section : dashboardSections()) {
-            y += 26;
-            if (section.entries().isEmpty()) {
-                y += 28;
-                continue;
-            }
-            for (AuctionEntrySummary entry : section.entries()) {
-                if (y + rowHeight >= listTop && y <= listBottom) {
-                    addRowActionButtons(entry, y, rowHeight);
+            int headerY = y;
+            if (headerY + DASHBOARD_SECTION_HEADER_HEIGHT >= listTop && headerY <= listBottom) {
+                boolean expanded = dashboardSectionExpanded(section);
+                AuctionButton button = addAuctionButton(
+                        contentLeft + contentWidth - 38,
+                        headerY + 1,
+                        24,
+                        18,
+                        Component.literal(expanded ? "^" : "v"),
+                        AuctionButton.Style.DARK,
+                        ignored -> toggleDashboardSection(section)
+                );
+                button.visible = headerY + 20 > listTop && headerY < listBottom;
+                if (!button.visible) {
+                    button.active = false;
                 }
-                y += rowHeight;
             }
-            y += 10;
+            y += DASHBOARD_SECTION_HEADER_HEIGHT;
+            if (dashboardSectionExpanded(section)) {
+                if (section.entries().isEmpty()) {
+                    y += DASHBOARD_SECTION_EMPTY_HEIGHT;
+                } else {
+                    for (AuctionEntrySummary entry : section.entries()) {
+                        if (y + rowHeight >= listTop && y <= listBottom) {
+                            addRowActionButtons(entry, y, rowHeight);
+                        }
+                        y += rowHeight;
+                    }
+                }
+            }
+            y += DASHBOARD_SECTION_GAP;
         }
     }
 
@@ -698,9 +729,12 @@ public class AuctionHouseScreen extends Screen {
         int rowH = 52;
         int rowY = listTop + 4 - accountScroll;
         for (AuctionAccountSummary account : accountOptions()) {
-            AuctionButton button = addAuctionButton(x + 22, rowY + 8, modalW - 44, 36, Component.literal(accountSelectorRowTitle(account)), account.frozen() ? AuctionButton.Style.DARK : AuctionButton.Style.GRAY, ignored -> chooseAccount(account));
+            AbstractButton button = addInvisibleButton(x + 24, rowY, modalW - 48, rowH - 4, Component.literal(accountSelectorRowTitle(account)), ignored -> chooseAccount(account));
             button.active = !account.frozen();
             setVisibleInModalBody(button, listTop, listBottom);
+            if (account.frozen()) {
+                button.active = false;
+            }
             rowY += rowH;
         }
         addAuctionButton(x + 20, y + modalH - 38, Math.max(96, modalW / 3), 26, "Cancel", AuctionButton.Style.GRAY, button -> closeModal());
@@ -792,6 +826,17 @@ public class AuctionHouseScreen extends Screen {
         int formatY = y + (compact ? 418 : 238) + bundleOffset - scroll;
         int endY = y + (compact ? 466 : 286) + bundleOffset - scroll;
         int descriptionY = y + (compact ? 514 : 334) + bundleOffset - scroll;
+        int formatX = x + 20;
+        int formatW = modalW - 40;
+        int descriptionX = x + 20;
+        int descriptionW = modalW - 40;
+        int descriptionH = compact ? COMPACT_DESCRIPTION_FIELD_HEIGHT : DESCRIPTION_FIELD_HEIGHT;
+        if (!compact) {
+            formatW = Math.max(170, Math.min(220, (modalW - 60) / 2));
+            descriptionX = formatX + formatW + 18;
+            descriptionW = Math.max(160, x + modalW - 20 - descriptionX);
+            descriptionY = formatY;
+        }
         int fieldW = compact ? modalW - 40 : 138;
 
         if (createSelectionIsBundle()) {
@@ -828,13 +873,13 @@ public class AuctionHouseScreen extends Screen {
         setVisibleInModalBody(reserveBox, bodyTop, bodyBottom);
         addRenderableWidget(reserveBox);
 
-        AuctionButton formatButton = addAuctionButton(x + 20, formatY, modalW - 40, 22, Component.literal(sealedBidToggleLabel()), sealedBidDraft ? AuctionButton.Style.GREEN : AuctionButton.Style.GRAY, button -> {
+        AuctionButton formatButton = addAuctionButton(formatX, formatY, formatW, 22, Component.literal(sealedBidToggleLabel()), sealedBidDraft ? AuctionButton.Style.GREEN : AuctionButton.Style.GRAY, button -> {
             sealedBidDraft = !sealedBidDraft;
             rebuildWidgets();
         });
         setVisibleInModalBody(formatButton, bodyTop, bodyBottom);
 
-        AuctionButton endDateButton = addAuctionButton(x + 20, endY, modalW - 40, 22, Component.literal(endDateDisplay()), AuctionButton.Style.DARK, button -> {
+        AuctionButton endDateButton = addAuctionButton(formatX, endY, formatW, 22, Component.literal(endDateDisplay()), AuctionButton.Style.DARK, button -> {
             datePickerReturnModal = Modal.CREATE;
             modal = Modal.DATE_PICKER;
             calendarMonth = YearMonth.from(selectedEndDate);
@@ -842,15 +887,16 @@ public class AuctionHouseScreen extends Screen {
         });
         setVisibleInModalBody(endDateButton, bodyTop, bodyBottom);
 
-        descriptionBox = new AuctionEditBox(font, x + 20, descriptionY, modalW - 40, 22, Component.translatable("Description"));
+        descriptionBox = new AuctionTextArea(font, descriptionX, descriptionY, descriptionW, descriptionH, Component.translatable("Description"));
         descriptionBox.setHint(Component.translatable("Describe the auction"));
+        descriptionBox.setMaxLength(AuctionActionPayload.MAX_DESCRIPTION_LENGTH);
         descriptionBox.setValue(descriptionDraft);
         descriptionBox.setResponder(value -> descriptionDraft = value);
         setVisibleInModalBody(descriptionBox, bodyTop, bodyBottom);
         addRenderableWidget(descriptionBox);
 
-        int feeY = y + (compact ? 562 : 382) + bundleOffset - scroll;
-        AuctionButton accountButton = addAuctionButton(x + modalW - 128, feeY + 16, 104, 22, "Change", AuctionButton.Style.GRAY, button -> openAccountSelector());
+        int feeY = y + (compact ? 590 : 334) + bundleOffset - scroll;
+        AuctionButton accountButton = addAuctionButton(x + modalW - 128, feeY + 22, 104, 22, "Change", AuctionButton.Style.GRAY, button -> openAccountSelector());
         accountButton.active = !accountOptions().isEmpty();
         setVisibleInModalBody(accountButton, bodyTop, bodyBottom);
 
@@ -876,6 +922,17 @@ public class AuctionHouseScreen extends Screen {
         int formatY = y + (compact ? 334 : 214) - scroll;
         int endY = y + (compact ? 382 : 262) - scroll;
         int descriptionY = y + (compact ? 430 : 310) - scroll;
+        int formatX = x + 20;
+        int formatW = modalW - 40;
+        int descriptionX = x + 20;
+        int descriptionW = modalW - 40;
+        int descriptionH = compact ? COMPACT_DESCRIPTION_FIELD_HEIGHT : DESCRIPTION_FIELD_HEIGHT;
+        if (!compact) {
+            formatW = Math.max(170, Math.min(220, (modalW - 60) / 2));
+            descriptionX = formatX + formatW + 18;
+            descriptionW = Math.max(160, x + modalW - 20 - descriptionX);
+            descriptionY = formatY;
+        }
         int fieldW = compact ? modalW - 40 : 138;
 
         startingBidBox = new AuctionEditBox(font, x + 20, startingY, fieldW, 22, Component.translatable("Starting Bid"));
@@ -902,13 +959,13 @@ public class AuctionHouseScreen extends Screen {
         setVisibleInModalBody(reserveBox, bodyTop, bodyBottom);
         addRenderableWidget(reserveBox);
 
-        AuctionButton formatButton = addAuctionButton(x + 20, formatY, modalW - 40, 22, Component.literal(sealedBidToggleLabel()), sealedBidDraft ? AuctionButton.Style.GREEN : AuctionButton.Style.GRAY, button -> {
+        AuctionButton formatButton = addAuctionButton(formatX, formatY, formatW, 22, Component.literal(sealedBidToggleLabel()), sealedBidDraft ? AuctionButton.Style.GREEN : AuctionButton.Style.GRAY, button -> {
             sealedBidDraft = !sealedBidDraft;
             rebuildWidgets();
         });
         setVisibleInModalBody(formatButton, bodyTop, bodyBottom);
 
-        AuctionButton endDateButton = addAuctionButton(x + 20, endY, modalW - 40, 22, Component.literal(endDateDisplay()), AuctionButton.Style.DARK, button -> {
+        AuctionButton endDateButton = addAuctionButton(formatX, endY, formatW, 22, Component.literal(endDateDisplay()), AuctionButton.Style.DARK, button -> {
             datePickerReturnModal = Modal.RELIST;
             modal = Modal.DATE_PICKER;
             calendarMonth = YearMonth.from(selectedEndDate);
@@ -916,15 +973,16 @@ public class AuctionHouseScreen extends Screen {
         });
         setVisibleInModalBody(endDateButton, bodyTop, bodyBottom);
 
-        descriptionBox = new AuctionEditBox(font, x + 20, descriptionY, modalW - 40, 22, Component.translatable("Description"));
+        descriptionBox = new AuctionTextArea(font, descriptionX, descriptionY, descriptionW, descriptionH, Component.translatable("Description"));
         descriptionBox.setHint(Component.translatable("Describe the auction"));
+        descriptionBox.setMaxLength(AuctionActionPayload.MAX_DESCRIPTION_LENGTH);
         descriptionBox.setValue(descriptionDraft);
         descriptionBox.setResponder(value -> descriptionDraft = value);
         setVisibleInModalBody(descriptionBox, bodyTop, bodyBottom);
         addRenderableWidget(descriptionBox);
 
-        int feeY = y + (compact ? 478 : 358) - scroll;
-        AuctionButton accountButton = addAuctionButton(x + modalW - 128, feeY + 16, 104, 22, "Change", AuctionButton.Style.GRAY, button -> openAccountSelector());
+        int feeY = y + (compact ? 506 : 310) - scroll;
+        AuctionButton accountButton = addAuctionButton(x + modalW - 128, feeY + 22, 104, 22, "Change", AuctionButton.Style.GRAY, button -> openAccountSelector());
         accountButton.active = !accountOptions().isEmpty();
         setVisibleInModalBody(accountButton, bodyTop, bodyBottom);
 
@@ -2163,6 +2221,7 @@ public class AuctionHouseScreen extends Screen {
 
     @Override
     public void render(GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {
+        clearCreateHelpHover();
         renderAuctionBackdrop(graphics);
         renderPanel(graphics);
         renderHeader(graphics);
@@ -2185,6 +2244,11 @@ public class AuctionHouseScreen extends Screen {
         graphics.pose().pushPose();
         graphics.pose().translate(0.0F, 0.0F, 500.0F);
         renderWidgetRange(graphics, modalRenderableStart, renderables.size(), mouseX, mouseY, partialTick);
+        graphics.pose().popPose();
+
+        graphics.pose().pushPose();
+        graphics.pose().translate(0.0F, 0.0F, 650.0F);
+        renderCreateHelpTooltip(graphics, mouseX, mouseY);
         graphics.pose().popPose();
     }
 
@@ -2785,11 +2849,6 @@ public class AuctionHouseScreen extends Screen {
         int rowHeight = auctionRowHeight();
         int y = listTop - auctionScroll;
         List<DashboardSection> sections = dashboardSections();
-        boolean anyRows = sections.stream().anyMatch(section -> !section.entries().isEmpty());
-        if (!anyRows) {
-            graphics.drawCenteredString(font, Component.translatable("No dashboard activity yet"), contentLeft + contentWidth / 2, listTop + 42, 0xFFDDDDDD);
-            return;
-        }
 
         graphics.enableScissor(contentLeft, listTop, contentLeft + contentWidth, listBottom);
         for (DashboardSection section : sections) {
@@ -2797,23 +2856,25 @@ public class AuctionHouseScreen extends Screen {
             if (headerY + 22 >= listTop && headerY <= listBottom) {
                 graphics.fill(contentLeft, headerY, contentLeft + contentWidth - 10, headerY + 20, 0xFF1F1F1F);
                 graphics.fill(contentLeft, headerY, contentLeft + 4, headerY + 20, section.color());
-                graphics.drawString(font, Component.translatable("{0} ({1})", Component.translatable(section.title()), section.entries().size()).withStyle(ChatFormatting.BOLD), contentLeft + 10, headerY + 6, section.color(), false);
+                graphics.drawString(font, dashboardSectionHeaderLabel(section, contentWidth - 58), contentLeft + 10, headerY + 6, section.color(), false);
             }
-            y += 26;
-            if (section.entries().isEmpty()) {
-                if (y + 20 >= listTop && y <= listBottom) {
-                    graphics.drawString(font, Component.translatable("No auctions in this section"), contentLeft + 12, y + 6, 0xFF9E9E9E, false);
+            y += DASHBOARD_SECTION_HEADER_HEIGHT;
+            if (dashboardSectionExpanded(section)) {
+                if (section.entries().isEmpty()) {
+                    if (y + 20 >= listTop && y <= listBottom) {
+                        graphics.drawString(font, Component.translatable("No auctions in this section"), contentLeft + 12, y + 6, 0xFF9E9E9E, false);
+                    }
+                    y += DASHBOARD_SECTION_EMPTY_HEIGHT;
+                } else {
+                    for (AuctionEntrySummary entry : section.entries()) {
+                        if (y + rowHeight >= listTop && y <= listBottom) {
+                            renderAuctionRow(graphics, entry, contentLeft, y, contentWidth, rowHeight - 8, mouseX, mouseY);
+                        }
+                        y += rowHeight;
+                    }
                 }
-                y += 28;
-                continue;
             }
-            for (AuctionEntrySummary entry : section.entries()) {
-                if (y + rowHeight >= listTop && y <= listBottom) {
-                    renderAuctionRow(graphics, entry, contentLeft, y, contentWidth, rowHeight - 8, mouseX, mouseY);
-                }
-                y += rowHeight;
-            }
-            y += 10;
+            y += DASHBOARD_SECTION_GAP;
         }
         graphics.disableScissor();
         renderScrollBar(graphics, contentLeft + contentWidth - 6, listTop, listBottom, auctionScroll, auctionListContentHeight(), auctionListViewportHeight());
@@ -2966,7 +3027,7 @@ public class AuctionHouseScreen extends Screen {
         } else if (modal == Modal.CREATE) {
             renderCreateModal(graphics, x, y, modalW, mouseX, mouseY);
         } else if (modal == Modal.RELIST && selectedAuction != null) {
-            renderRelistModal(graphics, x, y, modalW);
+            renderRelistModal(graphics, x, y, modalW, mouseX, mouseY);
         } else if (modal == Modal.CONFIRM_CREATE) {
             renderConfirmCreateModal(graphics, x, y, modalW, modalH, mouseX, mouseY);
         } else if (modal == Modal.DATE_PICKER) {
@@ -3213,6 +3274,29 @@ public class AuctionHouseScreen extends Screen {
         boolean compact = compactCreateModal(modalW);
         int scroll = createScroll;
         int bundleOffset = createSelectionIsBundle() ? 48 : 0;
+        int startingY = y + (compact ? 274 : 190) + bundleOffset - scroll;
+        int buyoutY = y + (compact ? 322 : 190) + bundleOffset - scroll;
+        int reserveY = y + (compact ? 370 : 190) + bundleOffset - scroll;
+        int formatY = y + (compact ? 418 : 238) + bundleOffset - scroll;
+        int endY = y + (compact ? 466 : 286) + bundleOffset - scroll;
+        int descriptionY = y + (compact ? 514 : 334) + bundleOffset - scroll;
+        int formatX = x + 20;
+        int formatW = modalW - 40;
+        int descriptionX = x + 20;
+        int descriptionW = modalW - 40;
+        int descriptionH = compact ? COMPACT_DESCRIPTION_FIELD_HEIGHT : DESCRIPTION_FIELD_HEIGHT;
+        if (!compact) {
+            formatW = Math.max(170, Math.min(220, (modalW - 60) / 2));
+            descriptionX = formatX + formatW + 18;
+            descriptionW = Math.max(160, x + modalW - 20 - descriptionX);
+            descriptionY = formatY;
+        }
+        int fieldW = compact ? modalW - 40 : 138;
+        int startingX = x + 20;
+        int buyoutX = compact ? x + 20 : x + 170;
+        int buyoutW = compact ? modalW - 40 : 128;
+        int reserveX = compact ? x + 20 : x + 310;
+        int reserveW = compact ? modalW - 40 : 128;
 
         graphics.enableScissor(x + 6, bodyTop, x + modalW - 6, bodyBottom);
         String selectionTitle = createSelectionIsBundle() ? "Select Bundle Items from Inventory" : "Select Item from Inventory";
@@ -3223,41 +3307,87 @@ public class AuctionHouseScreen extends Screen {
         if (compact) {
             renderSelectedItemPreview(graphics, x + 20, y + 174 - scroll, modalW - 40, 74);
             if (createSelectionIsBundle()) {
-                graphics.drawString(font, Component.translatable("Bundle Title").withStyle(ChatFormatting.BOLD), x + 20, y + 262 - scroll, 0xFFFFFFFF, false);
+                int titleY = y + 274 - scroll;
+                drawCreateHelpLabel(graphics, "Bundle Title", x + 20, titleY - 12, modalW - 40, x + 20, titleY, modalW - 40, 22, mouseX, mouseY, bodyTop, bodyBottom, "Help: Bundle Title", "Help: Bundle Title Body");
             }
-            drawCreateLabel(graphics, "Starting Bid (dollars)", x + 20, y + 262 + bundleOffset - scroll, modalW - 40);
-            drawCreateLabel(graphics, "Buyout (dollars)", x + 20, y + 310 + bundleOffset - scroll, modalW - 40);
-            drawCreateLabel(graphics, "Reserve (dollars)", x + 20, y + 358 + bundleOffset - scroll, modalW - 40);
-            drawCreateLabel(graphics, "Auction Format", x + 20, y + 406 + bundleOffset - scroll, modalW - 40);
-            drawCreateLabel(graphics, "Auction End Date & Time", x + 20, y + 454 + bundleOffset - scroll, modalW - 40);
-            drawCreateLabel(graphics, "Description", x + 20, y + 502 + bundleOffset - scroll, modalW - 40);
         } else {
             renderSelectedItemPreview(graphics, x + 236, y + 72 - scroll, modalW - 256, 88);
             if (createSelectionIsBundle()) {
-                graphics.drawString(font, Component.translatable("Bundle Title").withStyle(ChatFormatting.BOLD), x + 20, y + 178 - scroll, 0xFFFFFFFF, false);
+                int titleY = y + 190 - scroll;
+                drawCreateHelpLabel(graphics, "Bundle Title", x + 20, titleY - 12, modalW - 40, x + 20, titleY, modalW - 40, 22, mouseX, mouseY, bodyTop, bodyBottom, "Help: Bundle Title", "Help: Bundle Title Body");
             }
-            drawCreateLabel(graphics, "Starting Bid (dollars)", x + 20, y + 178 + bundleOffset - scroll, 138);
-            drawCreateLabel(graphics, "Buyout (dollars)", x + 170, y + 178 + bundleOffset - scroll, 128);
-            drawCreateLabel(graphics, "Reserve (dollars)", x + 310, y + 178 + bundleOffset - scroll, 128);
-            drawCreateLabel(graphics, "Auction Format", x + 20, y + 226 + bundleOffset - scroll, modalW - 40);
-            drawCreateLabel(graphics, "Auction End Date & Time", x + 20, y + 274 + bundleOffset - scroll, modalW - 40);
-            drawCreateLabel(graphics, "Description", x + 20, y + 322 + bundleOffset - scroll, modalW - 40);
         }
+        drawCreateHelpLabel(graphics, "Starting Bid (dollars)", startingX, startingY - 12, fieldW, startingX, startingY, fieldW, 22, mouseX, mouseY, bodyTop, bodyBottom, "Help: Starting Bid", "Help: Starting Bid Body");
+        drawCreateHelpLabel(graphics, "Buyout (dollars)", buyoutX, buyoutY - 12, buyoutW, buyoutX, buyoutY, buyoutW, 22, mouseX, mouseY, bodyTop, bodyBottom, "Help: Buyout", "Help: Buyout Body");
+        drawCreateHelpLabel(graphics, "Reserve (dollars)", reserveX, reserveY - 12, reserveW, reserveX, reserveY, reserveW, 22, mouseX, mouseY, bodyTop, bodyBottom, "Help: Reserve", "Help: Reserve Body");
+        drawCreateHelpLabel(graphics, "Auction Format", formatX, formatY - 12, formatW, formatX, formatY, formatW, 22, mouseX, mouseY, bodyTop, bodyBottom, "Help: Auction Format", "Help: Auction Format Body");
+        drawCreateHelpLabel(graphics, "Auction End Date & Time", formatX, endY - 12, formatW, formatX, endY, formatW, 22, mouseX, mouseY, bodyTop, bodyBottom, "Help: End Date", "Help: End Date Body");
+        drawCreateHelpLabel(graphics, "Description", descriptionX, descriptionY - 12, descriptionW, descriptionX, descriptionY, descriptionW, descriptionH, mouseX, mouseY, bodyTop, bodyBottom, "Help: Description", "Help: Description Body");
 
-        int feeY = y + (compact ? 562 : 382) + bundleOffset - scroll;
-        graphics.fill(x + 20, feeY, x + modalW - 20, feeY + 52, 0xFF000000);
-        graphics.fill(x + 22, feeY + 2, x + modalW - 22, feeY + 50, 0xFF191919);
-        graphics.drawString(font, Component.translatable("Listing Fee").append(Component.literal(" (" + listingFeeRateLabel() + "%)")), x + 34, feeY + 12, 0xFFE0E0E0, false);
+        int feeY = y + (compact ? 590 : 334) + bundleOffset - scroll;
+        graphics.fill(x + 20, feeY, x + modalW - 20, feeY + LISTING_FEE_PANEL_HEIGHT, 0xFF000000);
+        graphics.fill(x + 22, feeY + 2, x + modalW - 22, feeY + LISTING_FEE_PANEL_HEIGHT - 2, 0xFF191919);
+        Component feeLabel = Component.translatable("Listing Fee").append(Component.literal(" (" + listingFeeRateLabel() + "%)"));
+        graphics.drawString(font, feeLabel, x + 34, feeY + 12, 0xFFE0E0E0, false);
+        registerCreateHelpZone(x + 20, feeY, modalW - 40, LISTING_FEE_PANEL_HEIGHT, mouseX, mouseY, bodyTop, bodyBottom, "Help: Listing Fee", "Help: Listing Fee Body");
         graphics.drawString(font, Component.literal(moneyDisplay(listingFeePreview())).withStyle(ChatFormatting.BOLD), x + 34, feeY + 30, 0xFFFFD700, false);
         int accountTextW = Math.max(80, modalW - 190);
-        graphics.drawString(font, Component.literal(trimToWidth(accountSelectorButtonLabel(), accountTextW)), x + 34, feeY + 42, selectedAccount().frozen() ? 0xFFFF6666 : 0xFFBDBDBD, false);
+        graphics.drawString(font, Component.literal(trimToWidth(accountSelectorButtonLabel(), accountTextW)), x + 34, feeY + 48, selectedAccount().frozen() ? 0xFFFF6666 : 0xFFBDBDBD, false);
         graphics.disableScissor();
         renderScrollBar(graphics, x + modalW - 12, bodyTop, bodyBottom, createScroll, createContentHeight(modalW), bodyBottom - bodyTop);
     }
 
-    private void drawCreateLabel(GuiGraphics graphics, String key, int x, int y, int maxWidth) {
-        String label = trimToWidth(Component.translatable(key).getString(), Math.max(24, maxWidth));
+    private void drawCreateHelpLabel(GuiGraphics graphics, String key, int x, int y, int maxWidth, int fieldX, int fieldY, int fieldW, int fieldH, int mouseX, int mouseY, int bodyTop, int bodyBottom, String helpTitleKey, String helpBodyKey) {
+        int labelWidth = Math.max(24, maxWidth);
+        String label = trimToWidth(Component.translatable(key).getString(), labelWidth);
         graphics.drawString(font, Component.literal(label).withStyle(ChatFormatting.BOLD), x, y, 0xFFFFFFFF, false);
+        registerCreateHelpZone(x, y - 2, Math.min(maxWidth, font.width(label)), 14, mouseX, mouseY, bodyTop, bodyBottom, helpTitleKey, helpBodyKey);
+        registerCreateHelpZone(fieldX, fieldY, fieldW, fieldH, mouseX, mouseY, bodyTop, bodyBottom, helpTitleKey, helpBodyKey);
+    }
+
+    private void registerCreateHelpZone(int x, int y, int width, int height, int mouseX, int mouseY, int bodyTop, int bodyBottom, String titleKey, String bodyKey) {
+        if (width <= 0 || height <= 0 || y + height <= bodyTop || y >= bodyBottom) {
+            return;
+        }
+        int visibleTop = Math.max(y, bodyTop);
+        int visibleBottom = Math.min(y + height, bodyBottom);
+        if (mouseX >= x && mouseX < x + width && mouseY >= visibleTop && mouseY < visibleBottom) {
+            hoveredCreateHelpTitleKey = titleKey;
+            hoveredCreateHelpBodyKey = bodyKey;
+        }
+    }
+
+    private void clearCreateHelpHover() {
+        hoveredCreateHelpTitleKey = "";
+        hoveredCreateHelpBodyKey = "";
+    }
+
+    private void renderCreateHelpTooltip(GuiGraphics graphics, int mouseX, int mouseY) {
+        if ((modal != Modal.CREATE && modal != Modal.RELIST) || hoveredCreateHelpTitleKey.isBlank() || hoveredCreateHelpBodyKey.isBlank()) {
+            return;
+        }
+        String title = Component.translatable(hoveredCreateHelpTitleKey).getString();
+        String body = Component.translatable(hoveredCreateHelpBodyKey).getString();
+        int textW = Math.min(HELP_TOOLTIP_TEXT_WIDTH, Math.max(100, width - 32));
+        List<String> lines = wrapText(body, textW, 6);
+        int contentW = font.width(title);
+        for (String line : lines) {
+            contentW = Math.max(contentW, font.width(line));
+        }
+        int tooltipW = Math.min(width - 12, contentW + 18);
+        int tooltipH = 25 + lines.size() * 10;
+        int tooltipX = clamp(mouseX + 12, 6, Math.max(6, width - tooltipW - 6));
+        int tooltipY = clamp(mouseY + 12, 6, Math.max(6, height - tooltipH - 6));
+
+        graphics.fill(tooltipX, tooltipY, tooltipX + tooltipW, tooltipY + tooltipH, 0xFF000000);
+        graphics.fill(tooltipX + 2, tooltipY + 2, tooltipX + tooltipW - 2, tooltipY + tooltipH - 2, 0xFF1A1A1A);
+        graphics.fill(tooltipX + 2, tooltipY + 2, tooltipX + tooltipW - 2, tooltipY + 5, 0xFFFFAA00);
+        graphics.drawString(font, Component.literal(trimToWidth(title, tooltipW - 12)).withStyle(ChatFormatting.BOLD), tooltipX + 8, tooltipY + 9, 0xFFFFAA00, false);
+        int lineY = tooltipY + 21;
+        for (String line : lines) {
+            graphics.drawString(font, Component.literal(line), tooltipX + 8, lineY, 0xFFE0E0E0, false);
+            lineY += 10;
+        }
     }
 
     private String sealedBidToggleLabel() {
@@ -3266,38 +3396,54 @@ public class AuctionHouseScreen extends Screen {
                 : Component.translatable("Sealed Bids: Off").getString();
     }
 
-    private void renderRelistModal(GuiGraphics graphics, int x, int y, int modalW) {
+    private void renderRelistModal(GuiGraphics graphics, int x, int y, int modalW, int mouseX, int mouseY) {
         int modalH = modalHeight();
         int bodyTop = modalBodyTop(y);
         int bodyBottom = modalBodyBottom(y, modalH);
         boolean compact = compactCreateModal(modalW);
         int scroll = createScroll;
+        int startingY = y + (compact ? 190 : 166) - scroll;
+        int buyoutY = y + (compact ? 238 : 166) - scroll;
+        int reserveY = y + (compact ? 286 : 166) - scroll;
+        int formatY = y + (compact ? 334 : 214) - scroll;
+        int endY = y + (compact ? 382 : 262) - scroll;
+        int descriptionY = y + (compact ? 430 : 310) - scroll;
+        int formatX = x + 20;
+        int formatW = modalW - 40;
+        int descriptionX = x + 20;
+        int descriptionW = modalW - 40;
+        int descriptionH = compact ? COMPACT_DESCRIPTION_FIELD_HEIGHT : DESCRIPTION_FIELD_HEIGHT;
+        if (!compact) {
+            formatW = Math.max(170, Math.min(220, (modalW - 60) / 2));
+            descriptionX = formatX + formatW + 18;
+            descriptionW = Math.max(160, x + modalW - 20 - descriptionX);
+            descriptionY = formatY;
+        }
+        int fieldW = compact ? modalW - 40 : 138;
+        int startingX = x + 20;
+        int buyoutX = compact ? x + 20 : x + 170;
+        int buyoutW = compact ? modalW - 40 : 128;
+        int reserveX = compact ? x + 20 : x + 310;
+        int reserveW = compact ? modalW - 40 : 128;
 
         graphics.enableScissor(x + 6, bodyTop, x + modalW - 6, bodyBottom);
         renderRelistItemPreview(graphics, x + 20, y + 58 - scroll, modalW - 40, 82);
-        if (compact) {
-            drawCreateLabel(graphics, "Starting Bid (dollars)", x + 20, y + 178 - scroll, modalW - 40);
-            drawCreateLabel(graphics, "Buyout (dollars)", x + 20, y + 226 - scroll, modalW - 40);
-            drawCreateLabel(graphics, "Reserve (dollars)", x + 20, y + 274 - scroll, modalW - 40);
-            drawCreateLabel(graphics, "Auction Format", x + 20, y + 322 - scroll, modalW - 40);
-            drawCreateLabel(graphics, "Auction End Date & Time", x + 20, y + 370 - scroll, modalW - 40);
-            drawCreateLabel(graphics, "Description", x + 20, y + 418 - scroll, modalW - 40);
-        } else {
-            drawCreateLabel(graphics, "Starting Bid (dollars)", x + 20, y + 154 - scroll, 138);
-            drawCreateLabel(graphics, "Buyout (dollars)", x + 170, y + 154 - scroll, 128);
-            drawCreateLabel(graphics, "Reserve (dollars)", x + 310, y + 154 - scroll, 128);
-            drawCreateLabel(graphics, "Auction Format", x + 20, y + 202 - scroll, modalW - 40);
-            drawCreateLabel(graphics, "Auction End Date & Time", x + 20, y + 250 - scroll, modalW - 40);
-            drawCreateLabel(graphics, "Description", x + 20, y + 298 - scroll, modalW - 40);
-        }
+        drawCreateHelpLabel(graphics, "Starting Bid (dollars)", startingX, startingY - 12, fieldW, startingX, startingY, fieldW, 22, mouseX, mouseY, bodyTop, bodyBottom, "Help: Starting Bid", "Help: Starting Bid Body");
+        drawCreateHelpLabel(graphics, "Buyout (dollars)", buyoutX, buyoutY - 12, buyoutW, buyoutX, buyoutY, buyoutW, 22, mouseX, mouseY, bodyTop, bodyBottom, "Help: Buyout", "Help: Buyout Body");
+        drawCreateHelpLabel(graphics, "Reserve (dollars)", reserveX, reserveY - 12, reserveW, reserveX, reserveY, reserveW, 22, mouseX, mouseY, bodyTop, bodyBottom, "Help: Reserve", "Help: Reserve Body");
+        drawCreateHelpLabel(graphics, "Auction Format", formatX, formatY - 12, formatW, formatX, formatY, formatW, 22, mouseX, mouseY, bodyTop, bodyBottom, "Help: Auction Format", "Help: Auction Format Body");
+        drawCreateHelpLabel(graphics, "Auction End Date & Time", formatX, endY - 12, formatW, formatX, endY, formatW, 22, mouseX, mouseY, bodyTop, bodyBottom, "Help: End Date", "Help: End Date Body");
+        drawCreateHelpLabel(graphics, "Description", descriptionX, descriptionY - 12, descriptionW, descriptionX, descriptionY, descriptionW, descriptionH, mouseX, mouseY, bodyTop, bodyBottom, "Help: Description", "Help: Description Body");
 
-        int feeY = y + (compact ? 478 : 358) - scroll;
-        graphics.fill(x + 20, feeY, x + modalW - 20, feeY + 52, 0xFF000000);
-        graphics.fill(x + 22, feeY + 2, x + modalW - 22, feeY + 50, 0xFF191919);
-        graphics.drawString(font, Component.translatable("Listing Fee").append(Component.literal(" (" + listingFeeRateLabel() + "%)")), x + 34, feeY + 12, 0xFFE0E0E0, false);
+        int feeY = y + (compact ? 506 : 310) - scroll;
+        graphics.fill(x + 20, feeY, x + modalW - 20, feeY + LISTING_FEE_PANEL_HEIGHT, 0xFF000000);
+        graphics.fill(x + 22, feeY + 2, x + modalW - 22, feeY + LISTING_FEE_PANEL_HEIGHT - 2, 0xFF191919);
+        Component feeLabel = Component.translatable("Listing Fee").append(Component.literal(" (" + listingFeeRateLabel() + "%)"));
+        graphics.drawString(font, feeLabel, x + 34, feeY + 12, 0xFFE0E0E0, false);
+        registerCreateHelpZone(x + 20, feeY, modalW - 40, LISTING_FEE_PANEL_HEIGHT, mouseX, mouseY, bodyTop, bodyBottom, "Help: Listing Fee", "Help: Listing Fee Body");
         graphics.drawString(font, Component.literal(moneyDisplay(listingFeePreview())).withStyle(ChatFormatting.BOLD), x + 34, feeY + 30, 0xFFFFD700, false);
         int accountTextW = Math.max(80, modalW - 190);
-        graphics.drawString(font, Component.literal(trimToWidth(accountSelectorButtonLabel(), accountTextW)), x + 34, feeY + 42, selectedAccount().frozen() ? 0xFFFF6666 : 0xFFBDBDBD, false);
+        graphics.drawString(font, Component.literal(trimToWidth(accountSelectorButtonLabel(), accountTextW)), x + 34, feeY + 48, selectedAccount().frozen() ? 0xFFFF6666 : 0xFFBDBDBD, false);
         graphics.disableScissor();
         renderScrollBar(graphics, x + modalW - 12, bodyTop, bodyBottom, createScroll, createContentHeight(modalW), bodyBottom - bodyTop);
     }
@@ -3372,7 +3518,7 @@ public class AuctionHouseScreen extends Screen {
         renderInfoChip(graphics, x + 28 + columnW, infoTop, columnW, "Buyout", isZeroMoneyLabel(pending.buyoutPrice()) ? Component.translatable("None").getString() : pending.buyoutPrice(), 0xFF55FF55);
         renderInfoChip(graphics, x + 36 + columnW * 2, infoTop, columnW, "Reserve", isZeroMoneyLabel(pending.reservePrice()) ? Component.translatable("None").getString() : pending.reservePrice(), 0xFFFFAA00);
 
-        int accountY = infoTop + 54;
+        int accountY = infoTop + 68;
         graphics.drawString(font, Component.translatable("Listing Fee").append(Component.literal(": " + pending.listingFee())), x + 20, accountY - 14, 0xFFFFD700, false);
         graphics.drawString(font, Component.literal(trimToWidth(accountSelectorButtonLabel(), modalW - 154)), x + 20, accountY, selectedAccount().frozen() ? 0xFFFF6666 : 0xFFBDBDBD, false);
 
@@ -3611,9 +3757,9 @@ public class AuctionHouseScreen extends Screen {
 
     private int createContentHeight(int modalW) {
         if (modal == Modal.RELIST) {
-            return compactCreateModal(modalW) ? 530 : 414;
+            return compactCreateModal(modalW) ? 532 : 336;
         }
-        return (compactCreateModal(modalW) ? 574 : 394) + (createSelectionIsBundle() ? 48 : 0);
+        return (compactCreateModal(modalW) ? 616 : 360) + (createSelectionIsBundle() ? 48 : 0);
     }
 
     private int filterContentHeight() {
@@ -3778,12 +3924,33 @@ public class AuctionHouseScreen extends Screen {
         );
     }
 
+    private Component dashboardSectionHeaderLabel(DashboardSection section, int maxWidth) {
+        String label = Component.translatable(section.title()).getString() + " (" + section.entries().size() + ")";
+        return Component.literal(trimToWidth(label, maxWidth)).withStyle(ChatFormatting.BOLD);
+    }
+
+    private boolean dashboardSectionExpanded(DashboardSection section) {
+        return expandedDashboardSections.contains(section.title());
+    }
+
+    private void toggleDashboardSection(DashboardSection section) {
+        if (!expandedDashboardSections.remove(section.title())) {
+            expandedDashboardSections.add(section.title());
+        }
+        clampAuctionScroll();
+        rebuildWidgets();
+    }
+
     private int dashboardContentHeight() {
         int height = 0;
         for (DashboardSection section : dashboardSections()) {
-            height += 26;
-            height += section.entries().isEmpty() ? 28 : section.entries().size() * auctionRowHeight();
-            height += 10;
+            height += DASHBOARD_SECTION_HEADER_HEIGHT;
+            if (dashboardSectionExpanded(section)) {
+                height += section.entries().isEmpty()
+                        ? DASHBOARD_SECTION_EMPTY_HEIGHT
+                        : section.entries().size() * auctionRowHeight();
+            }
+            height += DASHBOARD_SECTION_GAP;
         }
         return height;
     }
@@ -4309,10 +4476,7 @@ public class AuctionHouseScreen extends Screen {
         }
         try {
             if (entry.sealedBid() && !entry.sealedBidRevealed()) {
-                BigDecimal base = entry.viewerBid() == null || entry.viewerBid().isBlank()
-                        ? moneyDraft(entry.startingBid())
-                        : moneyDraft(entry.viewerBid()).add(BigDecimal.ONE);
-                return base.stripTrailingZeros().toPlainString();
+                return moneyDraft(entry.startingBid()).stripTrailingZeros().toPlainString();
             }
             return moneyDraft(entry.currentBid()).add(BigDecimal.ONE).stripTrailingZeros().toPlainString();
         } catch (RuntimeException ignored) {
@@ -4613,6 +4777,13 @@ public class AuctionHouseScreen extends Screen {
     }
 
     private String value(EditBox box, String fallback) {
+        if (box == null) {
+            return fallback == null ? "" : fallback;
+        }
+        return box.getValue();
+    }
+
+    private String value(AuctionTextArea box, String fallback) {
         if (box == null) {
             return fallback == null ? "" : fallback;
         }

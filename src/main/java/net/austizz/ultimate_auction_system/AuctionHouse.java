@@ -717,9 +717,7 @@ public class AuctionHouse {
                                                          boolean emitBidAlerts,
                                                          MinecraftServer auditServer) {
         BigDecimal previousOwnAmount = item.getBids().getOrDefault(bidderId, BigDecimal.ZERO);
-        BigDecimal minimum = previousOwnAmount.compareTo(BigDecimal.ZERO) > 0
-                ? previousOwnAmount.add(Config.minimumBidIncrementAmount())
-                : item.getStartingBidPrice();
+        BigDecimal minimum = AuctionItem.sealedBidMinimum(item.getStartingBidPrice(), previousOwnAmount);
         if (safeAmount.compareTo(minimum) < 0) {
             return AuctionActionResult.fail("Sealed bid must be at least " + moneyLabel(minimum) + ".");
         }
@@ -781,7 +779,7 @@ public class AuctionHouse {
         if (emitBidAlerts) {
             notifySealedBidPlaced(item, bidderId, safeAmount, previousOwnAmount);
         }
-        return AuctionActionResult.ok(previousOwnAmount.compareTo(BigDecimal.ZERO) > 0 ? "Sealed bid raised." : "Sealed bid placed.");
+        return AuctionActionResult.ok("Sealed bid placed.");
     }
 
     public AuctionActionResult buyout(ServerPlayer bidder, UUID auctionId) {
@@ -1516,15 +1514,9 @@ public class AuctionHouse {
         String bidAmount = moneyLabel(amount);
         UUID sellerId = item.getPlayerId();
 
-        if (previousAmount != null && previousAmount.compareTo(BigDecimal.ZERO) > 0) {
-            Object[] raiseArgs = {item.getAuctionId(), itemName, moneyLabel(previousAmount), bidAmount};
-            sendAuctionAlert(bidderId, "Sealed Bid Raised", "Auction {0}: Your sealed bid on {1} was raised from {2} to {3}.", "SUCCESS", raiseArgs);
-            sendAuctionChatMessage(bidderId, "Auction {0}: Your sealed bid on {1} was raised from {2} to {3}.", ChatFormatting.GREEN, raiseArgs, openAhAction());
-        } else {
-            Object[] bidderArgs = {item.getAuctionId(), itemName, bidAmount};
-            sendAuctionAlert(bidderId, "Sealed Bid Placed", "Auction {0}: Your sealed bid on {1} is {2}.", "SUCCESS", bidderArgs);
-            sendAuctionChatMessage(bidderId, "Auction {0}: Your sealed bid on {1} is {2}.", ChatFormatting.GREEN, bidderArgs, openAhAction());
-        }
+        Object[] bidderArgs = {item.getAuctionId(), itemName, bidAmount};
+        sendAuctionAlert(bidderId, "Sealed Bid Placed", "Auction {0}: Your sealed bid on {1} is {2}.", "SUCCESS", bidderArgs);
+        sendAuctionChatMessage(bidderId, "Auction {0}: Your sealed bid on {1} is {2}.", ChatFormatting.GREEN, bidderArgs, openAhAction());
 
         if (sellerId != null && !sellerId.equals(bidderId)) {
             Object[] sellerArgs = {item.getAuctionId(), itemName};

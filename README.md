@@ -16,12 +16,14 @@ UAS requires the UBS mod id `ultimatebankingsystem`. Startup diagnostics fail fa
 - Auction House GUI opened with `/ah`
 - Browse, My Bids, and My Auctions views
 - Create-auction flow with item selection, starting bid, buyout, description, expiry selection, and listing-fee preview
+- Bundle auctions, hidden reserve prices, sealed-bid auctions, and expired-listing relists
 - Place Bid and Raise Bid flows
 - Scrollable bid-history modal
 - Auction notifications for watched auctions
 - UBS-backed listing fees, bids, sale payout, tax, refunds, and alerts
 - Persistent auction storage through Minecraft SavedData
-- Admin health and inspection commands
+- Auction Teller NPC and legacy Auction Terminal block entry points
+- Admin dashboard, health checks, moderation, recovery storage, audit log, and export tools
 - Language files for English, Dutch, German, and French
 
 ## Player Commands
@@ -48,6 +50,7 @@ Use `/uas status` after startup to verify UBS, config, storage, and auction heal
 Build and test:
 
 ```text
+./gradlew test
 ./gradlew build
 ./gradlew runGameTestServer
 ```
@@ -74,6 +77,18 @@ For local UBS development, this repo can consume a sibling checkout at:
 Ultimate mod series/
   Ultimate Auction System UAS/
   Ultimate-Banking-System-UBS-main/
+```
+
+If the UBS jar lives somewhere else, pass it explicitly:
+
+```text
+./gradlew build -Pubs_dependency_jar=C:/path/to/ultimatebankingsystem-1.2.4.jar
+```
+
+Release jars are written under:
+
+```text
+build/libs/
 ```
 
 ## Documentation

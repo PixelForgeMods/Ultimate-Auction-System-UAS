@@ -2,6 +2,7 @@ package net.austizz.ultimate_auction_system.registry;
 
 import net.austizz.ultimate_auction_system.UltimateAuctionSystem;
 import net.austizz.ultimate_auction_system.block.AuctionTerminalBlock;
+import net.austizz.ultimate_auction_system.item.AuctionTellerSpawnEggItem;
 import net.minecraft.world.item.BlockItem;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.level.block.Block;
@@ -9,6 +10,7 @@ import net.minecraft.world.level.block.SoundType;
 import net.minecraft.world.level.block.state.BlockBehaviour;
 import net.neoforged.bus.api.IEventBus;
 import net.neoforged.neoforge.registries.DeferredBlock;
+import net.neoforged.neoforge.registries.DeferredItem;
 import net.neoforged.neoforge.registries.DeferredRegister;
 
 public final class UasBlocks {
@@ -20,6 +22,8 @@ public final class UasBlocks {
                     .strength(3.0f)
                     .sound(SoundType.METAL)
             ));
+    public static final DeferredItem<Item> AUCTION_TELLER_SPAWN_EGG =
+            ITEMS.register("auction_teller_spawn_egg", AuctionTellerSpawnEggItem::new);
 
     private UasBlocks() {
     }

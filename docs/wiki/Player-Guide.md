@@ -14,7 +14,7 @@ Run:
 /ah
 ```
 
-Some servers also place `ultimate_auction_system:auction_terminal` blocks in hubs or marketplaces. Use the terminal to open the same Auction House GUI. Servers can disable or permission-gate terminal access without disabling `/ah`.
+Some servers also place Auction Teller NPCs in hubs or marketplaces. Right-click the teller to open the same Auction House GUI. Older worlds may still use `ultimate_auction_system:auction_terminal` blocks. Servers can disable or permission-gate teller/terminal access without disabling `/ah`.
 
 The auction house GUI has these main tabs:
 

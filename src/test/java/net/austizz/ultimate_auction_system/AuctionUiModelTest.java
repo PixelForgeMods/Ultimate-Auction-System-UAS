@@ -70,6 +70,13 @@ class AuctionUiModelTest {
     }
 
     @Test
+    void sealedBidMinimumStaysAtStartingBid() {
+        assertEquals(new BigDecimal("50"), AuctionItem.sealedBidMinimum(new BigDecimal("50"), BigDecimal.ZERO));
+        assertEquals(new BigDecimal("50"), AuctionItem.sealedBidMinimum(new BigDecimal("50"), new BigDecimal("1000")));
+        assertEquals(BigDecimal.ZERO, AuctionItem.sealedBidMinimum(null, new BigDecimal("1000")));
+    }
+
+    @Test
     void auctionRestrictionValidationSupportsItemsTagsAndMods() {
         assertTrue(Config.isValidAuctionRestriction("minecraft:bedrock"));
         assertTrue(Config.isValidAuctionRestriction("#minecraft:shulker_boxes"));
@@ -301,5 +308,36 @@ class AuctionUiModelTest {
 
         assertEquals(List.of(1, 3, 5), payload.selectedSlots());
         assertEquals("Starter bundle", payload.title());
+    }
+
+    @Test
+    void actionPayloadClampsLongDescriptions() {
+        AuctionActionPayload payload = new AuctionActionPayload(
+                "PREPARE_CREATE",
+                null,
+                null,
+                4,
+                List.of(1),
+                "",
+                "",
+                "10",
+                "0",
+                "",
+                "",
+                1,
+                "",
+                "x".repeat(AuctionActionPayload.MAX_DESCRIPTION_LENGTH + 20),
+                "",
+                "ALL",
+                "ENDING_SOON",
+                "",
+                "",
+                0L,
+                "",
+                null,
+                false
+        );
+
+        assertEquals(AuctionActionPayload.MAX_DESCRIPTION_LENGTH, payload.description().length());
     }
 }

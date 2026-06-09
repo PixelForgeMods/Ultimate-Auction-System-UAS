@@ -239,8 +239,8 @@ public class Config {
 
     private static final ModConfigSpec.BooleanValue AUCTION_TERMINAL_ENABLED = BUILDER
             .comment(
-                    "When true, the auction_terminal block opens the Auction House GUI when used.",
-                    "Commands remain available even when terminal block access is disabled."
+                    "When true, auction terminals and auction tellers open the Auction House GUI when used.",
+                    "Commands remain available even when terminal and teller access is disabled."
             )
             .define("marketplace.enableAuctionTerminal", DEFAULT_AUCTION_TERMINAL_ENABLED);
 
@@ -418,7 +418,7 @@ public class Config {
 
     private static final ModConfigSpec.IntValue TERMINAL_ACCESS_PERMISSION_LEVEL = permissionLevel(
             "permissions.terminalAccessPermissionLevel",
-            "Minecraft permission level required to open /ah from an auction_terminal block. 0 allows everyone."
+            "Minecraft permission level required to open /ah from an auction terminal or auction teller. 0 allows everyone."
     );
 
     private static final ModConfigSpec.IntValue ADMIN_STATUS_PERMISSION_LEVEL = BUILDER
