@@ -2037,7 +2037,7 @@ public class AuctionHouseScreen extends Screen {
                 selectedAccountIdForAction(),
                 payload.adminMode()
         ));
-        modal = Modal.NONE;
+        dismissModalAfterServerAction();
     }
 
     private void sendRelistAction() {
@@ -2074,7 +2074,7 @@ public class AuctionHouseScreen extends Screen {
                 selectedAccountIdForAction(),
                 payload.adminMode()
         ));
-        modal = Modal.NONE;
+        dismissModalAfterServerAction();
     }
 
     private void sendAuctionAction(String action, AuctionEntrySummary entry, String amount, UUID deliveryId) {
@@ -2103,7 +2103,7 @@ public class AuctionHouseScreen extends Screen {
                 selectedAccountIdForAction(),
                 payload.adminMode()
         ));
-        modal = Modal.NONE;
+        dismissModalAfterServerAction();
     }
 
     private void sendAdminAuctionAction(String action, AuctionEntrySummary entry) {
@@ -2120,7 +2120,7 @@ public class AuctionHouseScreen extends Screen {
                 "",
                 ""
         ));
-        modal = Modal.NONE;
+        dismissModalAfterServerAction();
     }
 
     private void sendAdminForceCancelAction(boolean recoverItems) {
@@ -2141,7 +2141,7 @@ public class AuctionHouseScreen extends Screen {
                 "",
                 recoverItems ? "recover" : "return"
         ));
-        modal = Modal.NONE;
+        dismissModalAfterServerAction();
     }
 
     private void sendAdminRecoveryAction(AuctionAdminDashboardPayload.Recovery recovery) {
@@ -2219,8 +2219,25 @@ public class AuctionHouseScreen extends Screen {
         searchRefreshDelay = SEARCH_REFRESH_DEBOUNCE_TICKS;
     }
 
+    private void dismissModalAfterServerAction() {
+        modal = Modal.NONE;
+        rebuildWidgets();
+    }
+
+    private boolean purgeStaleModalWidgetsIfNeeded() {
+        if (modal != Modal.NONE) {
+            return false;
+        }
+        if (renderables.size() <= modalRenderableStart && children().size() <= modalChildStart) {
+            return false;
+        }
+        rebuildWidgets();
+        return true;
+    }
+
     @Override
     public void render(GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {
+        purgeStaleModalWidgetsIfNeeded();
         clearCreateHelpHover();
         renderAuctionBackdrop(graphics);
         renderPanel(graphics);
@@ -2228,7 +2245,7 @@ public class AuctionHouseScreen extends Screen {
         renderSidebar(graphics);
         renderContent(graphics, mouseX, mouseY);
         if (modal == Modal.NONE) {
-            super.render(graphics, mouseX, mouseY, partialTick);
+            renderWidgetRange(graphics, 0, modalRenderableStart, mouseX, mouseY, partialTick);
             return;
         }
 
@@ -4226,6 +4243,7 @@ public class AuctionHouseScreen extends Screen {
 
     @Override
     public boolean mouseClicked(double mouseX, double mouseY, int button) {
+        purgeStaleModalWidgetsIfNeeded();
         if (modal == Modal.NONE) {
             return super.mouseClicked(mouseX, mouseY, button);
         }
@@ -4256,6 +4274,7 @@ public class AuctionHouseScreen extends Screen {
 
     @Override
     public boolean mouseReleased(double mouseX, double mouseY, int button) {
+        purgeStaleModalWidgetsIfNeeded();
         if (modal == Modal.NONE) {
             return super.mouseReleased(mouseX, mouseY, button);
         }
@@ -4269,6 +4288,7 @@ public class AuctionHouseScreen extends Screen {
 
     @Override
     public boolean mouseDragged(double mouseX, double mouseY, int button, double dragX, double dragY) {
+        purgeStaleModalWidgetsIfNeeded();
         if (modal == Modal.NONE) {
             return super.mouseDragged(mouseX, mouseY, button, dragX, dragY);
         }
@@ -4278,6 +4298,7 @@ public class AuctionHouseScreen extends Screen {
 
     @Override
     public boolean mouseScrolled(double mouseX, double mouseY, double scrollX, double scrollY) {
+        purgeStaleModalWidgetsIfNeeded();
         if (modal == Modal.NONE) {
             if (payload.adminMode()) {
                 if ((adminSection == AdminSection.AUCTIONS || adminSection == AdminSection.MODERATION)
@@ -4342,6 +4363,7 @@ public class AuctionHouseScreen extends Screen {
 
     @Override
     public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
+        purgeStaleModalWidgetsIfNeeded();
         if (modal == Modal.NONE) {
             return super.keyPressed(keyCode, scanCode, modifiers);
         }
@@ -4361,6 +4383,7 @@ public class AuctionHouseScreen extends Screen {
 
     @Override
     public boolean keyReleased(int keyCode, int scanCode, int modifiers) {
+        purgeStaleModalWidgetsIfNeeded();
         if (modal == Modal.NONE) {
             return super.keyReleased(keyCode, scanCode, modifiers);
         }
@@ -4370,6 +4393,7 @@ public class AuctionHouseScreen extends Screen {
 
     @Override
     public boolean charTyped(char codePoint, int modifiers) {
+        purgeStaleModalWidgetsIfNeeded();
         if (modal == Modal.NONE) {
             return super.charTyped(codePoint, modifiers);
         }

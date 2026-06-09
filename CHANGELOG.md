@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.0.1 - 2026-06-09
+
+- Fixed the create auction flow so dismissed modal widgets cannot remain visible without the modal frame while waiting for the server confirmation snapshot.
+
 ## 1.0.0 - 2026-06-09
 
 - Added the Auction House GUI for browsing, bidding, buying out, claiming, watching, and managing auctions.
