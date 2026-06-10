@@ -35,7 +35,7 @@ Ultimate Auction System (UAS) adds a full auction house to Minecraft `1.21.1` on
 - Java: `21`
 - UAS mod id: `ultimate_auction_system`
 - UBS mod id: `ultimatebankingsystem`
-- UBS version: `1.2.0` or newer
+- UBS version: `1.2.5` or newer
 
 UAS requires UBS because listing fees, bid escrow, outbid refunds, buyout payments, seller payouts, sales tax, alerts, and failed-settlement recovery all depend on UBS account services.
 
@@ -77,8 +77,8 @@ Run this after server start:
 Healthy signals include:
 
 - UBS loaded: yes
-- UBS mod version: `1.2.0` or newer
-- UBS required range: `[1.2.0,)`
+- UBS mod version: `1.2.5` or newer
+- UBS required range: `[1.2.5,)`
 - UBS API/server available: yes
 - Config loaded without unsafe fallback values
 - Persistent auction storage loaded or recently saved

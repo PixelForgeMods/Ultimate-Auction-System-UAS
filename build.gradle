@@ -33,7 +33,7 @@ def minecraftDevUsername = providers.gradleProperty('username')
         .orElse(providers.gradleProperty('minecraft_dev_username'))
         .orElse('Dev')
 
-def defaultUbsDependencyJar = '../Ultimate-Banking-System-UBS-main/build/libs/ultimatebankingsystem-1.2.4.jar'
+def defaultUbsDependencyJar = '../Ultimate-Banking-System-UBS-main/build/libs/ultimatebankingsystem-1.2.5.jar'
 def ubsDependencyJar = providers.gradleProperty('ubs_dependency_jar').orElse(defaultUbsDependencyJar)
 def ubsDependencyFile = file(ubsDependencyJar.get())
 def runModsDir = layout.projectDirectory.dir('run/mods')
@@ -119,7 +119,7 @@ dependencies {
     if (ubsDependencyFile.exists()) {
         implementation files(ubsDependencyFile)
     } else {
-        implementation 'net.austizz.ultimatebankingsystem:ultimatebankingsystem:1.2.0'
+        implementation 'net.austizz.ultimatebankingsystem:ultimatebankingsystem:1.2.5'
     }
 
     testImplementation 'org.junit.jupiter:junit-jupiter:5.10.3'

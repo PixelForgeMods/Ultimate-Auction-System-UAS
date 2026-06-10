@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.0.2 - 2026-06-10
+
+- Raised the required UBS dependency to `1.2.5` so UAS cannot run against older UBS releases that do not include the API hooks used by auction settlement and alerts.
+
 ## 1.0.1 - 2026-06-09
 
 - Fixed the create auction flow so dismissed modal widgets cannot remain visible without the modal frame while waiting for the server confirmation snapshot.

@@ -7,7 +7,7 @@ Ultimate Auction System is a Minecraft `1.21.1` NeoForge auction-house mod. It l
 - Minecraft `1.21.1`
 - NeoForge `21.1.x`
 - Java `21`
-- Ultimate Banking System `1.2.0` or newer
+- Ultimate Banking System `1.2.5` or newer
 
 UAS requires the UBS mod id `ultimatebankingsystem`. Startup diagnostics fail fast when UBS is missing or too old, because auction listing fees, bids, payouts, refunds, alerts, and settlement all depend on UBS.
 
@@ -82,7 +82,7 @@ Ultimate mod series/
 If the UBS jar lives somewhere else, pass it explicitly:
 
 ```text
-./gradlew build -Pubs_dependency_jar=C:/path/to/ultimatebankingsystem-1.2.4.jar
+./gradlew build -Pubs_dependency_jar=C:/path/to/ultimatebankingsystem-1.2.5.jar
 ```
 
 Release jars are written under:

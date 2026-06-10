@@ -19,7 +19,7 @@ implementation files(ubsDependencyFile)
 Override the local jar path when needed:
 
 ```text
-./gradlew build -Pubs_dependency_jar=C:/path/to/ultimatebankingsystem-1.2.4.jar
+./gradlew build -Pubs_dependency_jar=C:/path/to/ultimatebankingsystem-1.2.5.jar
 ```
 
 ## Build
