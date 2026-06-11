@@ -1965,6 +1965,18 @@ public class AuctionHouse {
         return new AuctionHouseSnapshot(browse, myBids, myAuctions, dashboardListings, deliveries, modFilters, savedSearches, accounts, primaryAccount, pendingListing, Config.listingFeeRate, message == null ? "" : message, success, resolvedAdminMode, adminDashboard);
     }
 
+    public List<AuctionListingSummary> buildAdminListingSummaries() {
+        pruneExpiredPendingListings();
+        return getAuctionItems().values().stream()
+                .map(item -> toSummary(item, null, true))
+                .toList();
+    }
+
+    public AuctionAdminDashboardSnapshot buildAdminDashboard(MinecraftServer server,
+                                                             AuctionDeliverySavedData deliveryData) {
+        return buildAdminDashboard(buildAdminListingSummaries(), adminSavedData(server), deliveryData);
+    }
+
     private List<AuctionListingSummary> buildPersonalDashboard(List<AuctionListingSummary> all, UUID viewerId) {
         if (viewerId == null || all == null || all.isEmpty()) {
             return List.of();

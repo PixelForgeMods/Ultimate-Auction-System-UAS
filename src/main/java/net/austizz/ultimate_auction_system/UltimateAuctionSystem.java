@@ -3,6 +3,7 @@ package net.austizz.ultimate_auction_system;
 import com.mojang.logging.LogUtils;
 import net.austizz.ultimate_auction_system.registry.UasBlocks;
 import net.austizz.ultimate_auction_system.registry.UasEntities;
+import net.austizz.ultimate_auction_system.webadmin.UasDashboardBootstrap;
 import net.neoforged.bus.api.IEventBus;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.ModContainer;
@@ -37,6 +38,7 @@ public class UltimateAuctionSystem {
 
     private void commonSetup(final FMLCommonSetupEvent event) {
         UasDependencyDiagnostics.validateRequiredUbs(LOGGER);
+        UasDashboardBootstrap.register();
         LOGGER.info(
                 "UAS config loaded: listingFeeRate={}, salesTaxRate={}, minimumBidIncrement=${}, maxListings={}, maxDurationHours={}",
                 Config.listingFeeRate,
