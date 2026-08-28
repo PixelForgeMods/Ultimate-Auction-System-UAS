@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.1.1 - 2026-08-28
+
+- Restored the UAS remote auction API required by the Ages of War economy bridge.
+- Added binary-compatible auction snapshots, delivery snapshots, and idempotent bid, buyout, and cancellation commands.
+
 ## 1.1.0 - 2026-08-28
 
 - Added auction display blocks with configurable display types, auction selection, custom sizing, hologram support, and editable item-model transforms.
