@@ -2,6 +2,7 @@ package net.austizz.ultimate_auction_system.client;
 
 import net.austizz.ultimate_auction_system.UltimateAuctionSystem;
 import net.austizz.ultimate_auction_system.registry.UasEntities;
+import net.austizz.ultimate_auction_system.registry.UasBlockEntities;
 import net.neoforged.api.distmarker.Dist;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.common.EventBusSubscriber;
@@ -15,5 +16,6 @@ public final class AuctionTellerClientEvents {
     @SubscribeEvent
     public static void registerEntityRenderers(EntityRenderersEvent.RegisterRenderers event) {
         event.registerEntityRenderer(UasEntities.AUCTION_TELLER.get(), AuctionTellerRenderer::new);
+        event.registerBlockEntityRenderer(UasBlockEntities.AUCTION_DISPLAY.get(), AuctionDisplayRenderer::new);
     }
 }

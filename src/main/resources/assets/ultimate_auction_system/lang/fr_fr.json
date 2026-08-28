@@ -44,6 +44,10 @@
   "=== UAS Auction Inspect ===": "=== Inspection enchere UAS ===",
   "=== UAS Seller Auctions ===": "=== Encheres vendeur UAS ===",
   "=== UAS Status ===": "=== Statut UAS ===",
+  "UAS Top Sellers by Revenue": "Meilleurs vendeurs UAS par chiffre d’affaires",
+  "UAS Top Buyers by Spending": "Meilleurs acheteurs UAS par dépenses",
+  "UAS Most Auctions Listed": "Plus grand nombre d’enchères UAS publiées",
+  "UAS Most Auctions Won": "Plus grand nombre d’enchères UAS remportées",
   "A saved search already uses that name.": "Une recherche sauvegardee utilise deja ce nom.",
   "A bundled auction can include up to ": "Une enchere en lot peut inclure jusqu a ",
   "ACTIVE": "ACTIVE",
@@ -833,5 +837,49 @@
   "Help: Listing Fee": "Frais d annonce",
   "Help: Listing Fee Body": "Cout estime depuis le taux du serveur et l offre de depart. Il est paye depuis le compte UBS choisi a la confirmation.",
   "Unknown": "Inconnu",
-  "Unknown suspicion signal": "Signal suspect inconnu"
+  "Unknown suspicion signal": "Signal suspect inconnu",
+  "This auction display has no active auction.": "Cet affichage d’enchère n’a aucune enchère active.",
+  "Only the owner or an operator can remove this auction display.": "Seul le propriétaire ou un opérateur peut retirer cet affichage.",
+  "Warning: shift-right-click again within 5 seconds to remove this auction display.": "Attention : faites un nouveau clic droit avec Maj dans les 5 secondes pour retirer cet affichage.",
+  "Only players can receive auction displays.": "Seuls les joueurs peuvent recevoir des affichages d’enchères.",
+  "The manual auction ID is invalid.": "L’identifiant de l’enchère manuelle est invalide.",
+  "Auction display added to your inventory.": "Affichage d’enchère ajouté à votre inventaire.",
+  "Auction display: {0}": "Affichage d’enchère : %1$s",
+  "Items: {0}": "Objets : %1$s",
+  "Current highest bid: {0}": "Enchère la plus élevée : %1$s",
+  "Ends: {0}": "Se termine : %1$s",
+  "Right-click to open auction": "Clic droit pour ouvrir l’enchère"
+  ,"Auction display title: {0}": "%1$s",
+  "Manual displays require an auction ID.": "Les affichages manuels nécessitent un identifiant d’enchère.",
+  "Current item: {0} x{1}": "Objet actuel : %1$s x%2$s",
+  "Hold Shift for item details": "Maintenez Maj pour les détails de l’objet"
+  ,"AUCTION DISPLAY": "AFFICHAGE D’ENCHÈRE"
+  ,"CURRENT ITEM": "OBJET ACTUEL"
+  ,"AUCTION DETAILS": "DÉTAILS DE L’ENCHÈRE"
+  ,"OPEN AUCTION": "OUVRIR L’ENCHÈRE"
+  ,"Quantity: {0}": "Quantité : %1$s"
+  ,"Only players can edit auction displays.": "Seuls les joueurs peuvent modifier les affichages d’enchères."
+  ,"Display edit mode enabled. Right-click an auction display to edit it. Hold Shift twice to exit.": "Mode d’édition activé. Faites un clic droit sur un affichage pour le modifier. Appuyez deux fois sur Maj pour quitter."
+  ,"Display edit mode disabled.": "Mode d’édition désactivé."
+  ,"Display model editor": "Éditeur du modèle d’affichage"
+  ,"DISPLAY MODEL EDITOR": "ÉDITEUR DU MODÈLE D’AFFICHAGE"
+  ,"North-facing preview": "Aperçu orienté vers le nord"
+  ,"Transform": "Transformation"
+  ,"Position": "Position"
+  ,"Rotation": "Rotation"
+  ,"Scale": "Échelle"
+  ,"Apply": "Appliquer"
+  ,"Move (W)": "Déplacer (W)"
+  ,"Rotate (E)": "Pivoter (E)"
+  ,"Scale (R)": "Mettre à l’échelle (R)"
+  ,"Pitch": "Tangage"
+  ,"Yaw": "Lacet"
+  ,"Roll": "Roulis"
+  ,"Middle-drag rotates camera around display": "Faites glisser avec le bouton central pour tourner autour de l’affichage"
+  ,"Reset model": "Réinitialiser le modèle"
+  ,"Spinning: ON": "Rotation : ACTIVÉE"
+  ,"Spinning: OFF": "Rotation : DÉSACTIVÉE"
+  ,"Done": "Terminé"
+  ,"DISPLAY EDIT MODE": "MODE D’ÉDITION DU DISPLAY"
+  ,"Right-click a display • Shift twice to exit": "Clic droit sur un display • Deux fois Maj pour quitter"
 }

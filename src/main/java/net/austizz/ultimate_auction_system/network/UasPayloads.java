@@ -14,6 +14,7 @@ import net.austizz.ultimate_auction_system.UltimateAuctionSystem;
 import net.austizz.ultimate_auction_system.api.UasPermissionAction;
 import net.austizz.ultimate_auction_system.api.UasPermissions;
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.world.level.GameType;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.common.EventBusSubscriber;
 import net.neoforged.neoforge.network.PacketDistributor;
@@ -27,26 +28,40 @@ import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
+import java.util.HashMap;
+import java.util.Map;
 
 @EventBusSubscriber(modid = UltimateAuctionSystem.MODID)
 public final class UasPayloads {
     private UasPayloads() {
     }
 
+    private static final Map<UUID, GameType> DISPLAY_EDITOR_PREVIOUS_MODES = new HashMap<>();
+
     @SubscribeEvent
     public static void register(RegisterPayloadHandlersEvent event) {
         PayloadRegistrar registrar = event.registrar("1");
         registrar.playToServer(AuctionActionPayload.TYPE, AuctionActionPayload.STREAM_CODEC, UasPayloads::handleAuctionAction);
         registrar.playToServer(AuctionAdminActionPayload.TYPE, AuctionAdminActionPayload.STREAM_CODEC, UasPayloads::handleAuctionAdminAction);
+        registrar.playToServer(DisplayEditSelectPayload.TYPE, DisplayEditSelectPayload.STREAM_CODEC, UasPayloads::handleDisplayEditSelect);
+        registrar.playToServer(DisplayOpenPayload.TYPE, DisplayOpenPayload.STREAM_CODEC, UasPayloads::handleDisplayOpen);
+        registrar.playToServer(DisplayEditTransformPayload.TYPE, DisplayEditTransformPayload.STREAM_CODEC, UasPayloads::handleDisplayEditTransform);
+        registrar.playToServer(DisplayEditSpectatorPayload.TYPE, DisplayEditSpectatorPayload.STREAM_CODEC, UasPayloads::handleDisplayEditSpectator);
         registrar.playToClient(AuctionSnapshotPayload.TYPE, AuctionSnapshotPayload.STREAM_CODEC, UasPayloads::handleAuctionSnapshot);
+        registrar.playToClient(DisplayEditModePayload.TYPE, DisplayEditModePayload.STREAM_CODEC, UasPayloads::handleDisplayEditMode);
+        registrar.playToClient(DisplayEditorPayload.TYPE, DisplayEditorPayload.STREAM_CODEC, UasPayloads::handleDisplayEditor);
     }
 
     public static void openAuctionHouse(ServerPlayer player) {
-        sendSnapshot(player, AuctionUiQuery.defaults(), "", true, false);
+        sendSnapshot(player, AuctionUiQuery.defaults(), "", true, false, null);
+    }
+
+    public static void openAuctionHouse(ServerPlayer player, UUID auctionId) {
+        sendSnapshot(player, AuctionUiQuery.defaults(), "", true, false, auctionId);
     }
 
     public static void openAdminAuctionHouse(ServerPlayer player) {
-        sendSnapshot(player, AuctionUiQuery.defaults(), "", true, true);
+        sendSnapshot(player, AuctionUiQuery.defaults(), "", true, true, null);
     }
 
     private static void handleAuctionSnapshot(AuctionSnapshotPayload payload, IPayloadContext context) {
@@ -294,13 +309,76 @@ public final class UasPayloads {
     }
 
     private static void sendSnapshot(ServerPlayer player, AuctionUiQuery query, String message, boolean success, boolean adminMode) {
+        sendSnapshot(player, query, message, success, adminMode, null);
+    }
+
+    private static void handleDisplayEditSelect(DisplayEditSelectPayload payload, IPayloadContext context) {
+        context.enqueueWork(() -> {
+            if (!(context.player() instanceof ServerPlayer player) || player.level().isClientSide()) return;
+            if (player.distanceToSqr(payload.pos().getX() + 0.5D, payload.pos().getY() + 0.5D, payload.pos().getZ() + 0.5D) > 64.0D) return;
+            if (player.level().getBlockEntity(payload.pos()) instanceof net.austizz.ultimate_auction_system.display.AuctionDisplayBlockEntity display
+                    && display.canRemove(player)) {
+                PacketDistributor.sendToPlayer(player, new DisplayEditModePayload(false));
+                PacketDistributor.sendToPlayer(player, DisplayEditorPayload.fromDisplay(payload.pos(), display));
+            }
+        });
+    }
+
+    private static void handleDisplayOpen(DisplayOpenPayload payload, IPayloadContext context) {
+        context.enqueueWork(() -> {
+            if (!(context.player() instanceof ServerPlayer player)) return;
+            if (player.distanceToSqr(payload.pos().getX() + 0.5D, payload.pos().getY() + 0.5D, payload.pos().getZ() + 0.5D) > 64.0D) return;
+            if (player.level().getBlockEntity(payload.pos()) instanceof net.austizz.ultimate_auction_system.display.AuctionDisplayBlockEntity display) {
+                if (payload.remove()) display.removeOrWarn(player);
+                else display.openAuction(player);
+            }
+        });
+    }
+
+    private static void handleDisplayEditTransform(DisplayEditTransformPayload payload, IPayloadContext context) {
+        context.enqueueWork(() -> {
+            if (!(context.player() instanceof ServerPlayer player)) return;
+            if (player.distanceToSqr(payload.pos().getX() + 0.5D, payload.pos().getY() + 0.5D, payload.pos().getZ() + 0.5D) > 64.0D) return;
+            if (player.level().getBlockEntity(payload.pos()) instanceof net.austizz.ultimate_auction_system.display.AuctionDisplayBlockEntity display) {
+                display.applyTransform(player, payload.x(), payload.y(), payload.z(), payload.pitch(), payload.yaw(), payload.roll(), payload.scale(), payload.spinning());
+            }
+        });
+    }
+
+    private static void handleDisplayEditSpectator(DisplayEditSpectatorPayload payload, IPayloadContext context) {
+        context.enqueueWork(() -> {
+            if (!(context.player() instanceof ServerPlayer player)) return;
+            UUID id = player.getUUID();
+            if (payload.entering()) {
+                DISPLAY_EDITOR_PREVIOUS_MODES.putIfAbsent(id, player.gameMode.getGameModeForPlayer());
+                if (player.gameMode.getGameModeForPlayer() != GameType.SPECTATOR) {
+                    player.gameMode.changeGameModeForPlayer(GameType.SPECTATOR);
+                }
+            } else {
+                GameType previous = DISPLAY_EDITOR_PREVIOUS_MODES.remove(id);
+                if (previous != null && player.gameMode.getGameModeForPlayer() == GameType.SPECTATOR) {
+                    player.gameMode.changeGameModeForPlayer(previous);
+                }
+            }
+        });
+    }
+
+    private static void handleDisplayEditMode(DisplayEditModePayload payload, IPayloadContext context) {
+        context.enqueueWork(() -> ClientPayloadInvoker.invoke("handleDisplayEditMode", payload));
+    }
+
+    private static void handleDisplayEditor(DisplayEditorPayload payload, IPayloadContext context) {
+        context.enqueueWork(() -> ClientPayloadInvoker.invoke("openDisplayEditor", payload));
+    }
+
+    private static void sendSnapshot(ServerPlayer player, AuctionUiQuery query, String message, boolean success, boolean adminMode, UUID openAuctionId) {
         AuctionHouse house = UltimateAuctionSystem.auctionHouse;
         if (player == null || house == null || player.getServer() == null) {
             return;
         }
         AuctionDeliverySavedData deliveryData = AuctionDeliverySavedData.get(player.getServer());
         AuctionHouseSnapshot snapshot = house.buildSnapshot(player, deliveryData, query, message, success, adminMode);
-        PacketDistributor.sendToPlayer(player, AuctionSnapshotPayload.fromSnapshot(snapshot));
+        PacketDistributor.sendToPlayer(player, AuctionSnapshotPayload.fromSnapshot(snapshot, openAuctionId));
     }
 
     private static LocalDateTime parseAdminExpiry(String raw) {

@@ -2,6 +2,7 @@ package net.austizz.ultimate_auction_system.registry;
 
 import net.austizz.ultimate_auction_system.UltimateAuctionSystem;
 import net.austizz.ultimate_auction_system.block.AuctionTerminalBlock;
+import net.austizz.ultimate_auction_system.display.AuctionDisplayBlock;
 import net.austizz.ultimate_auction_system.item.AuctionTellerSpawnEggItem;
 import net.minecraft.world.item.BlockItem;
 import net.minecraft.world.item.Item;
@@ -21,6 +22,12 @@ public final class UasBlocks {
             () -> new AuctionTerminalBlock(BlockBehaviour.Properties.of()
                     .strength(3.0f)
                     .sound(SoundType.METAL)
+            ));
+    public static final DeferredBlock<Block> AUCTION_DISPLAY = registerBlock("auction_display",
+            () -> new AuctionDisplayBlock(BlockBehaviour.Properties.of()
+                    .noOcclusion()
+                    .strength(-1.0F, 3_600_000.0F)
+                    .noLootTable()
             ));
     public static final DeferredItem<Item> AUCTION_TELLER_SPAWN_EGG =
             ITEMS.register("auction_teller_spawn_egg", AuctionTellerSpawnEggItem::new);

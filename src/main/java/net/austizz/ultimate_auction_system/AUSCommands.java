@@ -1,6 +1,7 @@
 package net.austizz.ultimate_auction_system;
 
 import com.mojang.brigadier.Command;
+import com.mojang.brigadier.builder.ArgumentBuilder;
 
 import com.mojang.brigadier.arguments.IntegerArgumentType;
 import com.mojang.brigadier.arguments.StringArgumentType;
@@ -13,6 +14,8 @@ import net.austizz.ultimate_auction_system.api.UasPermissionAction;
 import net.austizz.ultimate_auction_system.api.UasPermissions;
 import net.austizz.ultimate_auction_system.i18n.UasTranslations;
 import net.austizz.ultimate_auction_system.network.UasPayloads;
+import net.austizz.ultimate_auction_system.display.AuctionDisplayType;
+import net.austizz.ultimate_auction_system.registry.UasBlocks;
 import net.minecraft.ChatFormatting;
 import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.commands.Commands;
@@ -22,6 +25,9 @@ import net.minecraft.network.chat.HoverEvent;
 import net.minecraft.network.chat.MutableComponent;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.core.component.DataComponents;
+import net.minecraft.world.item.component.CustomData;
+import net.minecraft.nbt.CompoundTag;
 import net.minecraft.world.level.storage.LevelResource;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.common.EventBusSubscriber;
@@ -183,7 +189,79 @@ public class AUSCommands {
                                         )
                                 )
                         )
+                                .then(Commands.literal("display")
+                                .then(Commands.literal("edit").executes(AUSCommands::startDisplayEditMode))
+                                .then(Commands.literal("give")
+                                        .then(Commands.literal("highest_bid").then(displaySizeArguments(false)))
+                                        .then(Commands.literal("most_watched").then(displaySizeArguments(false)))
+                                        .then(Commands.literal("ending_soon").then(displaySizeArguments(false)))
+                                        .then(Commands.literal("random").then(displaySizeArguments(false)))
+                                        .then(Commands.literal("manual").then(displaySizeArguments(true))))
+                        )
         );
+    }
+
+    private static int giveAuctionDisplay(CommandContext<CommandSourceStack> context) {
+        ServerPlayer player = context.getSource().getPlayer();
+        if (player == null) {
+            context.getSource().sendFailure(UasTranslations.tr("Only players can receive auction displays."));
+            return 0;
+        }
+        AuctionDisplayType type = context.getNodes().stream()
+                .map(node -> AuctionDisplayType.fromToken(node.getNode().getName()))
+                .filter(candidate -> candidate.name().equals(context.getNodes().getLast().getNode().getName())
+                        || context.getNodes().stream().anyMatch(n -> n.getNode().getName().equals(candidate.name().toLowerCase(java.util.Locale.ROOT))))
+                .findFirst().orElse(AuctionDisplayType.HIGHEST_BID);
+        int x = IntegerArgumentType.getInteger(context, "sizeX");
+        int y = IntegerArgumentType.getInteger(context, "sizeY");
+        int z = IntegerArgumentType.getInteger(context, "sizeZ");
+        CompoundTag display = new CompoundTag();
+        display.putString("id", UltimateAuctionSystem.MODID + ":auction_display");
+        display.putString("Type", type.name()); display.putInt("SizeX", x); display.putInt("SizeY", y); display.putInt("SizeZ", z);
+        if (type == AuctionDisplayType.MANUAL) {
+            boolean hasAuctionId = context.getNodes().stream()
+                    .anyMatch(node -> node.getNode().getName().equals("auctionId"));
+            if (!hasAuctionId) {
+                context.getSource().sendFailure(UasTranslations.tr("Manual displays require an auction ID."));
+                return 0;
+            }
+            String raw = StringArgumentType.getString(context, "auctionId");
+            try { display.putUUID("ManualAuction", UUID.fromString(raw)); }
+            catch (IllegalArgumentException exception) {
+                context.getSource().sendFailure(UasTranslations.tr("The manual auction ID is invalid."));
+                return 0;
+            }
+        }
+        ItemStack stack = new ItemStack(UasBlocks.AUCTION_DISPLAY.get());
+        stack.set(DataComponents.BLOCK_ENTITY_DATA, CustomData.of(display));
+        if (!player.getInventory().add(stack)) player.drop(stack, false);
+        player.sendSystemMessage(UasTranslations.tr("Auction display added to your inventory.").withStyle(ChatFormatting.GREEN));
+        return Command.SINGLE_SUCCESS;
+    }
+
+    private static ArgumentBuilder<CommandSourceStack, ?> displaySizeArguments(boolean manual) {
+        var sizeZ = Commands.argument("sizeZ", IntegerArgumentType.integer(1, 16));
+        if (manual) {
+            sizeZ.then(Commands.argument("auctionId", StringArgumentType.word())
+                    .executes(AUSCommands::giveAuctionDisplay));
+        } else {
+            sizeZ.executes(AUSCommands::giveAuctionDisplay);
+        }
+        return Commands.argument("sizeX", IntegerArgumentType.integer(1, 16))
+                .then(Commands.argument("sizeY", IntegerArgumentType.integer(1, 16)).then(sizeZ));
+    }
+
+    private static int startDisplayEditMode(CommandContext<CommandSourceStack> context) {
+        ServerPlayer player = context.getSource().getPlayer();
+        if (player == null) {
+            context.getSource().sendFailure(UasTranslations.tr("Only players can edit auction displays."));
+            return 0;
+        }
+        net.neoforged.neoforge.network.PacketDistributor.sendToPlayer(player,
+                new net.austizz.ultimate_auction_system.network.DisplayEditModePayload(true));
+        player.sendSystemMessage(UasTranslations.tr("Display edit mode enabled. Right-click an auction display to edit it. Hold Shift twice to exit.")
+                .withStyle(ChatFormatting.GOLD));
+        return Command.SINGLE_SUCCESS;
     }
 
     private static int openAuctionGui(CommandContext<CommandSourceStack> context) {

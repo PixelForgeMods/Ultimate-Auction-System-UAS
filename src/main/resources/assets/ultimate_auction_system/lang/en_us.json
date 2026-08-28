@@ -44,6 +44,10 @@
   "=== UAS Auction Inspect ===": "=== UAS Auction Inspect ===",
   "=== UAS Seller Auctions ===": "=== UAS Seller Auctions ===",
   "=== UAS Status ===": "=== UAS Status ===",
+  "UAS Top Sellers by Revenue": "UAS Top Sellers by Revenue",
+  "UAS Top Buyers by Spending": "UAS Top Buyers by Spending",
+  "UAS Most Auctions Listed": "UAS Most Auctions Listed",
+  "UAS Most Auctions Won": "UAS Most Auctions Won",
   "A saved search already uses that name.": "A saved search already uses that name.",
   "A bundled auction can include up to ": "A bundled auction can include up to ",
   "ACTIVE": "ACTIVE",
@@ -833,5 +837,49 @@
   "Help: Listing Fee": "Listing Fee",
   "Help: Listing Fee Body": "Estimated listing cost from the server fee rate and starting bid. It is paid from the selected UBS account when the listing is confirmed.",
   "Unknown": "Unknown",
-  "Unknown suspicion signal": "Unknown suspicion signal"
+  "Unknown suspicion signal": "Unknown suspicion signal",
+  "This auction display has no active auction.": "This auction display has no active auction.",
+  "Only the owner or an operator can remove this auction display.": "Only the owner or an operator can remove this auction display.",
+  "Warning: shift-right-click again within 5 seconds to remove this auction display.": "Warning: shift-right-click again within 5 seconds to remove this auction display.",
+  "Only players can receive auction displays.": "Only players can receive auction displays.",
+  "The manual auction ID is invalid.": "The manual auction ID is invalid.",
+  "Auction display added to your inventory.": "Auction display added to your inventory.",
+  "Auction display: {0}": "Auction display: %1$s",
+  "Items: {0}": "Items: %1$s",
+  "Current highest bid: {0}": "Current highest bid: %1$s",
+  "Ends: {0}": "Ends: %1$s",
+  "Right-click to open auction": "Right-click to open auction"
+  ,"Auction display title: {0}": "%1$s",
+  "Manual displays require an auction ID.": "Manual displays require an auction ID.",
+  "Current item: {0} x{1}": "Current item: %1$s x%2$s",
+  "Hold Shift for item details": "Hold Shift for item details"
+  ,"AUCTION DISPLAY": "AUCTION DISPLAY"
+  ,"CURRENT ITEM": "CURRENT ITEM"
+  ,"AUCTION DETAILS": "AUCTION DETAILS"
+  ,"OPEN AUCTION": "OPEN AUCTION"
+  ,"Quantity: {0}": "Quantity: %1$s"
+  ,"Only players can edit auction displays.": "Only players can edit auction displays."
+  ,"Display edit mode enabled. Right-click an auction display to edit it. Hold Shift twice to exit.": "Display edit mode enabled. Right-click an auction display to edit it. Hold Shift twice to exit."
+  ,"Display edit mode disabled.": "Display edit mode disabled."
+  ,"Display model editor": "Display model editor"
+  ,"DISPLAY MODEL EDITOR": "DISPLAY MODEL EDITOR"
+  ,"North-facing preview": "North-facing preview"
+  ,"Transform": "Transform"
+  ,"Position": "Position"
+  ,"Rotation": "Rotation"
+  ,"Scale": "Scale"
+  ,"Apply": "Apply"
+  ,"Move (W)": "Move (W)"
+  ,"Rotate (E)": "Rotate (E)"
+  ,"Scale (R)": "Scale (R)"
+  ,"Pitch": "Pitch"
+  ,"Yaw": "Yaw"
+  ,"Roll": "Roll"
+  ,"Middle-drag rotates camera around display": "Middle-drag rotates camera around display"
+  ,"Reset model": "Reset model"
+  ,"Spinning: ON": "Spinning: ON"
+  ,"Spinning: OFF": "Spinning: OFF"
+  ,"Done": "Done"
+  ,"DISPLAY EDIT MODE": "DISPLAY EDIT MODE"
+  ,"Right-click a display • Shift twice to exit": "Right-click a display • Shift twice to exit"
 }

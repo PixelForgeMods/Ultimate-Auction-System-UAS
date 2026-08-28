@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.1.0 - 2026-08-28
+
+- Added auction display blocks with configurable display types, auction selection, custom sizing, hologram support, and editable item-model transforms.
+- Added the in-game display editor with position, rotation, scale, spinning, spectator protection, and interactive transform controls.
+- Added custom auction-display hover UI with bundle current-item details and item-detail previews.
+- Added live UAS auction leaderboards to NeoEssentials for seller revenue, buyer spending, auctions listed, and auctions won.
+- Updated UAS to UBS `2.1.1` or newer and migrated auction alerts to the UBS Alert v2 notification API.
+- Kept NeoEssentials as an optional integration; UAS continues to require UBS for auction settlement.
+
 ## 1.0.3 - 2026-06-11
 
 - Added a UBS web admin dashboard for UAS with Overview, Auctions, Players, Moderation, Recovery, and Audit pages.
@@ -9,7 +18,7 @@
 
 ## 1.0.2 - 2026-06-10
 
-- Raised the required UBS dependency to `1.2.5` so UAS cannot run against older UBS releases that do not include the API hooks used by auction settlement and alerts.
+- Raised the required UBS dependency to `2.1.1` so UAS uses the latest UBS release and its Alert v2 notification API.
 
 ## 1.0.1 - 2026-06-09
 

@@ -10,8 +10,8 @@ import java.util.Optional;
 
 public final class UasDependencyDiagnostics {
     public static final String UBS_MOD_ID = "ultimatebankingsystem";
-    public static final String MINIMUM_UBS_VERSION = "1.2.5";
-    public static final String REQUIRED_UBS_RANGE = "[1.2.5,)";
+    public static final String MINIMUM_UBS_VERSION = "2.1.1";
+    public static final String REQUIRED_UBS_RANGE = "[2.1.1,)";
 
     private UasDependencyDiagnostics() {
     }

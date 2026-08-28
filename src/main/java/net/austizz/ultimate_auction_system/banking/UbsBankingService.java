@@ -1,9 +1,11 @@
 package net.austizz.ultimate_auction_system.banking;
 
 import net.austizz.ultimatebankingsystem.api.ApiAccountSnapshot;
-import net.austizz.ultimatebankingsystem.api.ApiAlertResult;
 import net.austizz.ultimatebankingsystem.api.ApiCashResult;
 import net.austizz.ultimatebankingsystem.api.ApiItemResult;
+import net.austizz.ultimatebankingsystem.api.ApiNotificationPriority;
+import net.austizz.ultimatebankingsystem.api.ApiNotificationRequest;
+import net.austizz.ultimatebankingsystem.api.ApiNotificationResult;
 import net.austizz.ultimatebankingsystem.api.ApiResult;
 import net.austizz.ultimatebankingsystem.api.ApiTransactionResult;
 import net.austizz.ultimatebankingsystem.api.UltimateBankingApi;
@@ -320,18 +322,35 @@ public final class UbsBankingService implements UasBankingService {
         }
         String safeTitle = title == null || title.isBlank() ? "Auction House" : title;
         String safeMessage = message == null ? "" : message;
-        ApiAlertResult result = switch (tone) {
-            case "SUCCESS" -> api.sendSuccessUiAlert(playerId, safeTitle, safeMessage, durationMs);
-            case "ERROR" -> api.sendErrorUiAlert(playerId, safeTitle, safeMessage, durationMs);
-            case "WARNING" -> api.sendWarningUiAlert(playerId, safeTitle, safeMessage, durationMs);
-            default -> api.sendInfoUiAlert(playerId, safeTitle, safeMessage, durationMs);
+        ApiNotificationRequest.Builder request = switch (tone) {
+            case "SUCCESS" -> ApiNotificationRequest.success(safeMessage);
+            case "ERROR" -> ApiNotificationRequest.error(safeMessage);
+            case "WARNING" -> ApiNotificationRequest.warning(safeMessage);
+            default -> ApiNotificationRequest.info(safeMessage);
         };
+        ApiNotificationResult result = api.sendNotification(playerId, request
+                .id("uas:alert:" + UUID.randomUUID())
+                .channel("auction_house")
+                .source("Ultimate Auction System")
+                .title(safeTitle)
+                .detail(safeMessage)
+                .priority(notificationPriority(tone))
+                .durationMs(durationMs)
+                .build());
         if (result == null) {
             return UasAlertResult.fail("UBS returned no alert result", playerId);
         }
         return result.success()
                 ? UasAlertResult.ok(playerId)
                 : UasAlertResult.fail(result.reason(), playerId);
+    }
+
+    private ApiNotificationPriority notificationPriority(String tone) {
+        return switch (tone) {
+            case "ERROR" -> ApiNotificationPriority.HIGH;
+            case "WARNING" -> ApiNotificationPriority.HIGH;
+            default -> ApiNotificationPriority.NORMAL;
+        };
     }
 
     private BigDecimal safeAmount(BigDecimal amount) {

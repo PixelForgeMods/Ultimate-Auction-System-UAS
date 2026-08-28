@@ -8,7 +8,7 @@ UAS is a NeoForge mod for Minecraft `1.21.1`. It requires Ultimate Banking Syste
 - NeoForge `21.1.x`
 - Java `21`
 - UAS: `ultimate_auction_system`
-- UBS: `ultimatebankingsystem` version `1.2.5` or newer
+- UBS: `ultimatebankingsystem` version `2.1.1` or newer
 
 Install both UAS and UBS on the dedicated server and on every client that connects to it. In singleplayer, install both mods in the local client.
 
@@ -16,7 +16,7 @@ Install both UAS and UBS on the dedicated server and on every client that connec
 
 1. Stop the server.
 2. Add the UAS jar to the `mods` folder.
-3. Add the UBS jar, version `1.2.5` or newer, to the same `mods` folder.
+3. Add the UBS jar, version `2.1.1` or newer, to the same `mods` folder.
 4. Start the server once to generate config.
 5. Run `/uas status`.
 6. Confirm UBS and storage are healthy before players start using auctions.
@@ -34,7 +34,7 @@ UAS declares UBS as a required dependency in `neoforge.mods.toml`:
 modId = "ultimatebankingsystem"
 type = "required"
 reason = "UAS settles auction payments through the Ultimate Banking System API."
-versionRange = "[1.2.5,)"
+versionRange = "[2.1.1,)"
 ordering = "AFTER"
 side = "BOTH"
 ```
@@ -46,7 +46,7 @@ If UBS is missing, NeoForge should stop the mod load before live auction logic s
 During setup, UAS checks that:
 
 - UBS is loaded
-- The loaded UBS version is at least `1.2.5`
+- The loaded UBS version is at least `2.1.1`
 - The UBS API version is available
 - The UBS server data layer is available after the world loads
 
@@ -64,9 +64,9 @@ A healthy server should report:
 
 ```text
 UBS loaded: yes
-UBS mod version: 1.2.5
-UBS required range: [1.2.5,)
-UBS API version: 1.2.5
+UBS mod version: 2.1.1
+UBS required range: [2.1.1,)
+UBS API version: 2.1.1
 UBS server available: yes
 ```
 
@@ -99,4 +99,4 @@ When updating either mod:
 5. Run `/uas status`.
 6. Inspect the log for storage migration or UBS dependency warnings.
 
-Do not downgrade UBS below `1.2.5`; UAS requires that API range for auction settlement and alerts.
+Do not downgrade UBS below `2.1.1`; UAS requires that API range for auction settlement and Alert v2 notifications.

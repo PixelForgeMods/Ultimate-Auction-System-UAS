@@ -24,7 +24,7 @@ Run the health check:
 1. Install UAS and UBS on the server and clients.
 2. Start the server once to generate config.
 3. Run `/uas status`.
-4. Confirm UBS is loaded, UBS version is `1.2.5` or newer, UBS server API is available, config loaded, and storage is healthy.
+4. Confirm UBS is loaded, UBS version is `2.1.1` or newer, UBS server API is available, config loaded, and storage is healthy.
 5. Review economy settings before players create live auctions.
 6. Decide whether to configure banned auction entries before opening the auction house.
 7. Decide whether to allow hidden reserve prices with `marketplace.enableReservePrices`.

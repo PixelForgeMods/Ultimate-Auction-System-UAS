@@ -7,7 +7,7 @@ The UAS workspace expects UBS to be available for compile and runtime testing. T
 ```text
 Ultimate mod series/
   Ultimate Auction System UAS/
-  Ultimate-Banking-System-UBS-main/
+  Ultimate-Banking-System-UBS-main/ (or `Ultimate-Banking-System-UBS-dev-1.21.1-neoforge/`)
 ```
 
 `build.gradle` uses UBS as an implementation dependency. It first uses the local UBS jar path, then falls back to the Maven coordinate if that jar is not present:
@@ -19,7 +19,7 @@ implementation files(ubsDependencyFile)
 Override the local jar path when needed:
 
 ```text
-./gradlew build -Pubs_dependency_jar=C:/path/to/ultimatebankingsystem-1.2.5.jar
+./gradlew build -Pubs_dependency_jar=C:/path/to/ultimatebankingsystem-2.1.1.jar
 ```
 
 ## Build

@@ -252,6 +252,17 @@ public class AuctionHouseScreen extends Screen {
         rebuildWidgets();
     }
 
+    public void openAuctionDetails(UUID auctionId) {
+        if (auctionId == null) return;
+        AuctionEntrySummary entry = findAuction(payload, auctionId);
+        if (entry != null) {
+            selectedAuction = entry;
+            modal = Modal.BIDS;
+            bidsScroll = 0;
+            rebuildWidgets();
+        }
+    }
+
     @Override
     protected void init() {
         ensureSelectedAccount();

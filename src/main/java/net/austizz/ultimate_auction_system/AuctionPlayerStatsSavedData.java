@@ -96,6 +96,10 @@ public final class AuctionPlayerStatsSavedData extends SavedData {
         return stats == null ? AuctionPlayerStats.empty(playerId, playerName) : stats.withName(playerName);
     }
 
+    public synchronized List<AuctionPlayerStats> allStats() {
+        return List.copyOf(statsByPlayer.values());
+    }
+
     public synchronized boolean recordListing(UUID auctionId, UUID sellerId, String sellerName) {
         if (auctionId == null || sellerId == null || !countedListingAuctionIds.add(auctionId)) {
             return false;

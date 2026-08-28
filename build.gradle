@@ -14,6 +14,7 @@ repositories {
     // Local UBS development fallback. The composite build in settings.gradle is preferred when the sibling repo exists.
     flatDir {
         dirs "../Ultimate-Banking-System-UBS-main/build/libs"
+        dirs "../Ultimate-Banking-System-UBS-dev-1.21.1-neoforge/build/libs"
         dirs "libs"
     }
 
@@ -33,7 +34,13 @@ def minecraftDevUsername = providers.gradleProperty('username')
         .orElse(providers.gradleProperty('minecraft_dev_username'))
         .orElse('Dev')
 
-def defaultUbsDependencyJar = '../Ultimate-Banking-System-UBS-main/build/libs/ultimatebankingsystem-1.2.5.jar'
+def localUbsJarCandidates = [
+        file('../Ultimate-Banking-System-UBS-dev-1.21.1-neoforge/build/libs/ultimatebankingsystem-2.1.1.jar'),
+        file('../Ultimate-Banking-System-UBS-main/build/libs/ultimatebankingsystem-2.1.1.jar'),
+        file('libs/ultimatebankingsystem-2.1.1.jar'),
+        file('libs/ultimatebankingsystem.jar')
+]
+def defaultUbsDependencyJar = (localUbsJarCandidates.find { it.exists() } ?: localUbsJarCandidates.first()).path
 def ubsDependencyJar = providers.gradleProperty('ubs_dependency_jar').orElse(defaultUbsDependencyJar)
 def ubsDependencyFile = file(ubsDependencyJar.get())
 def runModsDir = layout.projectDirectory.dir('run/mods')
@@ -119,7 +126,7 @@ dependencies {
     if (ubsDependencyFile.exists()) {
         implementation files(ubsDependencyFile)
     } else {
-        implementation 'net.austizz.ultimatebankingsystem:ultimatebankingsystem:1.2.5'
+        implementation 'net.austizz.ultimatebankingsystem:ultimatebankingsystem:2.1.1'
     }
 
     testImplementation 'org.junit.jupiter:junit-jupiter:5.10.3'

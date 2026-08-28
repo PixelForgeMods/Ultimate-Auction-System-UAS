@@ -3,6 +3,8 @@ package net.austizz.ultimate_auction_system;
 import com.mojang.logging.LogUtils;
 import net.austizz.ultimate_auction_system.registry.UasBlocks;
 import net.austizz.ultimate_auction_system.registry.UasEntities;
+import net.austizz.ultimate_auction_system.registry.UasBlockEntities;
+import net.austizz.ultimate_auction_system.integration.UasNeoEssentialsLeaderboardIntegration;
 import net.austizz.ultimate_auction_system.webadmin.UasDashboardBootstrap;
 import net.neoforged.bus.api.IEventBus;
 import net.neoforged.bus.api.SubscribeEvent;
@@ -29,6 +31,7 @@ public class UltimateAuctionSystem {
         modEventBus.addListener(this::commonSetup);
         UasBlocks.register(modEventBus);
         UasEntities.register(modEventBus);
+        UasBlockEntities.register(modEventBus);
 
         NeoForge.EVENT_BUS.register(this);
 
@@ -57,6 +60,7 @@ public class UltimateAuctionSystem {
         try {
             auctionHouse = AuctionHouse.load(event.getServer());
             LOGGER.info("[UAS] {}", auctionHouse.getStorageHealth().message());
+            UasNeoEssentialsLeaderboardIntegration.install();
         } catch (RuntimeException exception) {
             LOGGER.error("[UAS] Failed to load persistent auction storage; using in-memory fallback.", exception);
             auctionHouse = new AuctionHouse();

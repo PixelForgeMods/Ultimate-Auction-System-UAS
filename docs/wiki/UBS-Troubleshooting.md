@@ -7,7 +7,7 @@ UAS depends on UBS for listing fees, bid escrow, refunds, buyouts, payouts, sale
 Symptom:
 
 ```text
-Ultimate Banking System is required. Install UBS [1.2.5,) and restart the server.
+Ultimate Banking System is required. Install UBS [2.1.1,) and restart the server.
 ```
 
 Fix:
@@ -22,12 +22,12 @@ Fix:
 Symptom:
 
 ```text
-Ultimate Banking System <version> is too old. Install UBS [1.2.5,).
+Ultimate Banking System <version> is too old. Install UBS [2.1.1,).
 ```
 
 Fix:
 
-- Replace UBS with version `1.2.5` or newer.
+- Replace UBS with version `2.1.1` or newer.
 - Restart the server.
 - Run `/uas status` again.
 

@@ -25,7 +25,8 @@ public record AuctionSnapshotPayload(
         String message,
         boolean success,
         boolean adminMode,
-        AuctionAdminDashboardPayload adminDashboard
+        AuctionAdminDashboardPayload adminDashboard,
+        java.util.UUID openAuctionId
 ) implements CustomPacketPayload {
     public static final Type<AuctionSnapshotPayload> TYPE = new Type<>(
             ResourceLocation.fromNamespaceAndPath(UltimateAuctionSystem.MODID, "auction_snapshot"));
@@ -47,6 +48,7 @@ public record AuctionSnapshotPayload(
                 ByteBufCodecs.BOOL.encode(buf, payload.success());
                 ByteBufCodecs.BOOL.encode(buf, payload.adminMode());
                 AuctionAdminDashboardPayload.STREAM_CODEC.encode(buf, payload.adminDashboard());
+                ByteBufCodecs.optional(UasNetworkCodecs.UUID_CODEC).encode(buf, java.util.Optional.ofNullable(payload.openAuctionId()));
             },
             buf -> new AuctionSnapshotPayload(
                     AuctionEntrySummary.STREAM_CODEC.apply(ByteBufCodecs.list(256)).decode(buf),
@@ -63,7 +65,8 @@ public record AuctionSnapshotPayload(
                     ByteBufCodecs.STRING_UTF8.decode(buf),
                     ByteBufCodecs.BOOL.decode(buf),
                     ByteBufCodecs.BOOL.decode(buf),
-                    AuctionAdminDashboardPayload.STREAM_CODEC.decode(buf)
+                    AuctionAdminDashboardPayload.STREAM_CODEC.decode(buf),
+                    ByteBufCodecs.optional(UasNetworkCodecs.UUID_CODEC).decode(buf).orElse(null)
             )
     );
 
@@ -75,6 +78,10 @@ public record AuctionSnapshotPayload(
     }
 
     public static AuctionSnapshotPayload fromSnapshot(AuctionHouseSnapshot snapshot) {
+        return fromSnapshot(snapshot, null);
+    }
+
+    public static AuctionSnapshotPayload fromSnapshot(AuctionHouseSnapshot snapshot, java.util.UUID openAuctionId) {
         return new AuctionSnapshotPayload(
                 snapshot.browseListings().stream().map(AuctionEntrySummary::fromListing).toList(),
                 snapshot.myBids().stream().map(AuctionEntrySummary::fromListing).toList(),
@@ -90,7 +97,8 @@ public record AuctionSnapshotPayload(
                 snapshot.message(),
                 snapshot.success(),
                 snapshot.adminMode(),
-                AuctionAdminDashboardPayload.fromSnapshot(snapshot.adminDashboard())
+                AuctionAdminDashboardPayload.fromSnapshot(snapshot.adminDashboard()),
+                openAuctionId
         );
     }
 

@@ -12,8 +12,13 @@ plugins {
 
 rootProject.name = 'ultimate_auction_system'
 
-def ubsProjectDir = file('../Ultimate-Banking-System-UBS-main')
-if (ubsProjectDir.exists()) {
+def ubsProjectCandidates = [
+        '../Ultimate-Banking-System-UBS-main',
+        '../Ultimate-Banking-System-UBS-dev-1.21.1-neoforge'
+]
+def ubsProjectDir = ubsProjectCandidates.collect { file(it) }.find { it.exists() }
+def skipUbsComposite = gradle.startParameter.projectProperties.containsKey('skip_ubs_composite')
+if (ubsProjectDir != null && !skipUbsComposite) {
     includeBuild(ubsProjectDir) {
         dependencySubstitution {
             substitute(module('net.austizz.ultimatebankingsystem:ultimatebankingsystem')).using(project(':'))

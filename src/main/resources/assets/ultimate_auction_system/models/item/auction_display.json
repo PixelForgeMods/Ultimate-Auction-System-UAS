@@ -1,0 +1,6 @@
+{
+  "parent": "minecraft:item/generated",
+  "textures": {
+    "layer0": "ultimate_auction_system:item/auction_display_invisible"
+  }
+}

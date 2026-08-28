@@ -44,6 +44,10 @@
   "=== UAS Auction Inspect ===": "=== UAS veilinginspectie ===",
   "=== UAS Seller Auctions ===": "=== UAS verkoperveilingen ===",
   "=== UAS Status ===": "=== UAS-status ===",
+  "UAS Top Sellers by Revenue": "UAS-topverkopers op omzet",
+  "UAS Top Buyers by Spending": "UAS-topkopers op uitgaven",
+  "UAS Most Auctions Listed": "Meeste UAS-veilingen geplaatst",
+  "UAS Most Auctions Won": "Meeste UAS-veilingen gewonnen",
   "A saved search already uses that name.": "Een opgeslagen zoekopdracht gebruikt die naam al.",
   "A bundled auction can include up to ": "Een bundelveiling kan maximaal ",
   "ACTIVE": "ACTIEF",
@@ -833,5 +837,49 @@
   "Help: Listing Fee": "Plaatsingskosten",
   "Help: Listing Fee Body": "Geschatte kosten op basis van het serverpercentage en startbod. Dit wordt betaald vanaf de gekozen UBS-rekening wanneer de veiling wordt bevestigd.",
   "Unknown": "Onbekend",
-  "Unknown suspicion signal": "Onbekend verdacht signaal"
+  "Unknown suspicion signal": "Onbekend verdacht signaal",
+  "This auction display has no active auction.": "Dit veilingdisplay heeft geen actieve veiling.",
+  "Only the owner or an operator can remove this auction display.": "Alleen de eigenaar of een operator kan dit veilingdisplay verwijderen.",
+  "Warning: shift-right-click again within 5 seconds to remove this auction display.": "Waarschuwing: shift-rechtsklik nogmaals binnen 5 seconden om dit veilingdisplay te verwijderen.",
+  "Only players can receive auction displays.": "Alleen spelers kunnen veilingdisplays ontvangen.",
+  "The manual auction ID is invalid.": "De handmatige veiling-ID is ongeldig.",
+  "Auction display added to your inventory.": "Veilingdisplay aan je inventaris toegevoegd.",
+  "Auction display: {0}": "Veilingdisplay: %1$s",
+  "Items: {0}": "Items: %1$s",
+  "Current highest bid: {0}": "Huidig hoogste bod: %1$s",
+  "Ends: {0}": "Eindigt: %1$s",
+  "Right-click to open auction": "Rechtsklik om de veiling te openen"
+  ,"Auction display title: {0}": "%1$s",
+  "Manual displays require an auction ID.": "Handmatige displays vereisen een veiling-ID.",
+  "Current item: {0} x{1}": "Huidig item: %1$s x%2$s",
+  "Hold Shift for item details": "Houd Shift ingedrukt voor itemdetails"
+  ,"AUCTION DISPLAY": "VEILINGDISPLAY"
+  ,"CURRENT ITEM": "HUIDIG ITEM"
+  ,"AUCTION DETAILS": "VEILINGDETAILS"
+  ,"OPEN AUCTION": "VEILING OPENEN"
+  ,"Quantity: {0}": "Aantal: %1$s"
+  ,"Only players can edit auction displays.": "Alleen spelers kunnen veilingdisplays bewerken."
+  ,"Display edit mode enabled. Right-click an auction display to edit it. Hold Shift twice to exit.": "Bewerkingsmodus ingeschakeld. Rechtsklik op een veilingdisplay om het te bewerken. Houd Shift tweemaal ingedrukt om te stoppen."
+  ,"Display edit mode disabled.": "Bewerkingsmodus uitgeschakeld."
+  ,"Display model editor": "Display-modelbewerker"
+  ,"DISPLAY MODEL EDITOR": "DISPLAY-MODELBEWERKER"
+  ,"North-facing preview": "Voorbeeld vanaf het noorden"
+  ,"Transform": "Transformatie"
+  ,"Position": "Positie"
+  ,"Rotation": "Rotatie"
+  ,"Scale": "Schaal"
+  ,"Apply": "Toepassen"
+  ,"Move (W)": "Verplaatsen (W)"
+  ,"Rotate (E)": "Draaien (E)"
+  ,"Scale (R)": "Schalen (R)"
+  ,"Pitch": "Pitch"
+  ,"Yaw": "Yaw"
+  ,"Roll": "Roll"
+  ,"Middle-drag rotates camera around display": "Sleep met de middelste muisknop om rond het display te draaien"
+  ,"Reset model": "Model resetten"
+  ,"Spinning: ON": "Draaien: AAN"
+  ,"Spinning: OFF": "Draaien: UIT"
+  ,"Done": "Klaar"
+  ,"DISPLAY EDIT MODE": "DISPLAY-BEWERKINGSMODUS"
+  ,"Right-click a display • Shift twice to exit": "Rechtsklik op een display • Shift tweemaal om te stoppen"
 }
